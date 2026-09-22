@@ -5,6 +5,23 @@
 >
 > **최종 갱신: 2026-09-22** · 작성 시점의 실제 파일 상태와 대조 완료 (문서 맨 아래 «정합성 확인» 참고)
 
+### 목차
+
+| § | 내용 | |
+|---|---|---|
+| 1 | 이 프로젝트는 무엇인가 · **구현된 주요 기능** | |
+| 2 | 빠른 시작 · **환경변수 / 외부 서비스** | |
+| 3 | 완료된 작업 (Phase A~E) | 검증 상태 표 |
+| 4 | 파일 구조와 각 파일의 역할 | 신규/수정 구분 |
+| 5 | 아키텍처 핵심 | 설계 방향 |
+| 6 | **지금 작업 중인 것 / 막혀 있는 것** | ⚠ **가장 먼저 읽을 것** |
+| 7 | 알려진 버그 · 제약 | |
+| 8 | 다음에 할 일 (우선순위) | ⚠ **여기서 이어서 시작** |
+| 9 | 사용자가 요청한 조건 | 반드시 지킬 것 |
+| 10 | 건드리면 안 되는 것 · **수정 시 주의** | |
+| 11 | 실행 · 테스트 방법 | API·비용 포함 |
+| 12 | 정합성 확인 | 문서↔코드 대조 결과 |
+
 ---
 
 ## 1. 이 프로젝트는 무엇인가
@@ -25,6 +42,27 @@
 ②링크 하나로 끝내기, ③카테고리별 편집 방식 분기, ④비용 최소화가 설계의 축이다.
 
 유튜브 업로드는 하지 않는다 (사용자 요청). mp4와 업로드용 텍스트만 만든다.
+
+### 구현된 주요 기능
+
+| 기능 | 설명 | 상태 |
+|---|---|---|
+| **3가지 입력 모드** | 주제 한 줄 / 링크(유튜브·기사) / 핫이슈 자동(Google Trends KR) | 주제 모드 ✅ 검증 · 나머지 미검증 |
+| **자동 리서치** | 네이버 뉴스 API + DuckDuckGo 검색 → trafilatura 본문 추출 | ✅ 검증 (6건 수집) |
+| **구성 자동 설계** | 스타일 미지정 시 소재를 먼저 분석해 전개·훅·장면수·`visual_mode` 결정 | ✅ 검증 |
+| **스타일 벤치마킹** | 참고 영상 URL → 자막 분석 → 훅 공식·말투·호흡을 지침으로 추출·저장·적용 | ✅ 검증 |
+| **대본 생성** | 장면별 나레이션 + 이미지 프롬프트 + 화면 키워드 + 제목 3안·설명·해시태그·출처 | ✅ 검증 |
+| **대본 검토·수정** | 웹 UI에서 렌더 전에 멈추고 장면별로 고칠 수 있음 | ✅ 검증 |
+| **한국어 TTS** | edge-tts 무료, 단어 단위 타임스탬프 제공. OpenAI·ElevenLabs·Typecast 교체 가능 | edge ✅ · 나머지 미검증 |
+| **카라오케 자막** | 현재 읽는 단어만 색 강조(ASS). 화면 키워드·출처 크레딧 별도 스타일 | ✅ 검증 |
+| **파일 첨부** | 드래그로 올린 사진·영상을 AI가 내용 보고 장면 배치. `scene_NN_*`은 해당 장면 고정 | 업로드 ✅ · 배치 미검증 |
+| **기사 이미지 수집** | 링크에서 본문 이미지를 받아 사용, 화면에 출처 자동 표기 | ⚠ 미검증 |
+| **AI 이미지 생성** | Gemini(Nano Banana 2) / fal / HuggingFace / OpenAI / Pollinations | ❌ 미검증 |
+| **영상 짜깁기(broll)** | 소스 영상 자동 검색·구간 매칭, 원본 소리 12% + 나레이션 | ❌ 미검증 |
+| **렌더링** | 1080×1920 30fps h264+aac. 켄번즈·xfade·BGM 믹스·자막 번인 | ✅ 검증 |
+| **웹 UI** | 잡 큐(순차), SSE 실시간 진행상황, 결과 미리보기·다운로드, 비용 표시 | ✅ 부분 검증 |
+| **3계층 지침** | 프리셋(카테고리) < 스타일(벤치마킹) < 이번 영상 지침 | ✅ 검증 |
+| **안전 강등** | 어느 단계가 실패해도 하위 수단으로 내려가 영상은 반드시 완성 | ✅ 검증 |
 
 ---
 
@@ -47,6 +85,37 @@ claude-login.cmd  (탐색기에서 더블클릭)
 `"loggedIn": true` 가 나오면 성공. 상태 확인은 `python -m app.pipeline.llm status`.
 
 `.env`는 **없어도 동작한다.** 없으면 이미지 AI 생성과 비전 분석만 비활성화된다.
+
+### 환경변수 · 외부 서비스
+
+**현재 `.env` 파일은 없다.** 아래는 전부 선택이며, `.env.example`을 복사해 쓰면 된다.
+
+| 환경변수 | 쓰이는 곳 | 없으면 | 비용 |
+|---|---|---|---|
+| *(없음)* | **대본 생성** — `claude.exe` 구독 로그인 | 대본 생성 불가 (필수 기능) | 0원, 구독 한도 사용 |
+| `GEMINI_API_KEY` | 이미지 생성(`images/gemini.py`), 첨부 파일 비전 분석(`vision.py`) | 이미지는 단색 카드, 첨부는 올린 순서대로 배치 | 이미지 49~194원/장 |
+| `FAL_KEY` | 이미지 생성(`images/fal.py`) | 해당 provider 선택 시 단색 카드 | 약 4원/장 |
+| `HF_TOKEN` | 이미지 생성(`images/huggingface.py`) | 〃 | 무료(일일 한도) |
+| `OPENAI_API_KEY` | 이미지·TTS·LLM(대체 provider) | 해당 provider 선택 시 실패 | 종량제 |
+| `ELEVENLABS_API_KEY` | TTS(`tts/elevenlabs.py`) | 〃 | 종량제 |
+| `TYPECAST_API_KEY` | TTS(`tts/typecast.py`) | 〃 | 종량제 |
+| `ANTHROPIC_API_KEY` | LLM을 구독 대신 API로 쓸 때 | 구독 경로가 기본이라 불필요 | 종량제 |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 뉴스 검색(`research.py`) | DuckDuckGo만 사용 (동작함) | 무료 |
+
+**키 없이 외부와 통신하는 것** (별도 설정 불필요):
+- **yt-dlp** — 유튜브 메타·자막·영상 다운로드 (`youtube.py`, `broll.py`)
+- **Google Trends RSS** (`geo=KR`) — 핫이슈 자동 모드. 비공식이라 실패 시 네이버 랭킹으로 대체
+- **DuckDuckGo 검색** (`ddgs`) — 리서치
+- **trafilatura** — 기사 본문 추출
+- **Pollinations** — 키 없는 무료 이미지(저화질+워터마크, 최후 수단)
+
+**로컬 필수 도구**:
+- **Python 3.12.10** (`.venv`)
+- **ffmpeg 9.0.1** — winget 설치. PATH에 없어도 `media.require_ffmpeg()`이 설치 경로를 자동 탐색
+- **claude.exe** — Claude Code CLI. 데스크톱 앱 번들(`%APPDATA%\Claude\claude-code\<버전>\`)을 자동 탐색
+- **git 2.55** — `C:\Program Files\Git\cmd` (PATH에 없어 전체 경로 필요)
+
+> ⚠️ **`.env`는 `.gitignore`에 있다.** 절대 커밋하지 말 것. `.env.example`은 값이 비어 있어 커밋해도 안전하다.
 
 ---
 
@@ -76,21 +145,21 @@ claude-login.cmd  (탐색기에서 더블클릭)
 
 | 파일 | 줄수 | 역할 |
 |---|---|---|
-| `run.py` ▲ | 444 | **오케스트레이터.** 6단계 전부를 조율. CLI 겸용. 가장 큰 파일이자 변경이 집중된 곳 |
-| `models.py` ▲ | 122 | 모든 pydantic 모델. LLM 구조화 출력 스키마 겸용 |
-| `script.py` ▲ | 129 | Claude 프롬프트 4종: 구성설계(`make_plan`)·대본(`write_script`)·클립계획·트렌드선택 |
-| `llm.py` ▲ | 178 | LLM provider 3종 (claude 구독 / openai / anthropic). `claude.exe` 자동 탐색 |
-| `styles.py` ■ | 153 | 스타일 지침 CRUD + 참고 영상 자동 분석 |
-| `article.py` ■ | 192 | 기사·글 링크 본문 추출 + 이미지 수집 + 출처 문구 |
-| `assets.py` ■ | 172 | 첨부 파일 관리 + **장면별 비주얼 우선순위 결정** |
-| `vision.py` ■ | 96 | Gemini Flash 비전으로 이미지 내용 파악 → 장면 매칭 |
-| `broll.py` ■ | 180 | 소스 영상 검색·수집, 자막 타임라인, 장면별 구간 매칭·정규화 |
-| `render.py` ▲ | 261 | ffmpeg 3종: `render_slideshow` / `render_clips` / `render_broll`(신규) |
-| `subtitles.py` ▲ | 99 | ASS 자막 생성. `Sub`(카라오케)·`Title`(키워드)·`Credit`(출처, 신규) |
-| `media.py` ▲ | 106 | ffmpeg 유틸. `extract_frames`·`has_audio` 신규, ffmpeg 경로 자동 탐색 |
-| `youtube.py` ▲ | 138 | yt-dlp 메타·자막(단어 타임스탬프)·다운로드, whisper 대체 |
-| `research.py` | 110 | 뉴스 검색(네이버/DDG) + 본문 추출, Google Trends KR |
-| `clips.py` | 37 | 클립 모드 구간 정규화·자막 리타이밍 |
+| `run.py` ▲ | 502 | **오케스트레이터.** 6단계 전부를 조율. CLI 겸용. 가장 큰 파일이자 변경이 집중된 곳 |
+| `models.py` ▲ | 172 | 모든 pydantic 모델. LLM 구조화 출력 스키마 겸용 |
+| `script.py` ▲ | 170 | Claude 프롬프트 4종: 구성설계(`make_plan`)·대본(`write_script`)·클립계획·트렌드선택 |
+| `llm.py` ▲ | 216 | LLM provider 3종 (claude 구독 / openai / anthropic). `claude.exe` 자동 탐색 |
+| `styles.py` ■ | 200 | 스타일 지침 CRUD + 참고 영상 자동 분석 |
+| `article.py` ■ | 246 | 기사·글 링크 본문 추출 + 이미지 수집 + 출처 문구 |
+| `assets.py` ■ | 206 | 첨부 파일 관리 + **장면별 비주얼 우선순위 결정** |
+| `vision.py` ■ | 120 | Gemini Flash 비전으로 이미지 내용 파악 → 장면 매칭 |
+| `broll.py` ■ | 228 | 소스 영상 검색·수집, 자막 타임라인, 장면별 구간 매칭·정규화 |
+| `render.py` ▲ | 305 | ffmpeg 3종: `render_slideshow` / `render_clips` / `render_broll`(신규) |
+| `subtitles.py` ▲ | 119 | ASS 자막 생성. `Sub`(카라오케)·`Title`(키워드)·`Credit`(출처, 신규) |
+| `media.py` ▲ | 135 | ffmpeg 유틸. `extract_frames`·`has_audio` 신규, ffmpeg 경로 자동 탐색 |
+| `youtube.py` ▲ | 169 | yt-dlp 메타·자막(단어 타임스탬프)·다운로드, whisper 대체 |
+| `research.py` | 134 | 뉴스 검색(네이버/DDG) + 본문 추출, Google Trends KR |
+| `clips.py` | 42 | 클립 모드 구간 정규화·자막 리타이밍 |
 
 ### Provider 어댑터
 
@@ -103,12 +172,12 @@ claude-login.cmd  (탐색기에서 더블클릭)
 
 | 파일 | 줄수 | 역할 |
 |---|---|---|
-| `app/main.py` ▲ | 242 | FastAPI. 라우트 18개 + SSE |
-| `app/jobs.py` ▲ | 184 | 잡 큐(순차 1개씩), 대본 검토 대기, 상태 영속화, 업로드 이동 |
-| `app/config.py` ▲ | 86 | config/preset/style 로딩, `merge_options` 우선순위 |
-| `app/templates/index.html` ▲ | 292 | 단일 페이지 |
-| `app/static/app.js` ▲ | 513 | 전체 UI 로직 (빌드 없음) |
-| `app/static/style.css` ▲ | 131 | 다크 테마, 모바일 대응 |
+| `app/main.py` ▲ | 305 | FastAPI. 라우트 18개 + SSE |
+| `app/jobs.py` ▲ | 212 | 잡 큐(순차 1개씩), 대본 검토 대기, 상태 영속화, 업로드 이동 |
+| `app/config.py` ▲ | 114 | config/preset/style 로딩, `merge_options` 우선순위 |
+| `app/templates/index.html` ▲ | 312 | 단일 페이지 |
+| `app/static/app.js` ▲ | 563 | 전체 UI 로직 (빌드 없음) |
+| `app/static/style.css` ▲ | 143 | 다크 테마, 모바일 대응 |
 
 ### 설정·데이터
 
@@ -118,7 +187,7 @@ presets/*.yaml        카테고리 4종 (daily/engineering/entertainment/politic
 styles/*.yaml         저장된 스타일 지침 (현재 1개: style-f8b83e20)
 assets/bgm/           mp3 넣으면 자동 사용 (현재 비어 있음)
 assets/fonts/         otf/ttf (현재 비어 있음, 맑은 고딕 사용 중)
-output/<잡ID>/        결과물 (현재 비어 있음)
+output/<잡ID>/        결과물. 현재 검증 산출물 2개 (v1_topic, v2_len) — .gitignore 제외
 claude-login.cmd      Claude CLI 로그인 헬퍼
 ```
 
@@ -179,9 +248,29 @@ claude-login.cmd      Claude CLI 로그인 헬퍼
 
 ---
 
-## 6. 현재 막혀 있는 것 / 미검증 — **가장 중요**
+## 6. 지금 작업 중인 것 / 막혀 있는 것 — **가장 중요**
 
-### 6.1 대부분이 실행된 적 없다
+### 6.0 지금 어디까지 와 있나
+
+**단계: 기능 구현 완료 → 실검증 진행 중.** 새 기능 개발 단계가 아니다.
+
+Phase A~E 코드는 전부 작성됐고, 지금은 **하나씩 실제로 돌려 보며 버그를 잡는 중**이다.
+직전에 무과금 전체 경로(주제 → 대본 → TTS → 렌더)를 2회 돌려 길이 버그 1건을 찾아 고쳤다(§7).
+
+| 검증 | 상태 |
+|---|---|
+| 주제 모드 CLI 전체 실행 | ✅ 완료 (2026-09-22) |
+| 웹 UI Flow 워크플로 (프롬프트 복사 → 업로드 → 렌더) | ⬜ 다음 차례 |
+| `render_broll` 실제 렌더 | ⬜ 미착수 — 🔴 가장 위험 |
+| 기사 링크 모드 | ⬜ 미착수 |
+| Gemini 이미지·비전 | ⬜ 키 없어 보류 |
+| Phase F (Omni 영상) | ⬜ 미착수 (기능 자체가 없음) |
+
+**막혀 있는 것은 없다.** 다만 아래 두 가지는 사람이 해야 진행된다:
+- **Gemini 경로** — 사용자가 `.env`에 `GEMINI_API_KEY`를 넣어야 함
+- **Flow 워크플로** — 사용자가 Google Flow에서 이미지를 만들어 업로드해야 전 구간 확인 가능
+
+### 6.1 Phase B~E는 아직 실행된 적 없다
 
 사용자와 **"개발 중에는 샘플 생성·유료 API 호출 금지, 다 만든 뒤 한 번에 테스트"** 로 합의했다.
 그래서 Phase B~E는 다음만 통과한 상태다:
@@ -207,7 +296,9 @@ claude-login.cmd      Claude CLI 로그인 헬퍼
 - **`.env` 없음.** `GEMINI_API_KEY`, `FAL_KEY`, `OPENAI_API_KEY`, `NAVER_CLIENT_ID/SECRET` 전부 미설정
 - Claude 구독 로그인은 **되어 있음** (`loggedIn: true`, Pro)
 - Python 3.12.10 / ffmpeg 9.0.1 (winget 설치, `media.py`가 경로를 자동으로 찾음)
-- `output/` 비어 있음, `styles/`에 1개
+- `styles/`에 1개 (`style-f8b83e20`)
+- `output/`에 검증 산출물 2개 (`v1_topic` 4.8MB, `v2_len` 4.0MB) — gitignore 대상이라 커밋되지 않음.
+  참고용으로 남겨둔 것이니 필요 없으면 지워도 된다
 
 ---
 
@@ -311,6 +402,22 @@ python -m app.pipeline.images.gemini "test prompt" lite   # 1장 ≈ 50원
 | **정치·연예 프리셋의 사실기반·중립 규칙** | 명예훼손·허위정보 리스크 |
 | `.venv/`, `output/`, `.env` | 각각 의존성, 결과물, 비밀값 |
 
+### 수정할 때 특히 주의할 것
+
+위가 "손대지 말 것"이라면, 아래는 **고쳐도 되지만 잘못 고치기 쉬운 곳**이다.
+
+| 위치 | 주의점 |
+|---|---|
+| `run.py` (444줄) | 파이프라인 전체가 한 함수(`run_pipeline`)에 들어 있다. 단계 순서에 의존하는 변수(`gap`·`durations`·`all_sources`·`broll_picks`)가 많으니, 블록을 옮기면 정의 전에 참조하는 일이 생긴다 |
+| `render.py` 필터그래프 | ffmpeg 필터는 문자열 조립이라 **오타가 런타임에만 드러난다**. 고친 뒤 반드시 실제 렌더로 확인할 것. 라벨(`[v0]`, `[a0]`)은 유일해야 하고 모두 소비돼야 한다 |
+| `models.py`의 pydantic 필드 | **LLM 구조화 출력 스키마를 겸한다.** `Field(description=...)`이 곧 모델에게 주는 지시다. 설명을 지우면 출력 품질이 떨어진다 |
+| `script.py` 프롬프트 | 블록 순서(`preset → style → autoplan → instructions`)가 곧 지침 우선순위다. 순서를 바꾸면 3계층 규칙이 깨진다 |
+| `assets.py`의 `SCENE_PIN` 정규식 | `\b`를 쓰면 `scene_03_x` 를 놓친다(숫자와 `_`가 둘 다 단어문자). `(?!\d)`를 유지할 것 |
+| `subtitles.py`의 ASS 문자열 | 색은 `&HAABBGGRR`(BGR 역순)이다. RGB로 착각하기 쉽다 |
+| `config.py`의 `merge_options` | 우선순위가 `config < 프리셋 < UI`다. 새 옵션을 추가할 때 이 순서를 지킬 것 |
+| provider 어댑터 추가 | `ImageProvider`/`TTSProvider` 인터페이스를 지키고, **실패 시 반드시 예외를 던질 것**. 조용히 실패하면 fallback 체인이 동작하지 않는다 |
+| 잡 상태(`jobs.py`) | `awaiting_review`는 `asyncio.Event`로 대기한다. 상태 전이를 바꾸면 검토 화면이 영영 안 풀릴 수 있다 |
+
 ---
 
 ## 11. 실행 · 테스트 방법
@@ -406,15 +513,19 @@ GET     /files/{job_id}/{name}               결과물 (final.mp4, meta.txt 등)
 | 항목 | 문서 | 실제 | |
 |---|---|---|---|
 | 소스 파일 수 | 47개 (HANDOFF 제외) | 47개 | ✅ |
-| `app/` 코드량 | 36파일 5,200줄 (.py 4,182줄) | 동일 | ✅ |
+| `app/` 코드량 | 36파일 5,208줄 (.py 4,190줄) | 동일 | ✅ |
+| 파일별 줄 수 (§4 표) | 21개 파일 전부 | 동일 | ✅ |
 | API 엔드포인트 | 18개 (+ `GET /`) | 18개 | ✅ |
 | 라우트 경로·파라미터명 | `{job_id}`/`{preset_id}`/`{style_id}`/`{token}` | 동일 | ✅ |
+| 환경변수 8종 | 문서·`.env.example`·코드 3중 대조 | 전부 일치 | ✅ |
+| `CHARS_PER_SEC` | 6.35 | 6.35 | ✅ |
+| image provider 8종 / tts 4종 | 문서 목록 | `get_images`/`get_tts` 분기와 일치 | ✅ |
 | `images.provider` | `none` | `none` (`get_images()`→`None`) | ✅ |
 | `llm.provider` / model | `claude` / `claude-opus-5` | 동일 | ✅ |
 | 프리셋 visual_mode | daily·engineering=images, entertainment·politics=broll | 동일 | ✅ |
 | broll 설정 | 볼륨 0.12 / 소스 4개 / 소스당 15초 | 동일 | ✅ |
 | 스타일 | 1개 (`style-f8b83e20`) | 1개 | ✅ |
-| `output/` | 비어 있음 | 비어 있음 | ✅ |
+| `output/` | 검증 산출물 2개 (gitignore) | v1_topic, v2_len | ✅ |
 | `.env` | 없음 | 없음 | ✅ |
 | `compileall` | 통과 | 통과 | ✅ |
 
