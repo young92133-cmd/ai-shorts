@@ -6,8 +6,11 @@ from typing import Any
 from .llm import ask_structured
 from .models import AutoPlan, ClipPlan, ResearchDoc, Script, TrendPick
 
-# 한국어 나레이션 기준 대략 초당 4.5~5자
-CHARS_PER_SEC = 4.7
+# 한국어 나레이션 읽기 속도(자/초).
+# 실측값: edge-tts ko-KR-InJoonNeural, rate +5% 에서 412자 -> 64.9초 = 6.35 자/초.
+# 이 값이 낮으면 글자수를 적게 요청해 영상이 목표보다 짧아지고, 높으면 길어진다.
+# TTS provider 나 rate 를 바꾸면 다시 실측할 것.
+CHARS_PER_SEC = 6.35
 
 
 def _preset_block(preset: dict[str, Any]) -> str:
@@ -31,7 +34,8 @@ SCRIPT_SYSTEM = """당신은 조회수가 잘 나오는 한국어 유튜브 쇼�
 세로형 쇼츠(9:16) 나레이션 대본을 장면 단위로 작성합니다.
 
 공통 규칙:
-- 전체 나레이션 길이는 목표 시간에 맞춘다 (한국어 기준 초당 약 4.7자).
+- **글자수 상한을 반드시 지킨다.** 나레이션 전체 글자수(공백 포함)가 지정된 범위를 넘으면 안 된다.
+  내용이 많으면 장면을 줄이거나 문장을 쳐내서 맞춘다. 범위를 넘기느니 정보를 빼는 쪽을 택한다.
 - 첫 장면(훅)은 3초 안에 시청자를 붙잡는 한 문장. 두 번째 장면부터 본론.
 - 한 장면은 나레이션 1~2문장, TTS가 읽기 좋게 구어체로. 괄호·이모지·특수기호 금지.
 - 숫자는 한국어로 읽기 쉽게 쓴다 (예: 3만 5천 명).
@@ -90,6 +94,8 @@ async def write_script(llm: dict[str, Any], preset: dict[str, Any], topic: str, 
                        extra_context: str = "", instructions: str = "", style: dict[str, Any] | None = None,
                        plan: AutoPlan | None = None) -> Script:
     target_chars = int(target_seconds * CHARS_PER_SEC)
+    lo, hi = int(target_chars * 0.9), target_chars
+    n_scenes = plan.scene_count if plan else 8
     scene_count = f"{plan.scene_count}개 내외" if plan else "6~10개"
     user = (
         f"{_preset_block(preset)}\n"
@@ -97,7 +103,9 @@ async def write_script(llm: dict[str, Any], preset: dict[str, Any], topic: str, 
         f"{_autoplan_block(plan)}"
         f"{_instructions_block(instructions)}\n"
         f"[주제] {topic}\n"
-        f"[목표 길이] 약 {target_seconds}초 (나레이션 총 {target_chars - 40}~{target_chars + 20}자)\n"
+        f"[분량] 나레이션 전체 합계 {lo}~{hi}자 (공백 포함). {hi}자를 절대 넘기지 말 것.\n"
+        f"  = 약 {target_seconds}초 분량이며, 장면 {n_scenes}개 기준 장면당 평균 {hi // max(1, n_scenes)}자.\n"
+        f"  글자수를 세어 가며 쓰고, 넘칠 것 같으면 장면을 줄이세요.\n"
         f"[장면 수] {scene_count}\n\n"
         f"{('[추가 맥락]' + chr(10) + extra_context + chr(10) + chr(10)) if extra_context else ''}"
         f"## 리서치 자료\n{_docs_block(docs)}\n\n"
