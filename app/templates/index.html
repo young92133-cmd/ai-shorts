@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Shorts Studio</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>AI Shorts Studio</h1>
+  <div class="keys">
+    <span class="key {{ 'ok' if keys.claude_cli else 'no' }}" title="{{ keys.claude_cli or 'claude.exe 없음' }}">Claude 로그인</span>
+    <span class="key {{ 'ok' if keys.gemini else 'no' }}">Gemini</span>
+    <span class="key {{ 'ok' if keys.fal else 'no' }}">fal</span>
+    <span class="key {{ 'ok' if keys.hf else 'no' }}">HF</span>
+    <span class="key {{ 'ok' if keys.openai else 'no' }}">OpenAI</span>
+    <span class="key {{ 'ok' if keys.elevenlabs else 'no' }}">ElevenLabs</span>
+    <span class="key {{ 'ok' if keys.typecast else 'no' }}">Typecast</span>
+    <span class="key {{ 'ok' if keys.naver else 'no' }}">Naver</span>
+  </div>
+</header>
+
+<main>
+<section class="card" id="composer">
+  <div class="tabs">
+    <button class="tab active" data-mode="topic">주제로 만들기</button>
+    <button class="tab" data-mode="url">유튜브 URL</button>
+    <button class="tab" data-mode="auto">핫이슈 자동</button>
+  </div>
+
+  <div class="field">
+    <label id="input-label">주제</label>
+    <textarea id="input" rows="2" placeholder="예: 철근 콘크리트가 강한 이유"></textarea>
+    <p class="hint" id="input-hint">한 줄이면 충분합니다. 리서치 → 대본 → 음성 → 이미지 → 영상까지 자동으로 만듭니다.</p>
+  </div>
+
+  <div class="field">
+    <div class="label-row">
+      <label>카테고리 프리셋</label>
+      <button id="edit-preset" class="link">✎ 이 프리셋 지침 편집</button>
+    </div>
+    <div class="presets">
+      {% for p in presets %}
+      <label class="preset">
+        <input type="radio" name="preset" value="{{ p.id }}" {{ 'checked' if loop.first else '' }}>
+        <span class="preset-name">{{ p.name }}</span>
+        <span class="preset-desc">{{ p.description }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="label-row">
+      <label>내 파일 첨부 <span class="tag-opt">선택</span></label>
+      <span class="hint" id="up-count"></span>
+    </div>
+    <div id="dropzone">
+      <input type="file" id="up-input" multiple accept="image/*,video/*" hidden>
+      <p><strong>사진·영상을 여기로 끌어다 놓거나 클릭</strong></p>
+      <p class="hint">AI가 내용을 보고 어울리는 장면에 배치합니다. 남는 장면은 기사 이미지나 AI 생성으로 채웁니다.</p>
+    </div>
+    <div id="up-list"></div>
+  </div>
+
+  <div class="field">
+    <div class="label-row">
+      <label>스타일 <span class="tag-opt">벤치마킹</span></label>
+      <span>
+        <button id="new-style" class="link">＋ 참고 영상으로 만들기</button>
+        <button id="edit-style" class="link hidden">✎ 편집</button>
+      </span>
+    </div>
+    <select id="opt-style">
+      <option value="">자동 — 소재를 보고 AI가 구성을 정함</option>
+    </select>
+    <p class="hint" id="style-hint">참고할 채널의 영상을 넣으면 그 구성·말투를 분석해 지침으로 저장하고, 그 스타일대로 대본을 씁니다.</p>
+  </div>
+
+  <div class="field">
+    <div class="label-row">
+      <label>이번 영상 지침 <span class="tag-opt">선택</span></label>
+      <span class="hint" id="instr-count"></span>
+    </div>
+    <textarea id="instructions" rows="3" placeholder="예: 초등학생도 이해할 수 있게 쉽게. 비유를 꼭 하나 넣어줘. 마지막에 질문으로 끝내줘."></textarea>
+    <p class="hint">이번 한 편에만 적용됩니다. 프리셋 기본 규칙보다 <strong>우선</strong>합니다. 매번 쓰고 싶은 지침은 위의 "프리셋 지침 편집"에 저장하세요.</p>
+  </div>
+
+  <details class="options">
+    <summary>옵션</summary>
+    <div class="grid">
+      <label>목표 길이(초)
+        <input type="number" id="opt-seconds" min="20" max="90" value="{{ cfg.video.target_seconds }}">
+      </label>
+      <label>TTS
+        <select id="opt-tts">
+          <option value="edge" {{ 'selected' if cfg.tts.provider == 'edge' }}>Edge (무료)</option>
+          <option value="openai" {{ 'selected' if cfg.tts.provider == 'openai' }}>OpenAI</option>
+          <option value="elevenlabs" {{ 'selected' if cfg.tts.provider == 'elevenlabs' }}>ElevenLabs</option>
+          <option value="typecast" {{ 'selected' if cfg.tts.provider == 'typecast' }}>Typecast</option>
+        </select>
+      </label>
+      <label>목소리 (비우면 프리셋 기본)
+        <input type="text" id="opt-voice" placeholder="예: ko-KR-InJoonNeural">
+      </label>
+      <label>이미지
+        <select id="opt-images">
+          <option value="none" {{ 'selected' if cfg.images.provider in ('none', '', None) }}>생성 안 함 — 첨부·기사 이미지만 (0원)</option>
+          <optgroup label="Google Gemini">
+            <option value="gemini-lite" {{ 'selected' if cfg.images.provider == 'gemini-lite' }}>Nano Banana 2 Lite · 장당 49원</option>
+            <option value="gemini" {{ 'selected' if cfg.images.provider == 'gemini' }}>Nano Banana 2 · 장당 97원</option>
+            <option value="gemini-pro" {{ 'selected' if cfg.images.provider == 'gemini-pro' }}>Nano Banana Pro · 장당 194원</option>
+          </optgroup>
+          <optgroup label="그 외">
+            <option value="fal" {{ 'selected' if cfg.images.provider == 'fal' }}>fal.ai FLUX · 장당 4원</option>
+            <option value="huggingface" {{ 'selected' if cfg.images.provider == 'huggingface' }}>Hugging Face · 무료(한도)</option>
+            <option value="openai" {{ 'selected' if cfg.images.provider == 'openai' }}>OpenAI gpt-image</option>
+            <option value="pollinations" {{ 'selected' if cfg.images.provider == 'pollinations' }}>Pollinations · 무료(저화질)</option>
+          </optgroup>
+        </select>
+        <span class="hint" id="img-cost"></span>
+        <span class="hint warn" id="img-warn"></span>
+      </label>
+      <label>대본 AI
+        <select id="opt-llm">
+          <optgroup label="Claude (구독 로그인, 키 불필요)">
+            <option value="claude|claude-opus-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-opus-5' }}>Claude Opus 5</option>
+            <option value="claude|claude-sonnet-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-sonnet-5' }}>Claude Sonnet 5</option>
+            <option value="claude|claude-haiku-4-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-haiku-4-5' }}>Claude Haiku 4.5</option>
+          </optgroup>
+          <optgroup label="GPT (OpenAI 키)">
+            <option value="openai|gpt-5" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5' }}>GPT-5</option>
+            <option value="openai|gpt-5-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5-mini' }}>GPT-5 mini</option>
+            <option value="openai|gpt-4.1-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-4.1-mini' }}>GPT-4.1 mini</option>
+          </optgroup>
+          {% if keys.anthropic %}
+          <optgroup label="Anthropic API 키">
+            <option value="anthropic|claude-opus-5">Opus 5 (API)</option>
+            <option value="anthropic|claude-sonnet-5">Sonnet 5 (API)</option>
+          </optgroup>
+          {% endif %}
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="opt-review" checked> 대본 먼저 확인하고 렌더링</label>
+      <label class="check url-only"><input type="checkbox" id="opt-clip"> 원본 영상 클립 재편집 (AI 이미지 대신)</label>
+    </div>
+    <p class="hint url-only warn">클립 재편집은 타인의 영상을 그대로 사용하므로 저작권에 유의하세요. 본인 영상이나 허용된 범위에서만 사용하세요.</p>
+    <p class="hint warn" id="broll-warn">⚠ 연예·정치 프리셋은 <b>영상 짜깁기</b> 모드입니다. 소스 영상을 내려받아 구간을 잘라 쓰므로 저작권 위험이 있습니다.
+      소스당 사용 길이를 제한하고 출처를 자동 기재하지만 면책은 아니니, 인용 범위를 넘지 않는지 직접 확인하세요.</p>
+  </details>
+
+  <div class="actions">
+    <button id="submit" class="primary">만들기</button>
+    <span id="submit-msg" class="hint"></span>
+  </div>
+</section>
+
+<section id="jobs"></section>
+</main>
+
+<div id="preset-modal" class="modal hidden">
+  <div class="modal-box card">
+    <div class="modal-head">
+      <h2>프리셋 지침 편집 — <span id="pm-id"></span></h2>
+      <button id="pm-close" class="del">✕</button>
+    </div>
+    <p class="hint">여기에 저장한 지침은 이 카테고리로 만드는 <strong>모든 영상</strong>에 계속 적용됩니다.</p>
+
+    <label>카테고리 이름
+      <input type="text" id="pm-name">
+    </label>
+    <label>설명 (버튼에 표시)
+      <input type="text" id="pm-description">
+    </label>
+    <label>말투 / 톤
+      <textarea id="pm-tone" rows="2" placeholder="예: 차분하고 명확한 설명체. 전문용어는 한 줄로 풀어 설명. 존댓말."></textarea>
+    </label>
+    <label>대본 규칙 (한 줄에 하나씩)
+      <textarea id="pm-rules" rows="8" placeholder="- 영상 하나에 개념 1개만 다룬다.&#10;- 훅은 질문형으로 시작한다.&#10;- 구체적인 숫자를 최소 1개 포함한다."></textarea>
+    </label>
+    <label>이미지 스타일 (영어)
+      <textarea id="pm-image" rows="2" placeholder="clean technical illustration, isometric view, no text"></textarea>
+    </label>
+    <div class="grid">
+      <label>검색어 뒤에 붙일 말
+        <input type="text" id="pm-suffix" placeholder="예: 원리 설명">
+      </label>
+      <label>자막 강조색
+        <input type="color" id="pm-highlight">
+      </label>
+      <label>자막 크기
+        <input type="number" id="pm-size" min="40" max="110">
+      </label>
+    </div>
+    <div class="actions">
+      <button id="pm-save" class="primary">저장</button>
+      <span id="pm-msg" class="hint"></span>
+    </div>
+  </div>
+</div>
+
+<template id="job-tpl">
+  <article class="card job">
+    <div class="job-head">
+      <div>
+        <span class="badge mode"></span>
+        <span class="badge preset"></span>
+        <strong class="title"></strong>
+      </div>
+      <div class="job-meta">
+        <span class="created"></span>
+        <button class="del" title="삭제">✕</button>
+      </div>
+    </div>
+    <div class="progress"><div class="bar"></div></div>
+    <div class="status"></div>
+    <div class="review hidden">
+      <h3>대본 검토</h3>
+      <p class="hint">나레이션과 화면 키워드를 자유롭게 고친 뒤 렌더링을 시작하세요. 장면을 지우려면 나레이션을 비우세요.</p>
+      <div class="flow-box">
+        <strong>Flow로 무료 이미지 만들기</strong>
+        <p class="hint">프롬프트를 복사해 Google Flow에 붙여넣고, 만든 이미지를 장면별 <b>＋</b> 버튼으로 올리면 API 비용이 들지 않습니다.</p>
+        <button class="copy-prompts">장면별 이미지 프롬프트 복사</button>
+      </div>
+      <div class="scenes"></div>
+      <div class="actions">
+        <button class="approve primary">렌더링 시작</button>
+      </div>
+    </div>
+    <div class="result hidden">
+      <video controls playsinline></video>
+      <div class="meta">
+        <h3>업로드 정보</h3>
+        <div class="titles"></div>
+        <textarea class="desc" rows="6" readonly></textarea>
+        <div class="tags"></div>
+        <div class="actions">
+          <a class="download" download>mp4 다운로드</a>
+          <button class="copy">제목+설명+태그 복사</button>
+          <a class="folder" target="_blank">meta.txt</a>
+        </div>
+      </div>
+    </div>
+    <details class="logs"><summary>로그</summary><pre></pre></details>
+  </article>
+</template>
+
+<div id="style-modal" class="modal hidden">
+  <div class="modal-box card">
+    <div class="modal-head">
+      <h2 id="sm-title">스타일 만들기</h2>
+      <button id="sm-close" class="del">✕</button>
+    </div>
+
+    <div id="sm-analyze">
+      <p class="hint">벤치마킹할 채널의 영상 주소를 한 줄에 하나씩 (최대 5개). 자막·구성을 분석해 지침 초안을 만듭니다.</p>
+      <label>참고 영상 주소
+        <textarea id="sm-urls" rows="4" placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=..."></textarea>
+      </label>
+      <label>메모 <span class="tag-opt">선택</span>
+        <input type="text" id="sm-hint" placeholder="예: 훅이 특히 좋음. 그 부분 위주로 분석해줘">
+      </label>
+      <div class="actions">
+        <button id="sm-run" class="primary">분석하기</button>
+        <span id="sm-progress" class="hint"></span>
+      </div>
+      <p class="hint">영상당 자막을 받아오므로 1~3분 걸립니다. 창을 닫지 마세요.</p>
+    </div>
+
+    <div id="sm-form" class="hidden">
+      <label>스타일 이름
+        <input type="text" id="sm-name" placeholder="예: OO채널 자문자답 해설형">
+      </label>
+      <label>훅 공식 (첫 3초)
+        <textarea id="sm-hook" rows="4"></textarea>
+      </label>
+      <label>전개 구조
+        <textarea id="sm-structure" rows="4"></textarea>
+      </label>
+      <label>말투 / 어조
+        <textarea id="sm-tone" rows="3"></textarea>
+      </label>
+      <label>문장 스타일
+        <textarea id="sm-sentence" rows="3"></textarea>
+      </label>
+      <label>장면 수 · 호흡
+        <textarea id="sm-pacing" rows="3"></textarea>
+      </label>
+      <label>마무리 방식
+        <textarea id="sm-cta" rows="3"></textarea>
+      </label>
+      <label>기타 특징
+        <textarea id="sm-notes" rows="3"></textarea>
+      </label>
+      <details id="sm-findings-box" class="hidden">
+        <summary>분석 근거</summary>
+        <ul id="sm-findings"></ul>
+      </details>
+      <div class="actions">
+        <button id="sm-save" class="primary">저장</button>
+        <button id="sm-delete" class="danger hidden">삭제</button>
+        <span id="sm-msg" class="hint"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>window.KEYS = {{ keys | tojson }};</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

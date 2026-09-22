@@ -1,0 +1,19 @@
+id: daily
+name: 일상 이슈
+description: 생활 꿀팁, 트렌드, 소소한 화제를 친근하게 전하는 쇼츠
+tone: 친한 친구가 이야기해 주는 듯한 편안한 구어체 존댓말. 적당한 유머.
+script_rules: |
+  - 시청자의 일상과 바로 연결되는 예시를 1개 이상 넣는다.
+  - 훅은 "이거 모르면 손해" "요즘 다들 이거 한다는데" 같은 공감형 한 문장.
+  - 실천 가능한 팁이나 결론을 반드시 포함한다.
+  - 마지막은 "여러분은 어떠세요? 댓글로 알려주세요" 류의 참여 유도.
+visual_mode: images
+image_style: warm lifestyle photography, natural light, cozy everyday scene, soft pastel tones, no text
+voice:
+  edge: ko-KR-SunHiNeural
+bgm: happy_acoustic.mp3
+subtitle:
+  size: 74
+  highlight: '#7cff6b'
+  outline: '#000000'
+research_queries_suffix: ''

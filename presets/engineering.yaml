@@ -1,0 +1,19 @@
+﻿id: engineering
+name: 공학 사전
+description: AI건축사전처럼 공학·건축·기술 개념 하나를 쉽게 풀어주는 교육형 쇼츠
+tone: 차분하고 명확한 설명체. 전문용어는 반드시 한 줄로 풀어 설명. 존댓말.
+script_rules: |
+  - 영상 하나에 개념 딱 1개만 다룬다.
+  - 훅은 "왜 ~일까요?" 또는 "~을 아시나요?" 같은 질문형으로 호기심을 자극한다.
+  - 구체적인 숫자나 원리를 최소 1개 포함한다.
+  - 마지막 장면은 한 줄 요약 + "다음 편도 기대해 주세요" 류의 가벼운 마무리.
+image_style: clean technical illustration, isometric view, blueprint accents, soft studio lighting, minimal text, high detail
+visual_mode: images
+voice:
+  edge: ko-KR-InJoonNeural
+bgm: calm_tech.mp3
+subtitle:
+  size: 74
+  highlight: "#FFD400"
+  outline: "#000000"
+research_queries_suffix: 원리 설명

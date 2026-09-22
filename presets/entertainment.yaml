@@ -1,0 +1,20 @@
+id: entertainment
+name: 연예 이슈
+description: 연예계 최신 이슈를 빠르게 정리하는 뉴스형 쇼츠
+tone: 경쾌하지만 가볍지 않은 연예 뉴스 리포터 톤. 존댓말. 과장·비하 표현 금지.
+script_rules: |
+  - 반드시 보도된 사실만 다룬다. 루머·추측·단정 표현("~인 것으로 보인다" 등 근거 없는 추정) 금지.
+  - 인물에 대한 인신공격, 외모 평가, 사생활 추정은 절대 포함하지 않는다.
+  - 훅은 "○○○, 결국 ~" 같은 헤드라인형 한 문장.
+  - 어떤 매체가 보도했는지 한 번은 언급한다 (예: "OO일보 보도에 따르면").
+  - 마지막은 팬 반응이나 앞으로의 일정 등 중립적인 마무리.
+visual_mode: broll
+image_style: cinematic editorial photo style, dramatic stage lighting, red carpet atmosphere, no real person likeness, no text
+voice:
+  edge: ko-KR-SunHiNeural
+bgm: upbeat_pop.mp3
+subtitle:
+  size: 74
+  highlight: "#FF4D8D"
+  outline: "#000000"
+research_queries_suffix: 연예 뉴스

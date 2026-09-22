@@ -1,0 +1,55 @@
+# 기본 설정. 웹 UI 옵션이 이 값을 덮어씁니다.
+
+llm:
+  # claude  : Claude Code 로그인(구독) 사용, API 키 불필요. 모델: claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5
+  # openai  : OPENAI_API_KEY 필요. 모델: gpt-5 | gpt-5-mini | gpt-4.1 | gpt-4.1-mini
+  # anthropic: ANTHROPIC_API_KEY 로 직접 호출
+  provider: claude
+  model: claude-opus-5
+  effort: medium              # low | medium | high
+  openai_model: gpt-5-mini    # UI 에서 GPT 를 고르면 쓰는 모델
+
+tts:
+  provider: edge              # edge(무료) | openai | elevenlabs | typecast
+  # provider별 목소리 기본값 (프리셋에서 덮어쓸 수 있음)
+  voices:
+    edge: ko-KR-SunHiNeural   # 여성. 남성: ko-KR-InJoonNeural, ko-KR-HyunsuMultilingualNeural
+    openai: nova              # alloy, echo, fable, onyx, nova, shimmer
+    elevenlabs: ""            # ElevenLabs voice_id
+    typecast: ""              # Typecast voice_id
+  rate: "+5%"                 # edge-tts 속도
+
+images:
+  # none         : AI 생성 안 함. 첨부 파일 + 기사 이미지만 사용 (0원)  ← 기본
+  #                Flow/Gemini 앱에서 무료로 만든 이미지를 첨부하는 방식
+  # 장당 비용 (환율 1450원 기준)
+  #   fal          : FLUX schnell        약 4원    (FAL_KEY)
+  #   gemini-lite  : Nano Banana 2 Lite  약 49원   (GEMINI_API_KEY)
+  #   gemini       : Nano Banana 2       약 97원
+  #   gemini-pro   : Nano Banana Pro     약 194원  복잡한 구도용
+  #   huggingface  : FLUX schnell        무료·한도 (HF_TOKEN)
+  #   openai       : gpt-image           수십~수백 원
+  #   pollinations : 키 불필요 무료지만 저화질+워터마크 (최후의 수단)
+  provider: none
+  image_size: "1K"            # Gemini 전용: 1K | 2K | 4K (클수록 비쌈)
+  width: 1080
+  height: 1920
+  retries: 2
+
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  transition: 0.4             # 장면 전환(초)
+  scene_gap: 0.25             # 장면 사이 무음(초)
+  target_seconds: 55          # 대본 목표 길이
+  bgm_volume: 0.10            # 0~1
+  broll_source_volume: 0.12   # 짜깁기 모드에서 원본 영상 소리 크기 (나레이션은 1.0)
+  broll_max_sources: 4        # 내려받을 소스 영상 최대 개수
+  broll_max_per_source: 15    # 한 소스에서 쓸 수 있는 총 길이(초)
+  font: "Malgun Gothic"       # assets/fonts 에 otf/ttf 넣으면 해당 폰트명 사용 가능
+
+paths:
+  output: output
+  presets: presets
+  assets: assets
