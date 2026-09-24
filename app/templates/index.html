@@ -11,10 +11,10 @@
   <h1>AI Shorts Studio</h1>
   <div class="keys">
     <span class="key {{ 'ok' if keys.claude_cli else 'no' }}" title="{{ keys.claude_cli or 'claude.exe 없음' }}">Claude 로그인</span>
-    <span class="key {{ 'ok' if keys.gemini else 'no' }}">Gemini</span>
+    <span id="gemini-key-badge" class="key {{ 'ok' if keys.gemini else 'no' }}">Gemini</span>
     <span class="key {{ 'ok' if keys.fal else 'no' }}">fal</span>
     <span class="key {{ 'ok' if keys.hf else 'no' }}">HF</span>
-    <span class="key {{ 'ok' if keys.openai else 'no' }}">OpenAI</span>
+    <span id="openai-key-badge" class="key {{ 'ok' if keys.openai else 'no' }}">OpenAI</span>
     <span class="key {{ 'ok' if keys.elevenlabs else 'no' }}">ElevenLabs</span>
     <span class="key {{ 'ok' if keys.typecast else 'no' }}">Typecast</span>
     <span class="key {{ 'ok' if keys.naver else 'no' }}">Naver</span>
@@ -22,10 +22,12 @@
 </header>
 
 <main>
+<p class="hint warn" id="server-update-msg"></p>
 <section class="card" id="composer">
   <div class="tabs">
     <button class="tab active" data-mode="topic">주제로 만들기</button>
     <button class="tab" data-mode="url">유튜브 URL</button>
+    <button class="tab" data-mode="upload">영상 업로드</button>
     <button class="tab" data-mode="auto">핫이슈 자동</button>
   </div>
 
@@ -53,15 +55,19 @@
 
   <div class="field">
     <div class="label-row">
-      <label>내 파일 첨부 <span class="tag-opt">선택</span></label>
+      <label><span id="up-label">내 파일 첨부</span> <span class="tag-opt" id="up-optional">선택</span></label>
       <span class="hint" id="up-count"></span>
     </div>
     <div id="dropzone">
       <input type="file" id="up-input" multiple accept="image/*,video/*" hidden>
       <p><strong>사진·영상을 여기로 끌어다 놓거나 클릭</strong></p>
-      <p class="hint">AI가 내용을 보고 어울리는 장면에 배치합니다. 남는 장면은 기사 이미지나 AI 생성으로 채웁니다.</p>
+      <p class="hint" id="up-hint">AI가 내용을 보고 어울리는 장면에 배치합니다. 남는 장면은 기사 이미지나 AI 생성으로 채웁니다.</p>
     </div>
     <div id="up-list"></div>
+    <label class="upload-only">분석할 참고 영상
+      <select id="reference-file"><option value="">먼저 영상 파일을 올려 주세요</option></select>
+    </label>
+    <p class="hint upload-only">선택한 영상의 음성을 분석하고, Gemini 키가 있거나 GPT를 선택하면 여러 장면의 화면 내용도 읽습니다. 분석 결과로 연관 영상 후보를 검색하며 업로드 파일도 편집 소재로 쓸 수 있습니다.</p>
   </div>
 
   <div class="field">
@@ -79,12 +85,65 @@
   </div>
 
   <div class="field">
+    <label>대본·참고 영상 분석에 사용할 AI</label>
+    <select id="opt-llm">
+      <optgroup label="Claude (구독 로그인)">
+        <option value="claude|claude-opus-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-opus-5' }}>Claude Opus 5</option>
+        <option value="claude|claude-sonnet-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-sonnet-5' }}>Claude Sonnet 5</option>
+        <option value="claude|claude-haiku-4-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-haiku-4-5' }}>Claude Haiku 4.5</option>
+      </optgroup>
+      <optgroup label="GPT (OpenAI API 키 필요)">
+        <option value="openai|gpt-5" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5' }}>GPT-5</option>
+        <option value="openai|gpt-5-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5-mini' }}>GPT-5 mini</option>
+        <option value="openai|gpt-4.1-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-4.1-mini' }}>GPT-4.1 mini</option>
+      </optgroup>
+      {% if keys.anthropic %}
+      <optgroup label="Anthropic API 키">
+        <option value="anthropic|claude-opus-5">Opus 5 (API)</option>
+        <option value="anthropic|claude-sonnet-5">Sonnet 5 (API)</option>
+      </optgroup>
+      {% endif %}
+    </select>
+    <p class="hint warn" id="llm-warn"></p>
+    <details id="openai-key-setup">
+      <summary>GPT 연결 · OpenAI API 키 등록</summary>
+      <p class="hint">GPT를 선택하려면 별도로 발급받은 OpenAI API 키가 필요하며, 사용량에 따라 요금이 발생할 수 있습니다. <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI 키 발급 페이지</a>. 화면에서 등록한 키는 OneDrive 프로젝트 폴더 밖의 Windows 사용자 설정에 저장합니다.</p>
+      <div class="actions">
+        <input type="password" id="openai-key-input" autocomplete="off" placeholder="OpenAI API 키 붙여넣기" aria-label="OpenAI API 키">
+        <button id="openai-key-save" class="copy-prompts" type="button">키 저장</button>
+        <span id="openai-key-status" class="hint"></span>
+      </div>
+    </details>
+    <details id="gemini-key-setup">
+      <summary>영상 화면 분석 · Gemini API 키 등록</summary>
+      <p class="hint">Claude를 선택했을 때 업로드 영상의 화면도 분석하려면 등록하세요. GPT를 선택하면 등록된 OpenAI 키로 화면을 분석합니다. Gemini API는 별도 사용량 요금이 발생할 수 있습니다. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gemini 키 발급 페이지</a></p>
+      <div class="actions">
+        <input type="password" id="gemini-key-input" autocomplete="off" placeholder="Gemini API 키 붙여넣기" aria-label="Gemini API 키">
+        <button id="gemini-key-save" class="copy-prompts" type="button">키 저장</button>
+        <span id="gemini-key-status" class="hint"></span>
+      </div>
+    </details>
+    <details id="youtube-key-setup">
+      <summary>댓글 자동 수집 · YouTube Data API 키 등록</summary>
+      <p class="hint">공개된 유튜브 댓글을 가져와 검토 화면에 보여줍니다. 키가 없어도 영상 제작은 가능합니다. 댓글은 원문 텍스트를 카드로 재구성하며 작성자 이름은 표시하지 않습니다. <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer">YouTube Data API 사용 설정</a></p>
+      <div class="actions">
+        <input type="password" id="youtube-key-input" autocomplete="off" placeholder="YouTube Data API 키 붙여넣기" aria-label="YouTube Data API 키">
+        <button id="youtube-key-save" class="copy-prompts" type="button">키 저장</button>
+        <span id="youtube-key-status" class="hint"></span>
+      </div>
+    </details>
+  </div>
+
+  <div class="field">
     <div class="label-row">
       <label>이번 영상 지침 <span class="tag-opt">선택</span></label>
       <span class="hint" id="instr-count"></span>
     </div>
-    <textarea id="instructions" rows="3" placeholder="예: 초등학생도 이해할 수 있게 쉽게. 비유를 꼭 하나 넣어줘. 마지막에 질문으로 끝내줘."></textarea>
-    <p class="hint">이번 한 편에만 적용됩니다. 프리셋 기본 규칙보다 <strong>우선</strong>합니다. 매번 쓰고 싶은 지침은 위의 "프리셋 지침 편집"에 저장하세요.</p>
+    <textarea id="instructions" rows="5" placeholder="예: 쉽게 설명하고 비유를 넣어줘.&#10;https://www.youtube.com/watch?v=...&#10;https://youtu.be/..."></textarea>
+    <div class="actions"><button id="instr-analyze" class="copy-prompts hidden" type="button">참고 영상 분석해 지침 채우기</button></div>
+    <details id="instr-findings" class="hidden"><summary>분석 근거 보기</summary><ul id="instr-findings-list"></ul></details>
+    <p class="hint">여기에 유튜브 영상 주소를 최대 5개 붙여넣으세요. 선택한 AI가 자막을 분석해 공통 전개·후킹·감정 흐름·문장 방식을 지침으로 만듭니다. 바로 「만들기」를 눌러도 먼저 자동 분석합니다. 생성된 지침은 수정할 수 있습니다.</p>
+    <p class="hint">자막이 있는 영상만 분석할 수 있습니다. 화면이나 음악은 분석하지 않습니다. 이번 영상에만 적용됩니다.</p>
   </div>
 
   <details class="options">
@@ -122,27 +181,8 @@
         <span class="hint" id="img-cost"></span>
         <span class="hint warn" id="img-warn"></span>
       </label>
-      <label>대본 AI
-        <select id="opt-llm">
-          <optgroup label="Claude (구독 로그인, 키 불필요)">
-            <option value="claude|claude-opus-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-opus-5' }}>Claude Opus 5</option>
-            <option value="claude|claude-sonnet-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-sonnet-5' }}>Claude Sonnet 5</option>
-            <option value="claude|claude-haiku-4-5" {{ 'selected' if cfg.llm.provider == 'claude' and cfg.llm.model == 'claude-haiku-4-5' }}>Claude Haiku 4.5</option>
-          </optgroup>
-          <optgroup label="GPT (OpenAI 키)">
-            <option value="openai|gpt-5" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5' }}>GPT-5</option>
-            <option value="openai|gpt-5-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-5-mini' }}>GPT-5 mini</option>
-            <option value="openai|gpt-4.1-mini" {{ 'selected' if cfg.llm.provider == 'openai' and cfg.llm.model == 'gpt-4.1-mini' }}>GPT-4.1 mini</option>
-          </optgroup>
-          {% if keys.anthropic %}
-          <optgroup label="Anthropic API 키">
-            <option value="anthropic|claude-opus-5">Opus 5 (API)</option>
-            <option value="anthropic|claude-sonnet-5">Sonnet 5 (API)</option>
-          </optgroup>
-          {% endif %}
-        </select>
-      </label>
       <label class="check"><input type="checkbox" id="opt-review" checked> 대본 먼저 확인하고 렌더링</label>
+      <label class="check url-only"><input type="checkbox" id="opt-related" checked> 관련 영상도 찾아서 편집 (유튜브 링크)</label>
       <label class="check url-only"><input type="checkbox" id="opt-clip"> 원본 영상 클립 재편집 (AI 이미지 대신)</label>
     </div>
     <p class="hint url-only warn">클립 재편집은 타인의 영상을 그대로 사용하므로 저작권에 유의하세요. 본인 영상이나 허용된 범위에서만 사용하세요.</p>
@@ -218,6 +258,9 @@
     <div class="review hidden">
       <h3>대본 검토</h3>
       <p class="hint">나레이션과 화면 키워드를 자유롭게 고친 뒤 렌더링을 시작하세요. 장면을 지우려면 나레이션을 비우세요.</p>
+      <div class="reference-summary hidden"></div>
+      <div class="source-review hidden"><h3>편집에 쓸 영상 후보</h3><p class="hint">사용할 영상만 체크하세요. 제목을 눌러 원본을 확인할 수 있습니다. 실제 사용할 구간은 대본과 자막을 맞춰 자동으로 고릅니다.</p><div class="source-list"></div></div>
+      <div class="comment-review hidden"><h3>댓글 카드 후보</h3><p class="hint">화면에 넣을 댓글을 최대 2개 선택하세요. 원문을 확인한 뒤 사용하세요.</p><div class="comment-list"></div></div>
       <div class="flow-box">
         <strong>Flow로 무료 이미지 만들기</strong>
         <p class="hint">프롬프트를 복사해 Google Flow에 붙여넣고, 만든 이미지를 장면별 <b>＋</b> 버튼으로 올리면 API 비용이 들지 않습니다.</p>
@@ -277,6 +320,9 @@
       </label>
       <label>전개 구조
         <textarea id="sm-structure" rows="4"></textarea>
+      </label>
+      <label>감정 흐름
+        <textarea id="sm-emotion" rows="4"></textarea>
       </label>
       <label>말투 / 어조
         <textarea id="sm-tone" rows="3"></textarea>

@@ -10,7 +10,9 @@ import yaml
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
+USER_ENV = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".config") / "AIShorts" / "settings.env"
 load_dotenv(ROOT / ".env")
+load_dotenv(USER_ENV, override=True)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

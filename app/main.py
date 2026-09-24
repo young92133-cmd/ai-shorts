@@ -9,14 +9,16 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from dotenv import set_key
 from pydantic import BaseModel
 
-from .config import env
+from .config import USER_ENV, env
 from .jobs import JobManager
 from .pipeline.assets import kind_of
 from .pipeline.llm import find_claude_cli
@@ -40,7 +42,7 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 class CreateJob(BaseModel):
-    mode: str  # topic | url | auto
+    mode: str  # topic | url | auto | upload
     input: str = ""
     preset: str
     options: dict[str, Any] = {}
@@ -48,6 +50,8 @@ class CreateJob(BaseModel):
 
 class Approve(BaseModel):
     script: dict[str, Any] | None = None
+    source_indexes: list[int] | None = None
+    comment_ids: list[str] | None = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -62,6 +66,7 @@ async def index(request: Request):
             "hf": bool(env("HF_TOKEN")), "fal": bool(env("FAL_KEY")), "openai": bool(env("OPENAI_API_KEY")),
             "elevenlabs": bool(env("ELEVENLABS_API_KEY")), "typecast": bool(env("TYPECAST_API_KEY")),
             "naver": bool(env("NAVER_CLIENT_ID")),
+            "youtube": bool(env("YOUTUBE_API_KEY")),
         },
     })
 
@@ -87,6 +92,7 @@ class StyleBody(BaseModel):
     name: str = ""
     hook_pattern: str = ""
     structure: str = ""
+    emotional_arc: str = ""
     tone: str = ""
     sentence_style: str = ""
     pacing: str = ""
@@ -99,6 +105,56 @@ class AnalyzeBody(BaseModel):
     urls: list[str]
     hint: str = ""
     save: bool = True
+    llm_provider: str = ""
+    llm_model: str = ""
+
+
+class OpenAIKeyBody(BaseModel):
+    api_key: str
+
+
+class YouTubeKeyBody(BaseModel):
+    api_key: str
+
+
+@app.post("/api/settings/gemini-key")
+async def save_gemini_key(body: YouTubeKeyBody):
+    key = body.api_key.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", key):
+        raise HTTPException(400, "Gemini API 키를 확인해 주세요.")
+    USER_ENV.parent.mkdir(parents=True, exist_ok=True)
+    USER_ENV.touch(exist_ok=True)
+    set_key(str(USER_ENV), "GEMINI_API_KEY", key)
+    import os
+    os.environ["GEMINI_API_KEY"] = key
+    return {"ok": True}
+
+
+@app.post("/api/settings/youtube-key")
+async def save_youtube_key(body: YouTubeKeyBody):
+    key = body.api_key.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,100}", key):
+        raise HTTPException(400, "YouTube Data API 키를 확인해 주세요.")
+    USER_ENV.parent.mkdir(parents=True, exist_ok=True)
+    USER_ENV.touch(exist_ok=True)
+    set_key(str(USER_ENV), "YOUTUBE_API_KEY", key)
+    import os
+    os.environ["YOUTUBE_API_KEY"] = key
+    return {"ok": True}
+
+
+@app.post("/api/settings/openai-key")
+async def save_openai_key(body: OpenAIKeyBody):
+    key = body.api_key.strip()
+    if not key or "\n" in key or "\r" in key or len(key) > 500:
+        raise HTTPException(400, "OpenAI API 키를 확인해 주세요.")
+    USER_ENV.parent.mkdir(parents=True, exist_ok=True)
+    USER_ENV.touch(exist_ok=True)
+    set_key(str(USER_ENV), "OPENAI_API_KEY", key)
+    import os
+
+    os.environ["OPENAI_API_KEY"] = key
+    return {"ok": True}
 
 
 @app.get("/api/styles")
@@ -130,9 +186,36 @@ async def analyze_style(body: AnalyzeBody):
     urls = [u.strip() for u in body.urls if u.strip()]
     if not urls:
         raise HTTPException(400, "참고 영상 URL을 1개 이상 넣어주세요.")
+    if len(urls) > 5:
+        raise HTTPException(400, "참고 영상은 최대 5개까지 분석할 수 있습니다.")
+    for url in urls:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        valid = ((host in ("youtube.com", "www.youtube.com", "m.youtube.com")
+                  and ((parsed.path == "/watch" and parse_qs(parsed.query).get("v"))
+                       or (parsed.path.startswith(("/shorts/", "/live/")) and bool(parsed.path.split("/")[2]))))
+                 or (host in ("youtu.be", "www.youtu.be") and parsed.path.strip("/")))
+        if parsed.scheme not in ("http", "https") or not valid:
+            raise HTTPException(400, f"유튜브 영상 주소를 확인해 주세요: {url}")
+
+    llm = dict(manager.cfg["llm"])
+    if body.llm_provider:
+        if body.llm_provider not in ("claude", "openai", "anthropic"):
+            raise HTTPException(400, "지원하지 않는 대본 AI입니다.")
+        llm["provider"] = body.llm_provider
+    if body.llm_model:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", body.llm_model):
+            raise HTTPException(400, "AI 모델 이름을 확인해 주세요.")
+        llm["model"] = body.llm_model
+    elif llm["provider"] == "openai":
+        llm["model"] = llm.get("openai_model", "gpt-5-mini")
+    if llm["provider"] == "openai" and not env("OPENAI_API_KEY"):
+        raise HTTPException(400, "GPT를 사용하려면 화면의 GPT 연결에서 OpenAI API 키를 먼저 등록해 주세요.")
+    if llm["provider"] == "claude" and not find_claude_cli():
+        raise HTTPException(400, "Claude Code 로그인 도구를 찾지 못했습니다.")
     workdir = manager.output / "_styles" / str(abs(hash(tuple(urls))) % 10**8)
     try:
-        res = await analyze_references(manager.cfg["llm"], urls, workdir, body.hint)
+        res = await analyze_references(llm, urls, workdir, body.hint)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"분석 실패: {e}")
     data = style_to_dict(res.profile, urls)
@@ -202,10 +285,18 @@ async def list_jobs():
 
 @app.post("/api/jobs")
 async def create_job(body: CreateJob):
-    if body.mode not in ("topic", "url", "auto"):
-        raise HTTPException(400, "mode 는 topic | url | auto")
-    if body.mode != "auto" and not body.input.strip():
+    if body.mode not in ("topic", "url", "auto", "upload"):
+        raise HTTPException(400, "mode 는 topic | url | auto | upload")
+    if body.mode not in ("auto", "upload") and not body.input.strip():
         raise HTTPException(400, "입력이 비어 있습니다.")
+    if body.mode == "upload":
+        token = re.sub(r"[^a-zA-Z0-9_-]", "", str(body.options.get("upload_token") or ""))
+        name = str(body.options.get("reference_name") or "")
+        if not token or not name or Path(name).name != name or kind_of(Path(name)) != "video":
+            raise HTTPException(400, "참고 영상 파일을 하나 선택해 주세요.")
+        if not (manager.output / "_uploads" / token / name).is_file():
+            raise HTTPException(400, "선택한 영상 파일이 업로드 목록에 없습니다.")
+        body.options["visual_mode"] = "broll"
     provider = body.options.get("llm_provider") or manager.cfg["llm"]["provider"]
     if provider == "openai" and not env("OPENAI_API_KEY"):
         raise HTTPException(400, "OPENAI_API_KEY 가 .env 에 없습니다.")
@@ -233,7 +324,7 @@ async def approve(job_id: str, body: Approve):
     if not manager.get(job_id):
         raise HTTPException(404)
     try:
-        manager.approve(job_id, body.script)
+        manager.approve(job_id, body.script, body.source_indexes, body.comment_ids)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, str(e))
     return {"ok": True}

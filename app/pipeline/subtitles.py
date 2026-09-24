@@ -57,6 +57,7 @@ def build_ass(
     margin_v: int | None = None,
     titles: list[tuple[float, float, str]] | None = None,
     credits: list[tuple[float, float, str]] | None = None,
+    comments: list[tuple[float, float, str]] | None = None,
 ) -> Path:
     """words 로 카라오케 자막을, titles=[(start,end,text)] 로 상단 키워드 카드를 만든다.
 
@@ -76,6 +77,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Sub,{font},{size},{_ass_color(highlight)},{_ass_color('#FFFFFF')},{_ass_color(outline)},{_ass_color('#000000', 128)},-1,0,0,0,100,100,0,0,1,5,2,2,60,60,{margin_v},1
 Style: Title,{font},{title_size},{_ass_color('#FFFFFF')},{_ass_color('#FFFFFF')},{_ass_color(outline)},{_ass_color('#000000', 96)},-1,0,0,0,100,100,0,0,1,6,3,8,60,60,{int(height * 0.14)},1
 Style: Credit,{font},{int(size * 0.42)},{_ass_color('#DDDDDD', 40)},{_ass_color('#FFFFFF')},{_ass_color(outline, 60)},{_ass_color('#000000', 160)},0,0,0,0,100,100,0,0,1,2,1,2,40,40,{int(height * 0.035)},1
+Style: Comment,{font},{int(size * 0.55)},{_ass_color('#FFFFFF')},{_ass_color('#FFFFFF')},{_ass_color('#12151D')},{_ass_color('#202634')},0,0,0,0,100,100,0,0,3,16,0,8,90,90,{int(height * 0.38)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -93,6 +95,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if text.strip() and t_end > t_start:
             events.append(
                 f"Dialogue: 0,{_ts(t_start)},{_ts(t_end)},Credit,,0,0,0,,{{\\fad(300,300)}}{_esc(text.strip())}"
+            )
+
+    # A recreated text card, not a screenshot; source URLs are saved in meta.txt.
+    for t_start, t_end, text in comments or []:
+        clean = " ".join(text.split())[:108]
+        if clean and t_end > t_start:
+            # Keep the card narrow enough for a vertical video.
+            lines = [clean[i:i + 18] for i in range(0, len(clean), 18)][:6]
+            events.append(
+                f"Dialogue: 2,{_ts(t_start)},{_ts(t_end)},Comment,,0,0,0,,"
+                f"{{\\fad(180,180)}}💬 유튜브 댓글\\N{_esc(' '.join(lines[:1]))}"
+                + "".join(f"\\N{_esc(line)}" for line in lines[1:])
             )
 
     groups: list[list[Word]] = words if words and isinstance(words[0], list) else [words]  # type: ignore[list-item]

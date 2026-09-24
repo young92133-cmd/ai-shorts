@@ -16,7 +16,7 @@ from .llm import ask_structured
 from .models import BrollPick, BrollPlan, Script, SourceVideo
 from .youtube import _ydl, download_media, fetch_transcript, words_to_lines
 
-MIN_SOURCE_SEC = 30       # 너무 짧으면 쓸 구간이 없다
+MIN_SOURCE_SEC = 15       # 짧은 쇼츠도 후보에 넣되 장면 하나는 잘라 쓸 수 있게 한다
 MAX_SOURCE_SEC = 20 * 60  # 너무 길면 다운로드·자막이 무겁다
 
 
@@ -36,6 +36,8 @@ def _search_sync(query: str, n: int) -> list[SourceVideo]:
         url = e.get("url") or e.get("webpage_url") or ""
         if not url:
             continue
+        if not str(url).startswith(("https://", "http://")):
+            url = f"https://www.youtube.com/watch?v={e.get('id') or url}"
         out.append(SourceVideo(url=url, title=e.get("title", ""), duration=dur,
                                channel=e.get("channel") or e.get("uploader") or ""))
     return out
@@ -95,6 +97,9 @@ async def load_timelines(sources: list[SourceVideo], workdir: Path, log=print) -
     """
     out: list[list[str]] = []
     for i, sv in enumerate(sources):
+        if sv.path and Path(sv.path).exists():
+            out.append([])  # the uploaded reference transcript is supplied by the caller
+            continue
         sub = workdir / f"src{i}"
         sub.mkdir(parents=True, exist_ok=True)
         try:
@@ -200,6 +205,9 @@ async def download_sources(sources: list[SourceVideo], picks: list[BrollPick | N
     need = sorted({p.source_index for p in picks if p})
     for n, idx in enumerate(need, 1):
         sv = sources[idx]
+        if sv.path and Path(sv.path).exists():
+            log(f"내 영상 사용: {sv.title[:40]}")
+            continue
         sub = workdir / f"src{idx}"
         sub.mkdir(parents=True, exist_ok=True)
         log(f"소스 영상 {n}/{len(need)} 내려받는 중: {sv.title[:40]}")
@@ -218,11 +226,13 @@ def drop_failed(picks: list[BrollPick | None], sources: list[SourceVideo]) -> li
 def source_urls(sources: list[SourceVideo], picks: list[BrollPick | None]) -> list[str]:
     """설명란에 넣을 출처 URL (실제로 쓴 소스만)."""
     used = sorted({p.source_index for p in picks if p})
-    return [sources[i].url for i in used]
+    return [sources[i].url for i in used if sources[i].url]
 
 
 def credit_for(pick: BrollPick | None, sources: list[SourceVideo]) -> str:
     if not pick:
         return ""
     sv = sources[pick.source_index]
+    if not sv.url:
+        return "내 영상"
     return f"영상 출처: {sv.channel}" if sv.channel else "영상 출처: YouTube"

@@ -31,6 +31,7 @@ class StyleProfile(BaseModel):
     name: str = Field(description="이 스타일의 이름 (예: 'OO채널 뉴스 요약형')")
     hook_pattern: str = Field(description="첫 3초 훅을 만드는 공식. 실제 예시 문장 1~2개 포함")
     structure: str = Field(description="영상의 전개 구조를 순서대로. 예: 훅 → 배경 → 핵심 → 반전 → 마무리")
+    emotional_arc: str = Field(description="시작부터 끝까지 시청자의 감정이 어떻게 바뀌는지, 구간별 유도 방법")
     tone: str = Field(description="말투와 어조. 존댓말/반말, 속도감, 감정 표현 정도")
     sentence_style: str = Field(description="문장 길이와 리듬. 한 장면당 문장 수, 평균 길이")
     pacing: str = Field(description="장면 수와 장면당 길이, 전환 속도")

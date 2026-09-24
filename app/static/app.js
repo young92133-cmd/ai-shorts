@@ -4,10 +4,11 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const MODE_TEXT = {
   topic: { label: "주제", ph: "예: 철근 콘크리트가 강한 이유", hint: "한 줄이면 충분합니다. 리서치 → 대본 → 음성 → 이미지 → 영상까지 자동으로 만듭니다." },
   url: { label: "링크 (유튜브 / 뉴스 / 글)", ph: "https://www.youtube.com/watch?v=...\nhttps://n.news.naver.com/article/...", hint: "유튜브는 자막을 분석하고, 뉴스·커뮤니티 글은 본문과 이미지까지 가져옵니다. 여러 개면 줄바꿈으로 구분하세요." },
+  upload: { label: "메모 (선택)", ph: "예: 이 영상과 같은 인물의 최근 인터뷰를 찾아줘", hint: "아래에 참고 영상을 올리고 선택하세요. 음성 내용을 분석하며, Gemini 키 또는 GPT를 쓰면 화면도 분석합니다." },
   auto: { label: "키워드 힌트 (선택)", ph: "비워두면 지금 뜨는 트렌드에서 프리셋에 맞는 주제를 자동으로 고릅니다", hint: "Google Trends(KR) + 뉴스에서 지금 핫한 키워드를 가져와 Claude 가 카테고리에 맞는 걸 고릅니다." },
 };
 const STAGE_LABEL = { queued: "대기", research: "리서치", script: "대본", tts: "음성", images: "이미지", render: "렌더링", done: "완료", error: "오류" };
-const MODE_LABEL = { topic: "주제", url: "URL", auto: "핫이슈" };
+const MODE_LABEL = { topic: "주제", url: "URL", upload: "업로드 영상", auto: "핫이슈" };
 
 let mode = "topic";
 const streams = {};
@@ -22,32 +23,47 @@ $$(".tab").forEach(b => b.addEventListener("click", () => {
   $("#input-label").textContent = t.label;
   $("#input").placeholder = t.ph;
   $("#input-hint").textContent = t.hint;
+  $("#up-label").textContent = mode === "upload" ? "참고 영상 올리기" : "내 파일 첨부";
+  $("#up-optional").classList.toggle("hidden", mode === "upload");
+  $("#up-hint").textContent = mode === "upload"
+    ? "참고 영상의 음성을 분석하고, Gemini 키 또는 GPT를 쓰면 여러 화면도 읽습니다. 관련 영상을 찾아 편집하며 사진을 함께 올릴 수도 있습니다."
+    : "AI가 내용을 보고 어울리는 장면에 배치합니다. 남는 장면은 기사 이미지나 AI 생성으로 채웁니다.";
 }));
 document.body.dataset.mode = mode;
 
 // ---------- 잡 생성 ----------
 $("#submit").addEventListener("click", async () => {
   const btn = $("#submit"), msg = $("#submit-msg");
-  const body = {
-    mode,
-    input: $("#input").value.trim(),
-    preset: $("input[name=preset]:checked").value,
-    options: {
-      target_seconds: Number($("#opt-seconds").value) || undefined,
-      tts_provider: $("#opt-tts").value,
-      image_provider: $("#opt-images").value || undefined,
-      llm_provider: $("#opt-llm").value.split("|")[0],
-      llm_model: $("#opt-llm").value.split("|")[1],
-      voice: $("#opt-voice").value.trim() || undefined,
-      review: $("#opt-review").checked,
-      clip_mode: mode === "url" && $("#opt-clip").checked,
-      instructions: $("#instructions").value.trim() || undefined,
-      style_id: $("#opt-style").value || undefined,
-      upload_token: $("#up-list").children.length ? uploadToken : undefined,
-    },
-  };
   btn.disabled = true; msg.textContent = "";
   try {
+    const problem = llmRequirement();
+    if (problem) throw new Error(problem);
+    if (mode === "upload" && !$("#reference-file").value) throw new Error("분석할 영상 파일을 올리고 선택해 주세요.");
+    if (referenceLinks($("#instructions").value).length) {
+      msg.textContent = "참고 영상 자막을 분석해 지침을 만드는 중입니다...";
+      await analyzeInstructionLinks();
+    }
+    const body = {
+      mode,
+      input: $("#input").value.trim(),
+      preset: $("input[name=preset]:checked").value,
+      options: {
+        target_seconds: Number($("#opt-seconds").value) || undefined,
+        tts_provider: $("#opt-tts").value,
+        image_provider: $("#opt-images").value || undefined,
+        ...selectedLLM(),
+        voice: $("#opt-voice").value.trim() || undefined,
+        review: $("#opt-review").checked,
+        clip_mode: mode === "url" && $("#opt-clip").checked,
+        visual_mode: mode === "url" && $("#opt-related").checked && /(?:youtu\.be|youtube\.com)\//i.test($("#input").value)
+          ? "broll" : undefined,
+        instructions: $("#instructions").value.trim() || undefined,
+        style_id: $("#opt-style").value || undefined,
+        upload_token: $("#up-list").children.length ? uploadToken : undefined,
+        reference_name: mode === "upload" ? $("#reference-file").value : undefined,
+      },
+    };
+    msg.textContent = "";
     const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || r.statusText);
@@ -75,6 +91,12 @@ function fmtSize(n) {
 }
 
 function renderUploads(files) {
+  const previousReference = $("#reference-file").value;
+  const videos = files.filter(f => f.kind === "video");
+  $("#reference-file").innerHTML = '<option value="">영상 파일 선택</option>'
+    + videos.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("");
+  if (videos.some(f => f.name === previousReference)) $("#reference-file").value = previousReference;
+  else if (videos.length === 1) $("#reference-file").value = videos[0].name;
   $("#up-count").textContent = files.length ? `${files.length}개 첨부됨` : "";
   $("#up-list").innerHTML = files.map(f => `
     <div class="up-item">
@@ -129,8 +151,177 @@ let editingStyleId = null;
 
 const SM_FIELDS = {
   name: "#sm-name", hook_pattern: "#sm-hook", structure: "#sm-structure", tone: "#sm-tone",
-  sentence_style: "#sm-sentence", pacing: "#sm-pacing", cta: "#sm-cta", notes: "#sm-notes",
+  emotional_arc: "#sm-emotion", sentence_style: "#sm-sentence", pacing: "#sm-pacing", cta: "#sm-cta", notes: "#sm-notes",
 };
+
+function selectedLLM() {
+  const [llm_provider, llm_model] = $("#opt-llm").value.split("|");
+  return { llm_provider, llm_model };
+}
+
+let currentServer = null;
+async function ensureCurrentServer() {
+  if (currentServer === null) {
+    const r = await fetch("/openapi.json");
+    const spec = await r.json();
+    currentServer = !!spec.paths?.["/api/settings/openai-key"];
+  }
+  if (!currentServer) throw new Error("새 기능을 사용하려면 진행 중인 대본 검토를 마친 뒤 실행 창을 닫고 AI Shorts를 다시 실행해 주세요.");
+}
+
+ensureCurrentServer().catch(e => { $("#server-update-msg").textContent = e.message; });
+
+function llmRequirement() {
+  const { llm_provider } = selectedLLM();
+  if (llm_provider === "openai" && !window.KEYS.openai) return "GPT 사용에는 OpenAI API 키가 필요합니다. 아래에서 키를 등록해 주세요.";
+  if (llm_provider === "claude" && !window.KEYS.claude_cli) return "Claude Code 로그인 도구를 찾지 못했습니다. 프로그램을 다시 실행해 주세요.";
+  return "";
+}
+
+function updateLLMWarning() {
+  $("#llm-warn").textContent = llmRequirement();
+  if (selectedLLM().llm_provider === "openai" && !window.KEYS.openai) $("#openai-key-setup").open = true;
+}
+$("#opt-llm").addEventListener("change", updateLLMWarning);
+updateLLMWarning();
+
+$("#openai-key-save").addEventListener("click", async () => {
+  const key = $("#openai-key-input").value.trim();
+  const status = $("#openai-key-status"), btn = $("#openai-key-save");
+  if (!key) { status.textContent = "키를 붙여넣어 주세요."; return; }
+  btn.disabled = true;
+  status.textContent = "저장 중...";
+  try {
+    await ensureCurrentServer();
+    const r = await fetch("/api/settings/openai-key", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    $("#openai-key-input").value = "";
+    window.KEYS.openai = true;
+    $("#openai-key-badge").classList.replace("no", "ok");
+    status.textContent = "저장됨 ✓";
+    updateLLMWarning();
+  } catch (e) {
+    status.textContent = "오류: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#youtube-key-save").addEventListener("click", async () => {
+  const key = $("#youtube-key-input").value.trim();
+  const status = $("#youtube-key-status");
+  if (!key) { status.textContent = "키를 붙여넣어 주세요."; return; }
+  const button = $("#youtube-key-save");
+  button.disabled = true;
+  status.textContent = "저장 중...";
+  try {
+    const response = await fetch("/api/settings/youtube-key", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    $("#youtube-key-input").value = "";
+    window.KEYS.youtube = true;
+    status.textContent = "저장됨 ✓ 다음 작업부터 댓글 후보가 표시됩니다.";
+  } catch (error) { status.textContent = "오류: " + error.message; }
+  finally { button.disabled = false; }
+});
+
+$("#gemini-key-save").addEventListener("click", async () => {
+  const key = $("#gemini-key-input").value.trim();
+  const status = $("#gemini-key-status"), button = $("#gemini-key-save");
+  if (!key) { status.textContent = "키를 붙여넣어 주세요."; return; }
+  button.disabled = true;
+  status.textContent = "저장 중...";
+  try {
+    const response = await fetch("/api/settings/gemini-key", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    $("#gemini-key-input").value = "";
+    window.KEYS.gemini = true;
+    $("#gemini-key-badge").classList.replace("no", "ok");
+    status.textContent = "저장됨 ✓ 다음 작업부터 화면 분석에 사용됩니다.";
+    updateImageInfo();
+  } catch (error) { status.textContent = "오류: " + error.message; }
+  finally { button.disabled = false; }
+});
+
+function referenceLinks(text) {
+  const refs = [];
+  const pattern = /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\/[^\s<>"']+/gi;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > 0 && /[\w.-]/.test(text[match.index - 1])) continue;
+    const source = match[0].replace(/[),.;!?]+$/, "");
+    const url = /^https?:\/\//i.test(source) ? source : "https://" + source;
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      const isVideo = ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)
+        ? (parsed.pathname === "/watch" && parsed.searchParams.has("v")) || /^\/(shorts|live)\/[^/]+/.test(parsed.pathname)
+        : (host === "youtu.be" || host === "www.youtu.be") && parsed.pathname.length > 1;
+      if (isVideo && !refs.some(r => r.url === url)) refs.push({ source, url });
+    } catch (_) { /* 입력 중인 불완전한 URL은 무시 */ }
+  }
+  return refs;
+}
+
+function updateInstructionLinks() {
+  const count = referenceLinks($("#instructions").value).length;
+  $("#instr-analyze").classList.toggle("hidden", !count);
+  $("#instr-count").textContent = count ? `참고 영상 ${count}개` : "";
+}
+$("#instructions").addEventListener("input", updateInstructionLinks);
+
+async function analyzeInstructionLinks() {
+  const original = $("#instructions").value;
+  const refs = referenceLinks(original);
+  if (!refs.length) return;
+  if (refs.length > 5) throw new Error("참고 영상은 최대 5개까지 넣을 수 있습니다.");
+  const problem = llmRequirement();
+  if (problem) throw new Error(problem);
+  const btn = $("#instr-analyze"), status = $("#instr-count");
+  btn.disabled = true;
+  status.textContent = `영상 ${refs.length}개 자막 분석 중...`;
+  try {
+    await ensureCurrentServer();
+    let note = original;
+    for (const ref of refs) note = note.replace(ref.source, "");
+    const r = await fetch("/api/styles/analyze", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: refs.map(ref => ref.url), hint: note.trim(), save: false, ...selectedLLM() }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    const s = data.style;
+    const rows = [
+      ["후킹", s.hook_pattern], ["전개 방식", s.structure], ["감정 흐름", s.emotional_arc],
+      ["말투", s.tone], ["문장 서술 방식", s.sentence_style], ["호흡·장면 전환", s.pacing],
+      ["마무리", s.cta], ["기타", s.notes],
+    ];
+    $("#instructions").value = "[참고 영상 분석 지침 — " + s.name + "]\n"
+      + rows.filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join("\n")
+      + (note.trim() ? "\n\n[내가 추가한 지침]\n" + note.trim() : "");
+    $("#instr-findings-list").innerHTML = (data.findings || []).map(f => `<li>${esc(f)}</li>`).join("");
+    $("#instr-findings").classList.toggle("hidden", !(data.findings || []).length);
+    updateInstructionLinks();
+    status.textContent = `참고 영상 ${refs.length}개 분석 완료 · 지침을 확인하고 수정할 수 있습니다.`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("#instr-analyze").addEventListener("click", async () => {
+  try { await analyzeInstructionLinks(); }
+  catch (e) { $("#instr-count").textContent = "오류: " + e.message; }
+});
 
 async function loadStyleList(selectId) {
   const list = await (await fetch("/api/styles")).json();
@@ -182,13 +373,16 @@ $("#sm-run").addEventListener("click", async () => {
   const urls = $("#sm-urls").value.split(/\n+/).map(s => s.trim()).filter(Boolean);
   if (!urls.length) return alert("참고 영상 주소를 1개 이상 넣어주세요.");
   const btn = $("#sm-run"), prog = $("#sm-progress");
+  const problem = llmRequirement();
+  if (problem) { prog.textContent = "오류: " + problem; return; }
   btn.disabled = true;
   let dots = 0;
   const timer = setInterval(() => { dots = (dots + 1) % 4; prog.textContent = `영상 ${urls.length}개 분석 중${".".repeat(dots)}`; }, 600);
   try {
+    await ensureCurrentServer();
     const r = await fetch("/api/styles/analyze", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls, hint: $("#sm-hint").value.trim(), save: true }),
+      body: JSON.stringify({ urls, hint: $("#sm-hint").value.trim(), save: true, ...selectedLLM() }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || r.statusText);
@@ -378,10 +572,10 @@ function renderJob(job, prepend = false) {
   // 비주얼 출처 요약 (첨부 / 기사 / 생성 / 카드)
   const vis = (job.result && job.result.visuals) || [];
   if (vis.length) {
-    const c = { upload: 0, sourced: 0, generated: 0, card: 0 };
+    const c = { broll: 0, upload: 0, sourced: 0, generated: 0, card: 0 };
     vis.forEach(v => { c[v.kind] = (c[v.kind] || 0) + 1; });
     const label = [
-      c.upload && `첨부 ${c.upload}`, c.sourced && `기사 ${c.sourced}`,
+      c.broll && `영상 클립 ${c.broll}`, c.upload && `첨부 ${c.upload}`, c.sourced && `기사 ${c.sourced}`,
       c.generated && `AI 생성 ${c.generated}`, c.card && `대체 카드 ${c.card}`,
     ].filter(Boolean).join(" · ");
     let ve = $(".visuals", el);
@@ -411,7 +605,7 @@ function renderJob(job, prepend = false) {
   if (job.status === "awaiting_review" && job.script) {
     review.classList.remove("hidden");
     if (!review.dataset.filled) {
-      fillReview(review, job.script, job.id);
+      fillReview(review, job.script, job.id, job.result || {});
       review.dataset.filled = "1";
     }
   } else {
@@ -430,19 +624,24 @@ function renderJob(job, prepend = false) {
     $(".folder", el).href = `/files/${job.id}/meta.txt`;
     if (job.script) {
       $(".titles", el).innerHTML = job.script.titles.map(t => `<div>${esc(t)}</div>`).join("");
-      $(".desc", el).value = job.script.description + "\n\n" + (job.script.sources || []).join("\n");
+      $(".desc", el).value = descriptionWithSources(job.script.description, job.result.final_sources || job.script.sources);
       $(".tags", el).textContent = job.script.hashtags.map(h => "#" + h.replace(/^#/, "")).join(" ");
     } else {
       fetch(`/files/${job.id}/meta.json`).then(r => r.ok ? r.json() : null).then(m => {
         if (!m) return;
         $(".titles", el).innerHTML = m.titles.map(t => `<div>${esc(t)}</div>`).join("");
-        $(".desc", el).value = m.description + "\n\n" + (m.sources || []).join("\n");
+        $(".desc", el).value = descriptionWithSources(m.description, m.sources);
         $(".tags", el).textContent = m.hashtags.map(h => "#" + h.replace(/^#/, "")).join(" ");
       });
     }
   } else {
     res.classList.add("hidden");
   }
+}
+
+function descriptionWithSources(description, sources) {
+  const extra = [...new Set((sources || []).filter(url => url && !(description || "").includes(url)))];
+  return (description || "") + (extra.length ? "\n\n" + extra.join("\n") : "");
 }
 
 function stagePct(job) {
@@ -452,7 +651,33 @@ function stagePct(job) {
   return Math.round((i * 100 + (job.pct || 0)) / order.length);
 }
 
-function fillReview(review, script, jobId) {
+function fillReview(review, script, jobId, result) {
+  const reference = result.reference;
+  const summary = $(".reference-summary", review);
+  summary.classList.toggle("hidden", !reference);
+  if (reference) summary.textContent = `참고 영상 분석: ${reference.topic} · ${reference.summary}`;
+
+  const sourceBox = $(".source-review", review);
+  const sources = result.source_candidates || [];
+  sourceBox.classList.toggle("hidden", !sources.length);
+  $(".source-list", review).innerHTML = sources.map((s, i) => `<label class="candidate">
+    <input type="checkbox" data-source-index="${i}" checked>
+    <span>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>` : esc(s.title || "내 영상")}
+    <small>${esc(s.channel || "")} · ${Math.round(s.duration || 0)}초</small></span>
+  </label>`).join("");
+
+  const comments = result.comment_candidates || [];
+  const commentBox = $(".comment-review", review);
+  commentBox.classList.toggle("hidden", !sources.length && !comments.length);
+  $(".comment-list", review).innerHTML = comments.length ? comments.map(c => `<label class="candidate">
+    <input type="checkbox" data-comment-id="${esc(c.id)}">
+    <span><a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.text)}</a>
+    <small>좋아요 ${c.likes || 0}개 · 원문 확인</small></span>
+  </label>`).join("") : '<p class="hint">댓글 후보가 없습니다. YouTube Data API 키를 등록했는지 확인하거나, 댓글이 공개된 영상을 사용해 주세요.</p>';
+  $(".comment-list", review).onchange = () => {
+    const checked = $$('[data-comment-id]:checked', review);
+    if (checked.length > 2) { checked.at(-1).checked = false; alert("댓글은 최대 2개까지 선택할 수 있습니다."); }
+  };
   const box = $(".scenes", review);
   box.innerHTML = "";
   script.scenes.forEach((s, i) => {
@@ -520,7 +745,9 @@ async function approve(id, el) {
   $(".approve", el).disabled = true;
   const r = await fetch(`/api/jobs/${id}/approve`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ script: { ...script, scenes } }),
+    body: JSON.stringify({ script: { ...script, scenes },
+      source_indexes: $$('[data-source-index]:checked', review).map(x => Number(x.dataset.sourceIndex)),
+      comment_ids: $$('[data-comment-id]:checked', review).map(x => x.dataset.commentId) }),
   });
   if (!r.ok) { alert((await r.json()).detail || "실패"); $(".approve", el).disabled = false; }
 }

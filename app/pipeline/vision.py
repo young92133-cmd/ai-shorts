@@ -19,11 +19,11 @@ from typing import Any
 import httpx
 
 from ..config import env
-from .llm import ask_structured
+from .llm import _extract_json, _strict_schema, ask_structured
 from .models import Asset, AssetDescription, AssetPlan, Scene
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-VISION_MODEL = "gemini-3.1-flash"
+VISION_MODEL = "gemini-3.1-flash-lite"
 
 DESCRIBE_PROMPT = (
     "이 이미지에 무엇이 보이는지 한국어로 한두 문장으로 설명하세요. "
@@ -33,12 +33,41 @@ DESCRIBE_PROMPT = (
 )
 
 
-def vision_available() -> bool:
-    return bool(env("GEMINI_API_KEY"))
+def vision_available(provider: str = "gemini") -> bool:
+    return bool(env("OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"))
 
 
-async def describe_image(path: Path, prompt: str = DESCRIBE_PROMPT) -> AssetDescription | None:
+async def _describe_openai(path: Path, prompt: str, model: str) -> AssetDescription | None:
+    key = env("OPENAI_API_KEY")
+    if not key:
+        return None
+    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    schema = _strict_schema(AssetDescription.model_json_schema())
+    body = {
+        "model": model or "gpt-4.1-mini",
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url":
+                f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}", "detail": "low"}},
+        ]}],
+        "response_format": {"type": "json_schema", "json_schema": {
+            "name": "AssetDescription", "strict": True, "schema": schema}},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post("https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}"}, json=body)
+        response.raise_for_status()
+        return AssetDescription.model_validate(_extract_json(response.json()["choices"][0]["message"]["content"]))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def describe_image(path: Path, prompt: str = DESCRIBE_PROMPT,
+                         provider: str = "gemini", model: str = "") -> AssetDescription | None:
     """이미지 1장을 설명하게 한다. 실패하면 None (호출자가 건너뛴다)."""
+    if provider == "openai":
+        return await _describe_openai(path, prompt, model)
     key = env("GEMINI_API_KEY")
     if not key or not path.exists():
         return None
@@ -72,16 +101,18 @@ async def describe_image(path: Path, prompt: str = DESCRIBE_PROMPT) -> AssetDesc
         return None
 
 
-async def describe_all(paths: list[Path], concurrency: int = 3, log=print) -> list[AssetDescription | None]:
+async def describe_all(paths: list[Path], concurrency: int = 3, log=print,
+                       provider: str = "gemini", model: str = "",
+                       prompt: str = DESCRIBE_PROMPT) -> list[AssetDescription | None]:
     """여러 이미지를 병렬로 설명. 키가 없으면 전부 None."""
-    if not vision_available():
-        log("GEMINI_API_KEY 없음 - 이미지 내용 분석을 건너뜁니다")
+    if not vision_available(provider):
+        log("화면 분석용 API 키가 없어 이미지 내용 분석을 건너뜁니다")
         return [None] * len(paths)
     sem = asyncio.Semaphore(concurrency)
 
     async def one(p: Path) -> AssetDescription | None:
         async with sem:
-            return await describe_image(p)
+            return await describe_image(p, prompt=prompt, provider=provider, model=model)
 
     results = await asyncio.gather(*(one(p) for p in paths))
     ok = sum(1 for r in results if r)

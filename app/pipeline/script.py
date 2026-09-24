@@ -52,6 +52,7 @@ def _style_block(style: dict[str, Any] | None) -> str:
     rows = [
         ("훅 공식", style.get("hook_pattern")),
         ("전개 구조", style.get("structure")),
+        ("감정 흐름", style.get("emotional_arc")),
         ("말투", style.get("tone")),
         ("문장 스타일", style.get("sentence_style")),
         ("장면 수·호흡", style.get("pacing")),

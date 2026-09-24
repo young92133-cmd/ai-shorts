@@ -65,10 +65,16 @@ def _validate(schema: type[T], data: Any) -> T:
 # ---------- Claude (구독 로그인) ----------
 
 def find_claude_cli() -> str | None:
-    """PATH → 데스크톱 앱 번들 → ~/.claude/local 순으로 claude.exe 를 찾는다."""
+    """PATH → WinGet → 데스크톱 앱 번들 → ~/.claude/local 순으로 claude.exe 를 찾는다."""
     if p := shutil.which("claude"):
         if p.lower().endswith(".exe") or os.name != "nt":
             return p
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if local_appdata:
+        package_dir = Path(local_appdata) / "Microsoft" / "WinGet" / "Packages"
+        winget_clis = list(package_dir.glob("Anthropic.ClaudeCode_*/claude.exe"))
+        if winget_clis:
+            return str(max(winget_clis, key=lambda x: x.stat().st_mtime))
     roots = [os.environ.get("APPDATA"), os.environ.get("USERPROFILE"), str(Path.home()), os.environ.get("LOCALAPPDATA")]
     cands: list[Path] = []
     for r in roots:

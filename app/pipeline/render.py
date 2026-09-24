@@ -280,8 +280,11 @@ async def render_broll(
         mix += "[bgm]"
         n_mix = 3
 
+    total_duration = sum(float(c["duration"]) for c in clips)
+    fade_duration = min(1.5, total_duration)
+    fade_start = max(0.0, total_duration - fade_duration)
     filters.append(f"{mix}amix=inputs={n_mix}:duration=first:dropout_transition=0:normalize=0,"
-                   f"afade=t=out:st=-1.5:d=1.5[aout]")
+                   f"afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}[aout]")
 
     last = "[vcat]"
     if ass_path:

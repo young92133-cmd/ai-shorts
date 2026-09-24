@@ -14,7 +14,7 @@ from . import article as articlemod
 from . import assets as assetmod
 from . import broll as brollmod
 from . import clips as clipmod
-from . import research, script as scriptmod, youtube
+from . import comments as commentmod, reference as refmod, research, script as scriptmod, youtube
 from .assets import kind_of
 from .images import get_images
 from .images.base import make_fallback_card, resize_cover
@@ -25,7 +25,7 @@ from .subtitles import build_ass
 from .tts import get_tts
 
 ProgressFn = Callable[[str, int, str], None]
-ReviewFn = Callable[[Script], Awaitable[Script]]
+ReviewFn = Callable[[Script, dict[str, Any]], Awaitable[tuple[Script, dict[str, Any]]]]
 
 STAGES = ["research", "script", "tts", "images", "render", "done"]
 
@@ -165,6 +165,7 @@ async def run_pipeline(
     instructions: str = "",
     style: dict[str, Any] | None = None,
     visual_mode: str = "",
+    reference_name: str = "",
 ) -> dict[str, Any]:
     """mode: topic | url | auto. 결과 dict 에 산출물 경로를 담아 돌려준다.
 
@@ -192,9 +193,29 @@ async def run_pipeline(
     urls = articlemod.split_urls(input_text) if mode == "url" else []
     article_urls = [u for u in urls if not articlemod.is_youtube(u)]
     youtube_urls = [u for u in urls if articlemod.is_youtube(u)]
+    reference_path: Path | None = None
+    reference_lines: list[str] = []
+    reference_query = ""
 
     # 유튜브가 아닌 링크(기사·커뮤니티 글)가 섞여 있으면 기사 모드
-    if mode == "url" and article_urls and not youtube_urls:
+    if mode == "upload":
+        reference_path = job_dir / "uploads" / Path(reference_name).name
+        if not reference_name or not reference_path.is_file() or kind_of(reference_path) != "video":
+            raise RuntimeError("참고 영상 파일이 없습니다. 영상 파일을 올린 뒤 다시 시도해 주세요.")
+        progress("research", 5, "업로드 영상의 음성과 장면을 분석하는 중")
+        brief, doc, words = await refmod.analyze_uploaded_video(
+            llm, reference_path, job_dir / "reference", input_text,
+            log=lambda m: progress("research", 55, m))
+        topic, reference_query = brief.topic, brief.search_query
+        docs = [doc]
+        reference_lines = youtube.words_to_lines(words)
+        result["reference"] = brief.model_dump()
+        extra_context = "업로드 영상에서 확인된 내용만 출발점으로 쓰고, 새 자료와 대조해 새로운 관점의 대본을 쓰세요."
+        progress("research", 70, "관련 자료 찾는 중")
+        found = await research.research_topic(reference_query, log=lambda m: progress("research", 80, m))
+        docs.extend(found)
+
+    elif mode == "url" and article_urls and not youtube_urls:
         progress("research", 5, f"링크 {len(article_urls)}개 분석 중")
         docs, sourced = await articlemod.fetch_articles(
             article_urls, job_dir / "sourced", with_images=True,
@@ -299,13 +320,49 @@ async def run_pipeline(
                                           extra_context, instructions, style, plan)
     (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 80, f"대본 {len(script.scenes)}장면, {len(script.full_narration())}자")
+    # Show actual candidate sources/comments before the user approves the edit.
+    broll_sources: list[Any] = []
+    comment_candidates: list[dict[str, Any]] = []
+    if visual_mode == "broll":
+        progress("script", 84, "연관 영상 후보 찾는 중")
+        query = reference_query or f"{topic} {preset.get('research_queries_suffix', '')}".strip()
+        try:
+            if reference_path:
+                from .models import SourceVideo
+                broll_sources.append(SourceVideo(url="", title=f"내 영상: {reference_path.name}",
+                                                 duration=await probe_duration(reference_path),
+                                                 channel="내 파일", path=str(reference_path)))
+            remaining = max(0, int(vcfg.get("broll_max_sources", 4)) - len(broll_sources))
+            if remaining:
+                broll_sources.extend(await brollmod.gather_sources(youtube_urls, query, remaining,
+                                      log=lambda m: progress("script", 86, m)))
+        except Exception as exc:  # a missing search result must not prevent use of the local reference
+            progress("script", 86, f"연관 영상 검색 실패: {exc}")
+        candidate_urls = youtube_urls + [s.url for s in broll_sources if s.url]
+        comment_candidates = await commentmod.fetch_candidates(candidate_urls,
+                                  log=lambda m: progress("script", 89, m))
+        result["source_candidates"] = [s.model_dump() for s in broll_sources]
+        result["comment_candidates"] = comment_candidates
+    choices: dict[str, Any] = {}
     if review:
-        script = await review(script)
+        script, choices = await review(script, {
+            "topic": topic,
+            "source_candidates": result.get("source_candidates", []),
+            "comment_candidates": comment_candidates,
+            "reference": result.get("reference"),
+        })
         (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
+    if broll_sources and "source_indexes" in choices:
+        chosen = set(choices["source_indexes"])
+        broll_sources = [s for i, s in enumerate(broll_sources) if i in chosen]
+    selected_comments = [c for c in comment_candidates if c["id"] in set(choices.get("comment_ids", []))][:2]
+    result["selected_comments"] = selected_comments
     # 화면에 쓴 기사 이미지의 출처를 설명란 출처 목록에 합친다
     all_sources = list(dict.fromkeys(
-        [*script.sources, *[s.page_url for s in sourced if s.page_url]]))
+        [*script.sources, *[s.page_url for s in sourced if s.page_url],
+         *[c["url"] for c in selected_comments]]))
     _write_meta(job_dir, script.titles, script.description, script.hashtags, all_sources)
+    result["final_sources"] = all_sources
     result["script"] = script.model_dump()
     progress("script", 100, "대본 확정")
     if until == "script":
@@ -327,20 +384,19 @@ async def run_pipeline(
 
     # ---------- 5-B. 영상 짜깁기 (broll) ----------
     broll_picks: list[Any] = []
-    broll_sources: list[Any] = []
     if visual_mode == "broll":
         try:
-            progress("images", 5, "소스 영상 찾는 중")
-            query = f"{topic} {preset.get('research_queries_suffix', '')}".strip()
-            broll_sources = await brollmod.gather_sources(
-                youtube_urls, query, int(vcfg.get("broll_max_sources", 4)),
-                log=lambda m: progress("images", 10, m))
+            progress("images", 5, "선택한 소스 영상 준비 중")
             if not broll_sources:
                 raise RuntimeError("쓸 만한 소스 영상을 찾지 못했습니다")
 
             progress("images", 20, f"소스 {len(broll_sources)}개 자막 확인 중")
             timelines = await brollmod.load_timelines(broll_sources, job_dir / "broll",
                                                       log=lambda m: progress("images", 30, m))
+            if reference_path:
+                for i, source in enumerate(broll_sources):
+                    if source.path == str(reference_path):
+                        timelines[i] = reference_lines
             progress("images", 45, "장면별 화면 고르는 중")
             max_per = float(vcfg.get("broll_max_per_source", 15))
             bplan = await brollmod.match_broll(llm, script, durations, broll_sources, timelines, max_per)
@@ -362,6 +418,7 @@ async def run_pipeline(
             all_sources = list(dict.fromkeys(
                 [*all_sources, *brollmod.source_urls(broll_sources, broll_picks)]))
             _write_meta(job_dir, script.titles, script.description, script.hashtags, all_sources)
+            result["final_sources"] = all_sources
         except Exception as e:  # noqa: BLE001
             progress("images", 75, f"짜깁기 실패 - 이미지 모드로 전환합니다 ({e})")
             visual_mode, broll_picks, broll_sources = "images", [], []
@@ -370,6 +427,8 @@ async def run_pipeline(
     progress("images", 78, "장면별 비주얼 정하는 중")
     uploads = await assetmod.load_assets(job_dir / "uploads",
                                          log=lambda m: progress("images", 80, m))
+    if reference_path:
+        uploads = [a for a in uploads if Path(a.path) != reference_path]
     if uploads:
         await assetmod.describe_assets(uploads, log=lambda m: progress("images", 82, m))
     visuals = await assetmod.resolve_visuals(llm, script.scenes, uploads, sourced,
@@ -405,7 +464,10 @@ async def run_pipeline(
                for s, v in zip(scene_audio, visuals) if v.credit]
     ass = build_ass(all_words, job_dir / "subs.ass", vcfg["width"], vcfg["height"], font=vcfg["font"],
                     size=int(sub_cfg.get("size", 64)), highlight=sub_cfg.get("highlight", "#FFD400"),
-                    outline=sub_cfg.get("outline", "#000000"), titles=titles, credits=credits)
+                    outline=sub_cfg.get("outline", "#000000"), titles=titles, credits=credits,
+                    comments=[(scene_audio[min(i + 1, len(scene_audio) - 1)].offset,
+                               scene_audio[min(i + 1, len(scene_audio) - 1)].offset + 3.5, c["text"])
+                              for i, c in enumerate(selected_comments)])
     progress("render", 15, "ffmpeg 렌더링 중 (1~3분)")
     if any(broll_picks):
         clips: list[dict[str, Any]] = []
