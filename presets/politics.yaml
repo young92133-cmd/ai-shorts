@@ -14,6 +14,7 @@ voice:
   edge: ko-KR-InJoonNeural
 bgm: news_bed.mp3
 subtitle:
+  enabled: true   # false 면 하단 자막 없이 만든다 (화면 ③ 에서 잡마다 바꿀 수 있음)
   size: 74
   highlight: "#4DA3FF"
   outline: "#000000"

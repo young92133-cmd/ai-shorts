@@ -143,7 +143,7 @@ class AssetDescription(BaseModel):
 class SceneVisual(BaseModel):
     """장면 하나에 쓸 비주얼이 어디서 왔는지."""
     scene_index: int
-    kind: Literal["upload", "sourced", "generated", "card"] = "generated"
+    kind: Literal["upload", "sourced", "generated", "card", "broll"] = "generated"
     path: str = ""
     credit: str = ""               # 화면 하단에 띄울 출처 문구
     note: str = ""                 # 로그·UI 설명용

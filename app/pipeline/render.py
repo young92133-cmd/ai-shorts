@@ -13,6 +13,36 @@ def _subtitle_filter(ass_path: Path, fonts_dir: Path | None) -> str:
     return f
 
 
+def _apply_overlays(overlays: list[dict], first_index: int, last: str, total: float,
+                    width: int, fps: int) -> tuple[list[str], list[str], str]:
+    """이미지(댓글 캡처 등)를 정해진 시간에만 영상 위에 얹는다.
+
+    overlays 항목: {"path", "start", "end", "x", "y", "width"} - x·y 는 이미지 중심의 화면 비율(0~1),
+    width 는 화면 폭 대비 비율. 입력 번호는 first_index 부터 차례로 쓴다.
+    반환: (추가 입력 인자, 필터 목록, 마지막 비디오 라벨)
+    """
+    args: list[str] = []
+    filters: list[str] = []
+    idx = first_index
+    for k, ov in enumerate(overlays):
+        s, e = float(ov["start"]), float(ov["end"])
+        if e <= s:
+            continue
+        w =max(2, int(width * float(ov.get("width", 0.8))) // 2 * 2)
+        fade = min(0.2, (e - s) / 4)
+        cx, cy = float(ov.get("x", 0.5)), float(ov.get("y", 0.42))
+        args += ["-loop", "1", "-framerate", str(fps), "-t", f"{total + 0.5:.3f}", "-i", str(ov["path"])]
+        filters.append(
+            f"[{idx}:v]scale={w}:-2,format=rgba,"
+            f"fade=t=in:st={s:.3f}:d={fade:.3f}:alpha=1,fade=t=out:st={e - fade:.3f}:d={fade:.3f}:alpha=1[ovi{k}]")
+        filters.append(
+            f"{last}[ovi{k}]overlay=x=W*{cx:.4f}-w/2:y=H*{cy:.4f}-h/2:"
+            f"enable='between(t,{s:.3f},{e:.3f})'[ovo{k}]")
+        last = f"[ovo{k}]"
+        idx += 1
+    return args, filters, last
+
+
 def _audio_mix(narr_idx: int, bgm_idx: int | None, bgm_volume: float) -> str:
     if bgm_idx is None:
         return f"[{narr_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo[aout]"
@@ -36,6 +66,7 @@ async def render_slideshow(
     transition: float = 0.4,
     bgm_volume: float = 0.1,
     fonts_dir: Path | None = None,
+    overlays: list[dict] | None = None,
 ) -> Path:
     """장면 이미지에 켄번즈 효과를 주고 xfade 로 이어붙인 뒤 오디오·자막을 얹는다.
 
@@ -82,6 +113,12 @@ async def render_slideshow(
         bgm_idx = n + 1
         args += ["-i", str(bgm)]
     filters.append(_audio_mix(narr_idx, bgm_idx, bgm_volume))
+
+    if overlays:
+        ov_args, ov_filters, last = _apply_overlays(overlays, n + 1 + (bgm_idx is not None), last,
+                                                     sum(durations), width, fps)
+        args += ov_args
+        filters += ov_filters
 
     if ass_path:
         filters.append(f"{last}{_subtitle_filter(ass_path, fonts_dir)}[vout]")
@@ -193,6 +230,7 @@ async def render_broll(
     source_volume: float = 0.12,
     blur_background: bool = True,
     fonts_dir: Path | None = None,
+    overlays: list[dict] | None = None,
 ) -> Path:
     """여러 소스 영상·이미지를 장면 순서대로 이어 붙이고 나레이션을 얹는다.
 
@@ -287,6 +325,11 @@ async def render_broll(
                    f"afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}[aout]")
 
     last = "[vcat]"
+    if overlays:
+        ov_args, ov_filters, last = _apply_overlays(overlays, narr_idx + n_mix - 1, last,
+                                                     total_duration, width, fps)
+        inputs += ov_args
+        filters += ov_filters
     if ass_path:
         filters.append(f"{last}{_subtitle_filter(ass_path, fonts_dir)}[vout]")
         last = "[vout]"

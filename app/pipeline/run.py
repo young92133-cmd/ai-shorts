@@ -20,8 +20,10 @@ from .images import get_images
 from .images.base import make_fallback_card, resize_cover
 from .media import concat_audio, extract_frames, has_audio, probe_duration, require_ffmpeg
 from .models import ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
-from .render import make_thumbnail, render_broll, render_clips, render_slideshow
-from .subtitles import build_ass
+from . import timeline as timelinemod
+from .comment_layout import clean_slots, place as place_comment
+from .render import make_thumbnail, render_clips
+from .subtitles import build_ass, words_to_lines
 from .tts import get_tts
 
 ProgressFn = Callable[[str, int, str], None]
@@ -54,6 +56,18 @@ def _write_meta(job_dir: Path, titles: list[str], description: str, hashtags: li
     (job_dir / "meta.json").write_text(json.dumps(
         {"titles": titles, "description": description, "hashtags": hashtags, "sources": sources},
         ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _apply_voice(cfg: dict[str, Any], choices: dict[str, Any]) -> None:
+    """검토 화면 ⑤ 에서 고른 TTS·목소리를 적용한다 (TTS 는 승인 뒤에 돌므로 이때 바꿔도 된다)."""
+    provider, voice = choices.get("tts_provider"), choices.get("voice")
+    if provider and provider != cfg["tts"]["provider"]:
+        cfg["tts"]["provider"] = provider
+        if not voice:
+            voice = ((cfg.get("preset") or {}).get("voice") or {}).get(provider) \
+                or cfg["tts"].get("voices", {}).get(provider, "")
+    if voice:
+        cfg["tts"]["voice"] = voice
 
 
 async def _synthesize_scenes(cfg: dict[str, Any], script: Script, job_dir: Path, progress: ProgressFn) -> tuple[Path, list[SceneAudio]]:
@@ -261,7 +275,7 @@ async def run_pipeline(
             new_words = clipmod.retime_words(words, segments)
             ass = build_ass(new_words, job_dir / "subs.ass", vcfg["width"], vcfg["height"], font=vcfg["font"],
                             size=int(sub_cfg.get("size", 64)), highlight=sub_cfg.get("highlight", "#FFD400"),
-                            outline=sub_cfg.get("outline", "#000000"))
+                            outline=sub_cfg.get("outline", "#000000")) if vcfg.get("subtitles", True) else None
             final = await render_clips(source, segments, job_dir / "final.mp4", ass_path=ass, bgm=_find_bgm(cfg),
                                        width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
                                        bgm_volume=float(vcfg.get("bgm_volume", 0.1)) * 0.6, fonts_dir=fonts_dir)
@@ -343,15 +357,22 @@ async def run_pipeline(
                                   log=lambda m: progress("script", 89, m))
         result["source_candidates"] = [s.model_dump() for s in broll_sources]
         result["comment_candidates"] = comment_candidates
-    choices: dict[str, Any] = {}
+    # 스타일이 참고 영상에서 댓글 자리를 찾아 뒀으면, 좋아요 많은 댓글을 그 수만큼 미리 골라 둔다
+    comment_slots = clean_slots((style or {}).get("comment_slots"))
+    suggested = [c["id"] for c in sorted(comment_candidates, key=lambda c: -int(c.get("likes") or 0))
+                 [:min(2, len(comment_slots))]]
+    result["suggested_comment_ids"] = suggested
+    choices: dict[str, Any] = {"comment_ids": suggested}
     if review:
         script, choices = await review(script, {
             "topic": topic,
             "source_candidates": result.get("source_candidates", []),
             "comment_candidates": comment_candidates,
+            "suggested_comment_ids": suggested,
             "reference": result.get("reference"),
         })
         (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
+        _apply_voice(cfg, choices)
     if broll_sources and "source_indexes" in choices:
         chosen = set(choices["source_indexes"])
         broll_sources = [s for i, s in enumerate(broll_sources) if i in chosen]
@@ -456,44 +477,76 @@ async def run_pipeline(
         return result
 
     # ---------- 6. 자막 + 렌더 ----------
+    # 렌더 재료를 timeline.json 에 먼저 저장한다. 완성 후 자막·댓글만 고쳐 다시 렌더하거나
+    # CapCut 으로 내보낼 때 이 파일만 쓴다.
     progress("render", 5, "자막 생성")
-    all_words = [s.words for s in scene_audio]
-    titles = [(s.offset, s.offset + s.duration + gap, sc.on_screen_text) for s, sc in zip(scene_audio, script.scenes)]
-    # 기사·첨부 이미지를 쓴 장면에는 해당 구간 동안 출처를 표시한다
-    credits = [(s.offset, s.offset + s.duration + gap, v.credit)
-               for s, v in zip(scene_audio, visuals) if v.credit]
-    ass = build_ass(all_words, job_dir / "subs.ass", vcfg["width"], vcfg["height"], font=vcfg["font"],
-                    size=int(sub_cfg.get("size", 64)), highlight=sub_cfg.get("highlight", "#FFD400"),
-                    outline=sub_cfg.get("outline", "#000000"), titles=titles, credits=credits,
-                    comments=[(scene_audio[min(i + 1, len(scene_audio) - 1)].offset,
-                               scene_audio[min(i + 1, len(scene_audio) - 1)].offset + 3.5, c["text"])
-                              for i, c in enumerate(selected_comments)])
+    use_broll = any(broll_picks)
+    tl_scenes: list[dict[str, Any]] = []
+    for i, (dur, sc, v) in enumerate(zip(durations, script.scenes, visuals)):
+        pick = broll_picks[i] if use_broll and i < len(broll_picks) else None
+        if pick:
+            sv = broll_sources[pick.source_index]
+            src = Path(sv.path)
+            visual = {"kind": "video", "path": src, "src_start": pick.start,
+                      "has_audio": await has_audio(src), "source_url": sv.url}
+        else:
+            visual = {"kind": "image", "path": images_by_scene[i]}
+        # 기사·첨부 이미지를 쓴 장면에는 해당 구간 동안 출처를 표시한다
+        tl_scenes.append({"duration": dur, "title": sc.on_screen_text, "credit": v.credit, "visual": visual})
+    # 고른 댓글: 스타일의 댓글 자리가 있으면 그 흐름대로, 없으면 둘째 장면부터 한 장면에 하나씩 3.5초
+    tl_comments = []
+    total_dur = sum(durations)
+    for i, c in enumerate(selected_comments):
+        slot = place_comment(comment_slots, i, total_dur)
+        if slot:
+            at, end, y = slot
+        else:
+            at = scene_audio[min(i + 1, len(scene_audio) - 1)].offset
+            end, y = at + 3.5, None
+        tc = timelinemod.text_comment(c["id"], c["text"], at, end, c.get("url", ""))
+        if y is not None:
+            tc["y"] = y
+        tl_comments.append(tc)
+    bgm_volume = float(vcfg.get("bgm_volume", 0.1)) * (0.6 if use_broll else 1.0)
+    tl = timelinemod.build_timeline(
+        job_dir, width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
+        mode="broll" if use_broll else "slideshow", narration=narration, bgm=_find_bgm(cfg),
+        bgm_volume=bgm_volume, source_volume=float(vcfg.get("broll_source_volume", 0.12)),
+        transition=float(vcfg.get("transition", 0.4)), scenes=tl_scenes,
+        lines=words_to_lines([s.words for s in scene_audio]),
+        subtitle_style={"font": vcfg["font"], "size": int(sub_cfg.get("size", 64)),
+                        "highlight": sub_cfg.get("highlight", "#FFD400"),
+                        "outline": sub_cfg.get("outline", "#000000")},
+        subtitles_enabled=bool(vcfg.get("subtitles", True)), titles_enabled=bool(vcfg.get("titles", True)),
+        comments=tl_comments, comment_slots=comment_slots)
+    timelinemod.save(job_dir, tl)
+    result["timeline"] = timelinemod.FILE
+
     progress("render", 15, "ffmpeg 렌더링 중 (1~3분)")
-    if any(broll_picks):
-        clips: list[dict[str, Any]] = []
-        for i, dur in enumerate(durations):
-            pick = broll_picks[i] if i < len(broll_picks) else None
-            if pick:
-                src = Path(broll_sources[pick.source_index].path)
-                clips.append({"kind": "video", "path": src, "start": pick.start,
-                              "duration": dur, "has_audio": await has_audio(src)})
-            else:
-                clips.append({"kind": "image", "path": images_by_scene[i], "duration": dur})
-        final = await render_broll(clips, narration, job_dir / "final.mp4", ass_path=ass, bgm=_find_bgm(cfg),
-                                   width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
-                                   bgm_volume=float(vcfg.get("bgm_volume", 0.1)) * 0.6,
-                                   source_volume=float(vcfg.get("broll_source_volume", 0.12)),
-                                   fonts_dir=fonts_dir)
-    else:
-        images = [images_by_scene[i] for i in range(len(durations))]
-        final = await render_slideshow(images, durations, narration, job_dir / "final.mp4", ass_path=ass, bgm=_find_bgm(cfg),
-                                       width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
-                                       transition=float(vcfg.get("transition", 0.4)),
-                                       bgm_volume=float(vcfg.get("bgm_volume", 0.1)), fonts_dir=fonts_dir)
+    final = await timelinemod.render_timeline(tl, job_dir, job_dir / "final.mp4", fonts_dir)
     await make_thumbnail(final, job_dir / "thumb.jpg", at=0.5)
     result.update(video=str(final), thumb=str(job_dir / "thumb.jpg"), meta=str(job_dir / "meta.txt"))
     progress("done", 100, "완료")
     return result
+
+
+async def rerender(job_dir: Path, cfg: dict[str, Any], progress: ProgressFn = _noop_progress) -> dict[str, Any]:
+    """timeline.json 으로 영상만 다시 만든다 (⑦ 자막·댓글 수정 후). LLM·TTS 는 부르지 않는다.
+
+    새 파일로 렌더한 뒤 성공했을 때만 final.mp4 를 바꾼다. 실패해도 기존 영상은 남는다.
+    """
+    require_ffmpeg()
+    tl = timelinemod.load(job_dir)
+    progress("render", 10, "자막·댓글을 적용해서 다시 렌더링 중 (1~3분)")
+    tmp = job_dir / "final_new.mp4"
+    tmp.unlink(missing_ok=True)
+    await timelinemod.render_timeline(tl, job_dir, tmp, Path(cfg["paths"]["assets"]) / "fonts")
+    final = job_dir / "final.mp4"
+    tmp.replace(final)
+    progress("render", 90, "썸네일 만드는 중")
+    await make_thumbnail(final, job_dir / "thumb.jpg", at=0.5)
+    progress("done", 100, "다시 만들기 완료")
+    return {"video": str(final), "thumb": str(job_dir / "thumb.jpg"), "duration": timelinemod.total_duration(tl)}
 
 
 # ---------- CLI ----------

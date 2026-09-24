@@ -104,6 +104,11 @@ def merge_options(cfg: dict[str, Any], preset: dict[str, Any], overrides: dict[s
     if overrides.get("target_seconds"):
         out["video"]["target_seconds"] = int(overrides["target_seconds"])
 
+    # 자막은 선택 사항: 프리셋 subtitle.enabled 기본값 < UI 체크박스
+    sub = preset.get("subtitle") or {}
+    out["video"]["subtitles"] = bool(overrides.get("subtitles", sub.get("enabled", True)))
+    out["video"]["titles"] = bool(overrides.get("titles", sub.get("titles", True)))
+
     provider = out["tts"]["provider"]
     voice = overrides.get("voice") or (preset.get("voice") or {}).get(provider) or out["tts"]["voices"].get(provider, "")
     out["tts"]["voice"] = voice

@@ -15,7 +15,7 @@ from typing import Any
 from .config import load_config, load_presets, merge_options, save_preset
 from .pipeline.assets import move_uploads
 from .pipeline.models import Script
-from .pipeline.run import run_pipeline
+from .pipeline.run import rerender, run_pipeline
 from .pipeline.styles import delete_style, load_styles, nfc, save_style
 
 
@@ -44,8 +44,12 @@ class Job:
             "id": self.id, "mode": self.mode, "input": self.input, "preset": self.preset, "options": self.options,
             "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message,
             "created": self.created, "error": self.error, "logs": self.logs[-40:], "script": self.script,
-            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "final_sources")},
+            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "suggested_comment_ids", "final_sources", "timeline", "exports", "rendered_at")},
         }
+
+
+TTS_PROVIDERS = ("edge", "openai", "elevenlabs", "typecast")
+SCENE_FILE = re.compile(r"^scene_(\d{2})_(.+)$")
 
 
 class JobManager:
@@ -54,7 +58,7 @@ class JobManager:
         self.presets = load_presets(self.cfg)
         self.styles = load_styles(self.cfg)
         self.jobs: dict[str, Job] = {}
-        self.queue: asyncio.Queue[str] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()   # (job_id, "run" | "rerender")
         self.output = Path(self.cfg["paths"]["output"])
         self.output.mkdir(parents=True, exist_ok=True)
         self._worker: asyncio.Task | None = None
@@ -102,8 +106,27 @@ class JobManager:
         job = Job(id=job_id, mode=mode, input=input_text, preset=preset, options=options)
         self.jobs[job_id] = job
         self._save(job)
-        self.queue.put_nowait(job_id)
+        self.queue.put_nowait((job_id, "run"))
         return job
+
+    def job_dir(self, job_id: str) -> Path:
+        return self._job_dir(job_id)
+
+    def request_rerender(self, job_id: str) -> Job:
+        """⑦ 에서 고친 자막·댓글로 영상만 다시 만든다. 완료된 잡만 가능."""
+        job = self.jobs[job_id]
+        if job.status != "done":
+            raise ValueError("완성된 영상만 다시 만들 수 있습니다.")
+        job.status, job.stage, job.pct, job.message = "queued", "render", 0, "다시 만들기 대기 중"
+        self._emit(job)
+        self.queue.put_nowait((job_id, "rerender"))
+        return job
+
+    def touch_result(self, job_id: str, **updates: Any) -> None:
+        """내보내기 결과 등 result 일부를 갱신하고 저장한다."""
+        job = self.jobs[job_id]
+        job.result.update(updates)
+        self._save(job)
 
     def update_preset(self, preset_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         data = save_preset(self.cfg, preset_id, updates)
@@ -124,12 +147,30 @@ class JobManager:
         self.styles = load_styles(self.cfg)
 
     def approve(self, job_id: str, script_data: dict[str, Any] | None,
-                source_indexes: list[int] | None = None, comment_ids: list[str] | None = None) -> None:
+                source_indexes: list[int] | None = None, comment_ids: list[str] | None = None,
+                tts_provider: str = "", voice: str = "", scene_map: list[int] | None = None) -> None:
         job = self.jobs[job_id]
         if job.status != "awaiting_review":
             raise ValueError("대본 검토 대기 상태가 아닙니다.")
+        if tts_provider and tts_provider not in TTS_PROVIDERS:
+            raise ValueError("지원하지 않는 음성 종류입니다.")
+        if voice and not re.fullmatch(r"[A-Za-z0-9 ._:-]{1,100}", voice):
+            raise ValueError("목소리 이름을 확인해 주세요.")
+        n_orig = len((job.script or {}).get("scenes") or [])
+        if scene_map is not None and (len(set(scene_map)) != len(scene_map)
+                                      or any(not isinstance(i, int) or not 0 <= i < n_orig for i in scene_map)):
+            raise ValueError("장면 순서 정보가 올바르지 않습니다.")
         if script_data:
-            job.script = Script.model_validate(script_data).model_dump()
+            new_script = Script.model_validate(script_data).model_dump()
+            if scene_map is not None and len(scene_map) != len(new_script["scenes"]):
+                raise ValueError("장면 순서 정보와 대본 장면 수가 다릅니다.")
+            job.script = new_script
+        if scene_map is not None:
+            self._remap_scene_files(job_id, scene_map)
+        if tts_provider:
+            job.review_choices["tts_provider"] = tts_provider
+        if voice:
+            job.review_choices["voice"] = voice
         sources = job.result.get("source_candidates", [])
         comments = job.result.get("comment_candidates", [])
         if source_indexes is not None:
@@ -142,6 +183,30 @@ class JobManager:
                 raise ValueError("댓글은 후보 중 최대 2개까지 선택해 주세요.")
             job.review_choices["comment_ids"] = list(dict.fromkeys(comment_ids))
         job._review_event.set()
+
+    def _remap_scene_files(self, job_id: str, scene_map: list[int]) -> None:
+        """검토 중 장면을 지우면 뒤 장면 번호가 당겨진다. scene_NN_ 고정 파일도 새 번호로 옮긴다.
+
+        scene_map[새 번호] = 원래 번호. 지워진 장면의 파일은 _removed_ 로 바꿔 배치에서 빠지게 한다.
+        """
+        up = self._job_dir(job_id) / "uploads"
+        if not up.is_dir():
+            return
+        new_of = {orig: new for new, orig in enumerate(scene_map)}
+        staged: list[tuple[Path, str]] = []
+        for p in list(up.iterdir()):
+            m = SCENE_FILE.match(p.name)
+            if not p.is_file() or not m:
+                continue
+            orig, rest = int(m.group(1)), m.group(2)
+            if orig not in new_of:
+                p.replace(up / f"_removed_{p.name}")
+            elif new_of[orig] != orig:
+                tmp = up / f"_remap_{p.name}"
+                p.replace(tmp)                       # 이름이 겹치지 않게 두 단계로 옮긴다
+                staged.append((tmp, f"scene_{new_of[orig]:02d}_{rest}"))
+        for tmp, name in staged:
+            tmp.replace(up / name)
 
     def delete(self, job_id: str) -> None:
         job = self.jobs.pop(job_id, None)
@@ -187,11 +252,29 @@ class JobManager:
             return Script.model_validate(job.script), job.review_choices
         return fn
 
+    async def _rerender(self, job: Job) -> None:
+        job.status, job.stage, job.pct, job.message = "running", "render", 5, "다시 만들기 시작"
+        self._emit(job)
+        try:
+            run_cfg = merge_options(self.cfg, self.presets.get(job.preset, {}), job.options)
+            res = await rerender(self._job_dir(job.id), run_cfg, progress=self._progress(job))
+            job.result.update(res, rendered_at=dt.datetime.now().isoformat(timespec="seconds"))
+            job.message = "다시 만들기 완료"
+        except Exception as e:  # noqa: BLE001 - 실패해도 기존 final.mp4 는 그대로 남는다
+            job.message = f"다시 만들기 실패 (기존 영상은 그대로): {type(e).__name__}: {e}"
+            job.logs.append(traceback.format_exc()[-1500:])
+        job.status, job.stage, job.pct = "done", "done", 100
+        self._save(job)
+        self._emit(job)
+
     async def _loop(self) -> None:
         while True:
-            job_id = await self.queue.get()
+            job_id, action = await self.queue.get()
             job = self.jobs.get(job_id)
             if not job:
+                continue
+            if action == "rerender":
+                await self._rerender(job)
                 continue
             job.status, job.message = "running", "시작"
             self._emit(job)
@@ -215,6 +298,7 @@ class JobManager:
                     reference_name=str(job.options.get("reference_name") or ""),
                 )
                 job.result = result
+                result["rendered_at"] = dt.datetime.now().isoformat(timespec="seconds")
                 if result.get("script"):
                     job.script = result["script"]
                 job.status, job.stage, job.pct, job.message = "done", "done", 100, "완료"

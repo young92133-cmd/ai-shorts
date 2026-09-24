@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from ..config import _PresetDumper, _read_yaml
+from .comment_layout import clean_slots
 from .llm import ask_structured
 from .models import StyleAnalysis, StyleProfile
 from .youtube import fetch_info, fetch_transcript, words_to_lines
@@ -78,6 +79,11 @@ def save_style(cfg: dict[str, Any], style_id: str | None, data: dict[str, Any]) 
     for k in FIELDS:
         out[k] = str(data.get(k, "") or "").strip()
     out["source_urls"] = [u.strip() for u in (data.get("source_urls") or []) if str(u).strip()]
+    # 참고 영상 화면에서 찾은 댓글 배치 (없으면 저장하지 않는다)
+    slots = clean_slots(data.get("comment_slots"))
+    if slots:
+        out["comment_slots"] = slots
+        out["comment_pattern"] = str(data.get("comment_pattern", "") or "").strip()
     if not out["name"]:
         out["name"] = sid
 

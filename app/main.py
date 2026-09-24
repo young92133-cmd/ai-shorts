@@ -22,9 +22,13 @@ from .config import USER_ENV, env
 from .jobs import JobManager
 from .pipeline.assets import kind_of
 from .pipeline.llm import find_claude_cli
+from .pipeline import capcut as capcutmod, timeline as timelinemod
+from .pipeline.comment_layout import analyze_comment_layout, place as place_comment
 from .pipeline.styles import analyze_references, style_to_dict
 
 BASE = Path(__file__).resolve().parent
+OVERLAY_DIR = "overlays"   # 댓글 캡처. uploads/ 와 분리해야 장면 배경으로 잘못 쓰이지 않는다
+PUBLIC_SUBDIRS = (OVERLAY_DIR, "scenes", "uploads")
 manager: JobManager
 
 
@@ -52,6 +56,9 @@ class Approve(BaseModel):
     script: dict[str, Any] | None = None
     source_indexes: list[int] | None = None
     comment_ids: list[str] | None = None
+    tts_provider: str = ""
+    voice: str = ""
+    scene_map: list[int] | None = None   # 새 장면 번호별 원래 장면 번호 (검토 중 장면 삭제 대응)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -99,6 +106,8 @@ class StyleBody(BaseModel):
     cta: str = ""
     notes: str = ""
     source_urls: list[str] = []
+    comment_slots: list[dict[str, Any]] = []
+    comment_pattern: str = ""
 
 
 class AnalyzeBody(BaseModel):
@@ -107,6 +116,7 @@ class AnalyzeBody(BaseModel):
     save: bool = True
     llm_provider: str = ""
     llm_model: str = ""
+    comment_layout: bool = False   # 참고 영상 화면에서 댓글 캡처 위치도 분석 (화면 분석 키 필요)
 
 
 class OpenAIKeyBody(BaseModel):
@@ -219,9 +229,18 @@ async def analyze_style(body: AnalyzeBody):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"분석 실패: {e}")
     data = style_to_dict(res.profile, urls)
+    findings = list(res.findings)
+    if body.comment_layout:
+        # 실패해도 말투·구성 분석 결과는 살린다
+        try:
+            layout = await analyze_comment_layout(urls, workdir, llm["provider"])
+            data.update(comment_slots=layout["comment_slots"], comment_pattern=layout["comment_pattern"])
+            findings += layout["findings"] + [layout["comment_pattern"]]
+        except Exception as e:  # noqa: BLE001
+            findings.append(f"댓글 배치 분석 실패: {e}")
     if body.save:
         data = manager.upsert_style(None, data)
-    return {"style": data, "findings": res.findings}
+    return {"style": data, "findings": findings}
 
 
 # ---------- 파일 첨부 ----------
@@ -324,7 +343,8 @@ async def approve(job_id: str, body: Approve):
     if not manager.get(job_id):
         raise HTTPException(404)
     try:
-        manager.approve(job_id, body.script, body.source_indexes, body.comment_ids)
+        manager.approve(job_id, body.script, body.source_indexes, body.comment_ids,
+                        body.tts_provider, body.voice, body.scene_map)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, str(e))
     return {"ok": True}
@@ -354,7 +374,162 @@ async def scene_visual(job_id: str, scene: int = Form(...), file: UploadFile = F
         old.unlink(missing_ok=True)
     out = up / f"scene_{scene:02d}_{name}"
     out.write_bytes(await file.read())
-    return {"ok": True, "scene": scene, "name": out.name}
+    return {"ok": True, "scene": scene, "name": out.name, "kind": kind_of(out)}
+
+
+@app.get("/api/jobs/{job_id}/scene-visuals")
+async def scene_visuals(job_id: str):
+    """⑥ 화면 배치: 장면별로 고정해 둔 파일 목록 (새로고침 후에도 미리보기를 보여주기 위함)."""
+    if not manager.get(job_id):
+        raise HTTPException(404)
+    up = manager.output / job_id / "uploads"
+    out: dict[int, dict[str, str]] = {}
+    for p in sorted(up.glob("scene_[0-9][0-9]_*")) if up.is_dir() else []:
+        if p.is_file() and kind_of(p):
+            out[int(p.name[6:8])] = {"name": p.name, "kind": kind_of(p) or ""}
+    return out
+
+
+# ---------- ⑦ 자막·댓글 (완성 후 수정 → 다시 만들기) ----------
+
+def _editable_job(job_id: str) -> Path:
+    job = manager.get(job_id)
+    if not job:
+        raise HTTPException(404)
+    job_dir = manager.job_dir(job_id)
+    if not timelinemod.exists(job_dir):
+        raise HTTPException(409, "이 기능 이전에 만든 영상이라 자막·댓글을 고칠 수 없습니다.")
+    return job_dir
+
+
+def _require_done(job_id: str) -> None:
+    job = manager.get(job_id)
+    if job and job.status != "done":
+        raise HTTPException(409, "영상이 완성된 뒤에 고칠 수 있습니다. (만드는 중이거나 다시 만드는 중)")
+
+
+@app.get("/api/jobs/{job_id}/timeline")
+async def get_timeline(job_id: str):
+    return timelinemod.load(_editable_job(job_id))
+
+
+@app.put("/api/jobs/{job_id}/timeline")
+async def put_timeline(job_id: str, body: dict[str, Any]):
+    job_dir = _editable_job(job_id)
+    _require_done(job_id)
+    tl, removed = timelinemod.apply_edit(timelinemod.load(job_dir), body)
+    timelinemod.save(job_dir, tl)
+    overlays = (job_dir / OVERLAY_DIR).resolve()
+    for rel_path in removed:   # 목록에서 뺀 댓글 캡처 파일 정리 (overlays 폴더 안의 것만)
+        p = (job_dir / rel_path).resolve()
+        if p.parent == overlays:
+            p.unlink(missing_ok=True)
+    return tl
+
+
+@app.post("/api/jobs/{job_id}/rerender")
+async def rerender_job(job_id: str):
+    _editable_job(job_id)
+    try:
+        return manager.request_rerender(job_id).public()
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/jobs/{job_id}/overlays")
+async def add_overlays(job_id: str, files: list[UploadFile] = File(...), scene: int = Form(-1),
+                       start: float = Form(-1.0), duration: float = Form(3.5)):
+    """댓글 캡처 등 이미지를 영상 위에 얹을 카드로 추가한다. 여러 장이면 장면을 하나씩 밀며 배치."""
+    job_dir = _editable_job(job_id)
+    _require_done(job_id)
+    tl = timelinemod.load(job_dir)
+    total = timelinemod.total_duration(tl)
+    scenes = tl["scenes"]
+    out_dir = job_dir / OVERLAY_DIR
+    out_dir.mkdir(exist_ok=True)
+    added, skipped = [], []
+    # 스타일이 참고 영상에서 찾은 댓글 자리가 있으면, 위치를 따로 고르지 않은 캡처는 그 자리부터 채운다
+    slots = tl.get("comment_slots") or []
+    used_slots = sum(1 for c in tl["comments"] if c["kind"] == "image")
+    for k, f in enumerate(files):
+        name = re.sub(r"[^\w.-]", "_", Path(f.filename or "capture.png").name)[-80:]
+        if kind_of(Path(name)) != "image":
+            skipped.append(f"{name} (이미지만 가능)")
+            continue
+        data = await f.read()
+        if len(data) > 20 * 1024 * 1024:
+            skipped.append(f"{name} (20MB 초과)")
+            continue
+        out = out_dir / name
+        n = 2
+        while out.exists():
+            out = out_dir / f"{Path(name).stem}_{n}{Path(name).suffix}"
+            n += 1
+        out.write_bytes(data)
+        slot = place_comment(slots, used_slots, total) if start < 0 and scene < 0 else None
+        length, y = max(0.5, duration), None
+        if slot:
+            at, end, y = slot
+            length = end - at
+            used_slots += 1
+        elif start >= 0:
+            at = start + k * max(0.5, duration)
+        else:   # 장면을 고르지 않으면 둘째 장면부터 하나씩
+            idx = scene if 0 <= scene < len(scenes) else min(1, len(scenes) - 1)
+            at = scenes[min(idx + k, len(scenes) - 1)]["start"]
+        at = min(max(0.0, at), max(0.0, total - 0.5))
+        c = timelinemod.image_comment(f"{OVERLAY_DIR}/{out.name}", at, min(total, at + length),
+                                      Path(f.filename or "").name)
+        if y is not None:
+            c["y"] = y
+        tl["comments"].append(c)
+        added.append(c)
+    timelinemod.save(job_dir, tl)
+    return {"added": added, "skipped": skipped, "timeline": tl}
+
+
+# ---------- ⑧ 내보내기 ----------
+
+def _draft_name(job_id: str) -> str:
+    job = manager.get(job_id)
+    titles = ((job.script or {}).get("titles") or []) if job else []
+    base = titles[0] if titles else (job.result.get("topic") if job else "") or "AI 쇼츠"
+    return f"{base} {job_id[:8]}"
+
+
+@app.get("/api/capcut")
+async def capcut_info():
+    root = capcutmod.find_drafts_root(manager.cfg)
+    return {"drafts_root": str(root) if root else "", "found": bool(root)}
+
+
+@app.post("/api/jobs/{job_id}/export/capcut")
+async def export_capcut(job_id: str):
+    job_dir = _editable_job(job_id)
+    _require_done(job_id)
+    root = capcutmod.find_drafts_root(manager.cfg)
+    if not root:
+        raise HTTPException(400, "CapCut 프로젝트 폴더를 찾지 못했습니다. CapCut 을 설치·실행했는지 확인해 주세요.")
+    try:
+        draft = await capcutmod.export_draft(timelinemod.load(job_dir), job_dir, root, _draft_name(job_id))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"CapCut 내보내기 실패: {e}")
+    exports = {**manager.get(job_id).result.get("exports", {}), "capcut": str(draft)}
+    manager.touch_result(job_id, exports=exports)
+    return {"path": str(draft), "name": draft.name}
+
+
+@app.post("/api/jobs/{job_id}/export/pack")
+async def export_pack(job_id: str):
+    job_dir = _editable_job(job_id)
+    _require_done(job_id)
+    try:
+        out = await capcutmod.export_pack(timelinemod.load(job_dir), job_dir, job_dir / "capcut_pack.zip")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"재료 묶음 만들기 실패: {e}")
+    exports = {**manager.get(job_id).result.get("exports", {}), "pack": out.name}
+    manager.touch_result(job_id, exports=exports)
+    return {"file": out.name, "size": out.stat().st_size}
 
 
 @app.delete("/api/jobs/{job_id}")
@@ -388,9 +563,15 @@ async def events(job_id: str):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.get("/files/{job_id}/{name}")
+@app.get("/files/{job_id}/{name:path}")
 async def files(job_id: str, name: str):
+    """잡 폴더 안의 파일. 하위 폴더는 미리보기에 필요한 것만 허용한다."""
+    if ".." in name or ".." in job_id or "\\" in name:
+        raise HTTPException(404)
+    parts = name.split("/")
+    if len(parts) > 2 or (len(parts) == 2 and parts[0] not in PUBLIC_SUBDIRS):
+        raise HTTPException(404)
     p = manager.output / job_id / name
-    if not p.exists() or ".." in name:
+    if not p.is_file():
         raise HTTPException(404)
     return FileResponse(p)

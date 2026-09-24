@@ -3,9 +3,115 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-24** · §12의 9월 22일 숫자와 검증 결과는 당시 기록이다. 현재 상태는 아래 체크포인트 요약을 우선한다.
+> **최종 갱신: 2026-09-24 (오후)** · §12의 9월 22일 숫자와 검증 결과는 당시 기록이다. 현재 상태는 아래 체크포인트 요약을 우선한다.
 
-## 2026-09-24 체크포인트 — 다음 작업자는 여기서 시작
+## 2026-09-24 오후 — 단계별 사이드바 UI · 자막 수정 · 댓글 캡처 · CapCut 내보내기 (다음 작업자는 여기서 시작)
+
+### 한눈에 보기
+
+- **프로젝트:** 한국어 유튜브 쇼츠(9:16) 자동 제작 웹 도구다. 개인 PC에서 쓰고, 자동 업로드는 없다.
+  - 입력: 주제 / 유튜브·기사 링크 / 업로드 영상 / 핫이슈 자동.
+  - 흐름: 자료 조사 → 대본 → 검토 → TTS → 화면(이미지·영상 짜깁기) → MP4와 `meta.txt`.
+  - 완성 후: 자막·댓글 수정, CapCut 내보내기.
+- **현재 단계:** 이번 요청(사이드바 UI, 자막 수정, 댓글 캡처, CapCut 내보내기, 레퍼런스 댓글 자동 배치)의 **코드와 목 테스트는 완성됐다.** 실제 영상으로 해 보는 시험은 사용자 지시에 따라 **아직 하지 않았다.**
+- **다음 작업 (우선순위 순):**
+  1. **(사용자 신호 후)** 주제 1건을 실제로 제작해 `timeline.json` 생성을 확인한다. 이어서 ⑦에서 자막 1줄 수정과 캡처 1장을 넣고 「다시 만들기」로 결과 영상을 확인한다.
+  2. ⑧ CapCut 프로젝트로 보내기를 눌러, CapCut 9.3 목록에 뜨고 열리는지 확인한다. 트랙 배치와 자막 크기(추정값)도 확인해서 필요하면 `capcut.py`를 조정한다. 목록에 안 뜨면 `root_meta_info.json` 등록을 검토하되, 기존 파일이므로 사용자 확인 후 백업을 거쳐서만 한다.
+  3. 재료 묶음 zip을 받아 내용을 확인한다.
+  4. 키가 있을 때 스타일 분석과 댓글 배치 분석을 1회 해 본다.
+  5. 이전부터 남은 검증: 업로드 영상 전체 흐름, broll 자동 소스 수집, 기사 이미지, Gemini 경로 (§6).
+  6. 남은 UI 과제: `visual_mode` 드롭다운, 잡 취소 버튼. Phase F(Omni 영상)는 후순위다.
+- **막혀 있는 것과 원인:**
+  - 실사용 검증은 "샘플·유료 호출 금지, 사용자 신호 후 테스트" 조건 때문에 대기 중이다.
+  - 댓글 배치 분석, 댓글 자동 수집, Gemini 경로는 각각 Gemini/OpenAI 키, `YOUTUBE_API_KEY`가 있어야 한다.
+  - CapCut 드래프트 형식은 공식 문서가 없어서, 실제 파일을 역으로 참고해 만들었다. 그래서 실제로 열어 보기 전에는 확신할 수 없다.
+- **알려진 미해결 오류:** 새로 발견된 런타임 오류는 없다. 미검증 항목과 제약은 §7 "미해결"을 볼 것.
+- **실행:** `AI Shorts 실행.cmd`를 더블클릭하면 된다. 브라우저 주소는 `http://127.0.0.1:8765/`다. 명령 창을 닫으면 서버도 꺼진다.
+- **테스트:**
+  - 목 테스트 23개: `.venv\Scripts\python.exe -m unittest discover -s tests -v`. 네트워크·ffmpeg 렌더·유료 API를 쓰지 않는다.
+  - 문법·공백 검사: `.venv\Scripts\python.exe -m compileall -q app`, `git diff --check`.
+- **환경변수·외부 서비스:** §2와 `.env.example`을 볼 것.
+  - 이번 작업에서 새 키는 없다. 댓글 배치 분석은 기존 `GEMINI_API_KEY` 또는 `OPENAI_API_KEY`를 쓴다.
+  - 외부 프로그램으로 CapCut 데스크톱이 새로 쓰인다(선택 사항). 없으면 재료 묶음 zip만 쓰면 된다.
+- **중요 조건:** §9를 볼 것. 특히 이번에 추가된 8·9·10번(자막·댓글은 선택 사항, 단계 메뉴와 CapCut, Git 규칙)이다.
+- **건드리면 안 되는 것과 수정 주의:** §10을 볼 것. 이번에 CapCut 기존 드래프트 보호, `overlays/` 분리, 다시 만들기의 원본 보존, `timeline.py`, `capcut.py` 관련 항목을 추가했다.
+
+**사용자 요청:** TubeFactory처럼 왼쪽에 단계별 메뉴를 두고, 자막 수정, 댓글 캡처 직접 추가, CapCut 내보내기, 레퍼런스 영상 분석으로 댓글 자동 배치를 만든다. 순서는 이 네 가지 그대로였다. **자막·댓글은 선택 사항이다.** 아무것도 넣지 않고 넘어가도 영상이 완성돼야 한다.
+
+**핵심 설계 — `timeline.json`:**
+- 첫 렌더 직전에 렌더 재료(장면·길이·비주얼 경로·나레이션·BGM·자막 줄과 단어 타이밍·키워드·출처·댓글·스타일 댓글 자리)를 `output/<잡>/timeline.json`에 저장한다.
+- 최초 렌더와 ⑦의 「다시 만들기」는 같은 함수 `timeline.render_timeline()`을 쓴다. 다시 만들기는 LLM·TTS를 부르지 않아 무료이고, 1~3분 걸린다.
+- 다시 만들기는 `final_new.mp4`로 렌더한 뒤 성공했을 때만 `final.mp4`를 교체한다. 실패하면 기존 영상이 그대로 남고, 잡 상태는 `done`으로 돌아가며 message에 실패 사유를 남긴다.
+- CapCut·재료 묶음 내보내기도 `timeline.json`만 읽는다.
+- 이 기능 이전에 만든 잡이나 클립 재편집(`visual_mode=clip`) 잡에는 timeline이 없다. 그런 잡은 ⑦과 CapCut을 막고 안내만 하며, MP4 다운로드는 그대로 된다.
+
+**화면 구조 (`index.html`/`app.js`/`style.css` 전면 재구성):** 왼쪽 사이드바는 ① 프로젝트 목록 ② 소재 ③ 스타일·지침 ④ 대본 ⑤ 음성 ⑥ 화면 배치 ⑦ 자막·댓글 ⑧ 내보내기, 그리고 ⚙ 설정·API 키로 되어 있다.
+- **단계 활성 조건**(`stepEnabled`):
+  - ②③: 새 프로젝트일 때만.
+  - ④⑤⑥: 잡이 `awaiting_review`일 때.
+  - ⑦⑧: `result.video`가 있을 때.
+- **자동 이동:** 상태가 바뀌면 검토 대기 → ④, 완성 → ⑦(timeline이 없으면 ⑧)로 이동한다. 진행 중인 잡은 상단 `#runbar`에 진행 막대와 로그를 보여준다.
+- **⑤ 음성:** 승인할 때 `tts_provider`/`voice`를 보낸다. 서버의 `run._apply_voice`가 TTS 전에 적용한다.
+- **⑥ 장면 삭제:** 승인할 때 `scene_map`(새 번호별 원래 번호)을 보낸다. `jobs._remap_scene_files`가 `uploads/scene_NN_*`의 번호를 다시 매기고, 삭제된 장면의 파일은 `_removed_`로 바꾼다. 이 수정으로 **장면을 지우면 고정 파일이 다른 장면으로 밀리던 기존 버그가 해결됐다.**
+- **③ 자막 옵션:** 「하단 자막 넣기」/「상단 키워드 넣기」 체크박스를 추가했다. 옵션 `subtitles`/`titles`로 전달되고, `merge_options`에서 `cfg.video.subtitles/titles`가 된다. 프리셋 기본값은 `subtitle.enabled`다.
+- **⑦ 편집 범위:** 자막 줄의 문구·시작·끝 수정, 삭제, 추가. 자막·키워드 켜기/끄기, 장면별 키워드 수정, 댓글 시작·길이·위치(위/가운데/아래)·크기 조절과 삭제. 캡처를 끌어다 놓으면 추가된다. 「저장」은 PUT이고, 「적용해서 다시 만들기」는 저장 후 rerender를 호출한다. 「건너뛰기」는 ⑧로 이동한다.
+- **⑦ 문구를 고친 줄:** 단어 시간을 글자 수 비율로 다시 나눠 노래방식 강조를 유지한다(`timeline.respread`). 문구·시간을 그대로 둔 줄은 원래 TTS 단어 타이밍을 유지한다.
+
+**댓글 캡처 (이미지 오버레이):**
+- **저장 위치:** `output/<잡>/overlays/`. `uploads/`에 두면 장면 배경으로 잘못 쓰이므로 반드시 분리한다.
+- **렌더:** `render._apply_overlays`가 `overlay=...:enable='between(t,s,e)'`와 알파 페이드로 합성한다. ASS 자막보다 먼저 합성해서 자막이 캡처 위에 온다.
+- **기본 배치:** 재생 위치를 지정하면 그 시점부터 3.5초, 아니면 둘째 장면부터 한 장씩이다. 스타일에 댓글 자리가 있으면 그 자리가 우선한다.
+
+**CapCut 내보내기 (`capcut.py`):**
+- **드래프트 폴더 탐색 순서:** `config.capcut.drafts_dir`, CapCut `User Data\Config\globalSetting`의 `currentCustomDraftPath`, 기본 `com.lveditor.draft` 순이다. 이 PC에서는 `C:\capcutproject\CapCut Drafts`로 확인했다(CapCut 9.3 설치).
+- **드래프트 형식:** CapCut이 실제로 불러들여 재저장한 스크립트 생성 드래프트(`신발 뒤꿈치…\draft_info.json`, version 360000 / new_version 161.0.0)의 최소 키 구성을 **읽기 전용으로 참고해** 맞췄다. 시간 단위는 µs이고, `clip.transform`은 가운데가 0, 반 화면이 1, 위가 +다.
+- **트랙 구성:** 장면 video, 댓글 캡처 video(PIP), 나레이션 audio, BGM audio(짧으면 반복), 하단 자막 text(`type:"subtitle"`), 상단 키워드 text, 출처·텍스트 댓글 text 순이다. 자막을 끈 영상에는 자막 트랙이 없다.
+- **파일:** 재료는 드래프트 폴더의 `Resources/`에 복사한다. `draft_content.json`과 같은 내용의 `draft_info.json`, 그리고 `draft_meta_info.json`을 쓴다.
+- **기존 파일 보호:** 기존 드래프트와 CapCut 목록 파일(`root_meta_info.json`)은 **절대 수정하지 않는다.** 같은 이름이 있으면 `_2`를 붙인다. 계획에는 "root_meta_info 백업 후 등록"과 "CapCut 실행 중이면 차단"이 있었지만, 기존 파일을 건드리지 않는 쪽이 안전해서 둘 다 넣지 않았다. 대신 "켜져 있었다면 껐다 켜라"고 UI에 안내한다. **실제 CapCut에서 목록에 뜨고 열리는지는 아직 미검증이다.** 안 뜨면 그때 root_meta_info 등록을 검토할 것.
+- **옮겨지지 않는 것:** 켄번즈 확대, 장면 전환, 노래방식 강조는 CapCut으로 넘어가지 않는다(UI에 표기).
+- **재료 묶음:** `capcut.export_pack(tl, job_dir, out_zip)`이 zip을 만든다. 저장 경로 `output/<잡>/capcut_pack.zip`은 `main.py`의 `/export/pack` 라우트가 정한다. 안에는 `NN_장면.jpg|mp4`(broll은 쓴 구간만 ffmpeg로 잘라 둔다), `narration.mp3`, `bgm.*`, `subtitles.srt`, `keywords.srt`, `comments/`, `순서.txt`가 들어간다.
+
+**레퍼런스 보고 댓글 자동 배치 (`comment_layout.py`):**
+- **분석 조건:** 스타일 분석 창의 「댓글 캡처가 언제·어디에 뜨는지도 분석」 체크박스를 켰을 때만 실행된다. API는 `/api/styles/analyze`의 `comment_layout:true`이고, **Gemini 또는 OpenAI 키가 필요하며 사용량 요금이 발생할 수 있다.**
+- **분석 방법:** 참고 영상을 받아 2.5초 간격으로 최대 24장 화면을 뽑는다. 각 화면을 비전으로 판별해 "댓글 있음 + 위/가운데/아래"를 얻고, 연속 구간을 슬롯 `{at_ratio, seconds, y}`로 만든다. 여러 영상은 평균 개수만큼 순서별로 평균낸다. 분석한 영상 원본은 지운다.
+- **저장:** 스타일 yaml에 `comment_slots`·`comment_pattern`으로 저장한다. 스타일 편집 창에서 「댓글 자동 배치 끄기」로 지울 수 있다.
+- **잡에서 쓰는 방식:** 좋아요 많은 댓글을 슬롯 수만큼(최대 2) ④에서 미리 체크한다(`result.suggested_comment_ids`). 검토를 끈 잡은 자동 선택된다. 시작 시간은 `at_ratio × 전체 길이`이고, ⑦에서 올린 캡처도 빈 슬롯부터 채운다.
+- **실패 처리:** 분석이 실패해도 말투·구성 분석 결과는 저장되고, findings에 실패 사유가 남는다. **실제 호출은 미검증이다(키 필요).**
+
+**이번 작업 파일:**
+
+| 구분 | 파일 | 내용 |
+|---|---|---|
+| 신규 | `app/pipeline/timeline.py` (260줄) | timeline 저장·로드·수정 반영(`apply_edit`)·렌더 진입점 |
+| 신규 | `app/pipeline/capcut.py` (530줄) | CapCut 드래프트·재료 묶음 |
+| 신규 | `app/pipeline/comment_layout.py` (163줄) | 참고 영상 댓글 자리 분석·슬롯 배치 |
+| 신규 | `tests/test_timeline_export.py` (318줄) | 목 테스트 18개 |
+| 수정 | `run.py` | 렌더 블록을 timeline 방식으로, `rerender()`, `_apply_voice()`, 자막 끄기, 스타일 댓글 자리 |
+| 수정 | `render.py` | `_apply_overlays`, 두 렌더 함수에 `overlays` 인자 |
+| 수정 | `subtitles.py` | `build_ass(lines=...)`, `words_to_lines`, `write_srt`, 댓글 카드 변수명 충돌 수정 |
+| 수정 | `jobs.py` | 큐 `(id, action)`, rerender 작업, 승인 시 음성·`scene_map`, `touch_result` |
+| 수정 | `main.py` | 새 라우트 8개, `/files` 하위폴더(overlays·scenes·uploads만) 허용, 스타일 댓글 배치 |
+| 수정 | `config.py` | `subtitles`/`titles` 옵션 병합 |
+| 수정 | `styles.py` | 스타일에 `comment_slots`·`comment_pattern` 저장 |
+| 수정 | `models.py` | `SceneVisual.kind`에 `broll` 추가(기존에 Literal 밖 값 대입하던 문제) |
+| 수정 | `presets/*.yaml` | `subtitle.enabled: true` |
+| 전면 재구성 | `index.html`(517) · `app.js`(1233) · `style.css`(288) | 사이드바 8단계 UI |
+
+**검증:**
+- **자동 점검:** `unittest discover -s tests` **23개 전부 통과**(기존 5 + 신규 18), `compileall` 통과, `git diff --check` 통과.
+- **테스트 범위:** timeline 수정·자막 재배분·자막 끄기·SRT·오버레이 필터·렌더 인자·재렌더 실패 시 원본 보존·장면 번호 재매김·CapCut JSON 구조와 참조 무결성·기존 드래프트 보존·zip 구성·댓글 슬롯 계산·스타일 슬롯으로 댓글 자동 선택.
+- **브라우저 확인:** 서버를 재시작한 뒤(당시 대기 잡 없음) 1280px과 375px에서 8단계 이동, 활성·비활성, 가로 넘침 0px, JS 오류 없음을 확인했다. ④~⑧은 **브라우저 안에서만 만든 가짜 잡 데이터**로 편집·저장·승인 payload(`scene_map` [0,2] 등)를 확인했다. 서버·파일에는 아무것도 만들지 않았다.
+- **서버 라우트:** timeline 없는 잡은 409, 경로 조작은 404, CapCut 폴더 탐지는 정상이었다.
+
+**아직 안 한 것 — 사용자 신호 후 실제 테스트:**
+1. 주제 1건 실제 제작 → `timeline.json` 생성 확인 → ⑦에서 자막 1줄 수정 + 캡처 1장 → 다시 만들기 → 영상 확인.
+2. ⑧ CapCut 프로젝트 보내기 → CapCut 9.3 목록에 뜨고 열리는지, 트랙·위치·자막 크기가 적절한지 확인. `size` 13/15/8/5는 추정값이다. 안 뜨거나 깨지면 `capcut.py`를 조정한다.
+3. 재료 묶음 zip 다운로드 확인.
+4. (키가 있을 때) 스타일 분석 + 댓글 배치 분석 1회.
+
+## 2026-09-24 체크포인트 (오전)
+
+> 아래는 오전 기록이다. "다음 작업 우선순위"와 테스트 개수(5개)는 위 오후 섹션이 대체한다(현재 23개). 설계·키·제약 설명은 여전히 유효하다.
 
 **목적:** 한국어 유튜브 쇼츠를 개인 PC에서 만드는 웹 도구다. 주제, 유튜브·기사 링크, 핫이슈, 업로드 영상을 입력받아 자료 조사 → 대본 검토 → 음성·영상 편집 → MP4와 업로드용 문구를 만든다. 자동 유튜브 게시 기능은 없다. 연예·정치·일상·공학/건축 카테고리 프리셋이 있다.
 
@@ -221,6 +327,9 @@ claude-login.cmd  (탐색기에서 더블클릭)
 | `broll.py` ■ | 당시 228 | 소스 영상 검색·수집, 로컬 소스 사용, 자막 타임라인, 장면별 구간 매칭·정규화 |
 | `reference.py` | 신규 | 업로드 참고 영상의 음성·화면 분석으로 주제·검색어 추출 |
 | `comments.py` | 신규 | 공개 댓글 후보 수집, 검토용 출처 제공 |
+| `timeline.py` | 260 (09-24) | 렌더 재료 `timeline.json` 저장·수정 반영·렌더 진입점 (⑦ 다시 만들기) |
+| `capcut.py` | 530 (09-24) | CapCut 드래프트 생성 + 재료 묶음 zip |
+| `comment_layout.py` | 163 (09-24) | 참고 영상 화면에서 댓글 자리 분석 → 스타일 `comment_slots` |
 | `render.py` ▲ | 305 | ffmpeg 3종: `render_slideshow` / `render_clips` / `render_broll`(신규) |
 | `subtitles.py` ▲ | 119 | ASS 자막 생성. `Sub`(카라오케)·`Title`(키워드)·`Credit`(출처, 신규) |
 | `media.py` ▲ | 135 | ffmpeg 유틸. `extract_frames`·`has_audio` 신규, ffmpeg 경로 자동 탐색 |
@@ -242,9 +351,9 @@ claude-login.cmd  (탐색기에서 더블클릭)
 | `app/main.py` ▲ | 당시 305 | FastAPI. 업로드 모드·키 등록·참고 영상 분석·잡 API + SSE |
 | `app/jobs.py` ▲ | 당시 212 | 잡 큐(순차 1개씩), 대본·영상·댓글 검토, 상태 영속화, 업로드 이동 |
 | `app/config.py` ▲ | 114 | config/preset/style 로딩, `merge_options` 우선순위 |
-| `app/templates/index.html` ▲ | 312 | 단일 페이지 |
-| `app/static/app.js` ▲ | 당시 563 | 전체 UI 로직 (빌드 없음), 업로드·GPT·댓글 검토 포함 |
-| `app/static/style.css` ▲ | 143 | 다크 테마, 모바일 대응 |
+| `app/templates/index.html` ▲ | 517 (09-24) | 단일 페이지. 왼쪽 8단계 사이드바 + 단계별 패널 |
+| `app/static/app.js` ▲ | 1233 (09-24) | 전체 UI 로직 (빌드 없음). `stepEnabled`/`go`/`onJob`이 단계 이동의 중심 |
+| `app/static/style.css` ▲ | 288 (09-24) | 다크 테마. 760px 이하에서 사이드바가 위쪽 가로 메뉴로 |
 
 ### 설정·데이터
 
@@ -333,6 +442,10 @@ Phase A~E와 업로드·관련 영상·댓글 선택 경로의 코드는 작성�
 | `render_broll` 실제 렌더 | ✅ 6.1초 샘플 성공 (2026-09-23). 자동 소스 수집 흐름은 미검증 |
 | 기사 링크 모드 | ⚠️ 실제 정책 기사 본문 1건 추출 성공. 이미지 수집·전체 영상은 미검증 |
 | Gemini 이미지·비전 | ⬜ 키 없어 보류 |
+| 8단계 사이드바 UI (2026-09-24) | ✅ 브라우저 확인(1280px·375px, 가짜 잡 데이터로 ④~⑧ 조작). 실제 잡으로는 미확인 |
+| ⑦ 자막 수정·댓글 캡처 → 다시 만들기 | ⚠️ 목 테스트만. 실제 `timeline.json` 생성·재렌더는 미실행 |
+| ⑧ CapCut 드래프트·재료 묶음 | ⚠️ 목 테스트만(임시 폴더). **CapCut에서 실제로 열리는지 미확인** |
+| 참고 영상 댓글 자리 분석 | ⬜ 키 필요 · 목 테스트만 |
 | Phase F (Omni 영상) | ⬜ 미착수 (기능 자체가 없음) |
 
 다음 두 경로는 외부 준비가 필요하다:
@@ -367,6 +480,7 @@ Phase A~E와 업로드·관련 영상·댓글 선택 경로의 코드는 작성�
 - Claude Code CLI 2.1.268을 공식 WinGet 패키지로 별도 설치. 구독 로그인 `loggedIn: true`와 구조화 응답 호출 확인
 - Python 3.12.10 / ffmpeg 9.0.1 (winget 설치, `media.py`가 경로를 자동으로 찾음)
 - `styles/`에 1개 (`style-f8b83e20`)
+- CapCut 데스크톱 9.3 설치됨. 새 드래프트 저장 폴더는 `C:\capcutproject\CapCut Drafts`다. `%LOCALAPPDATA%\CapCut\User Data\Config\globalSetting`의 `currentCustomDraftPath`에서 읽는다. 기존 드래프트 4개(경제 작업·릴스·신발 뒤꿈치 등)는 사용자 작업물이므로 절대 수정하지 말 것
 - `output/`에는 기존 검증 산출물과 웹 작업이 있을 수 있다. Git 제외 대상이며, 진행 중인 `awaiting_review` 작업은 서버 재시작 전에 처리할 것
 
 ---
@@ -387,12 +501,19 @@ Phase A~E와 업로드·관련 영상·댓글 선택 경로의 코드는 작성�
 | broll 렌더 즉시 실패 | `afade` 시작 시간이 `-1.5`초로 고정되어 ffmpeg가 거부 | 전체 클립 길이에서 마지막 1.5초 시작 시점을 계산. 음성·무음 영상과 이미지 혼합 렌더 성공 |
 | 결과 화면 비주얼 요약 누락 | `Job.public()`이 `visuals` 정보를 제외 | API 결과에 포함하고 broll도 요약 표기. 브라우저에서 `첨부 2` 확인 |
 | 업로드 설명에 출처 URL 중복 | 이미 설명에 들어 있는 URL을 UI가 다시 덧붙임 | 설명에 없는 URL만 추가. 브라우저에서 중복 제거 확인 |
+| 검토 중 장면을 지우면 올린 사진이 옆 장면으로 밀림 (2026-09-24) | `scene_NN_` 파일은 원래 번호 기준인데, 장면 삭제 후 번호가 당겨짐 | 승인 시 `scene_map` 전송 → `jobs._remap_scene_files`가 번호 재매김, 삭제 장면은 `_removed_` (테스트 있음) |
+| `SceneVisual.kind`에 없는 `"broll"` 대입 (2026-09-24) | Literal 목록 누락 | `models.py` Literal에 `broll` 추가 |
+| 오류 잡의 상태 문구가 "오류:" 뒤 빈칸 (2026-09-24) | 재시작 중단 잡은 `error` 필드가 비고 `message`에만 사유가 있음 | UI가 `error || message` 표시 |
 
 ### 미해결 / 제약
 
 - **UI에서 `visual_mode`를 직접 고를 수 없다.** 프리셋 값 또는 "원본 클립 재편집" 체크박스로만 결정된다.
   `run_pipeline(visual_mode=)` 인자와 CLI `--visual`은 있으므로, UI 드롭다운만 추가하면 된다
-- **검토 화면에 비주얼 미리보기가 없다.** 장면별 업로드(`＋`)는 되지만 무엇이 배치될지 보이지 않는다
+- ~~검토 화면에 비주얼 미리보기가 없다~~ → 2026-09-24 ⑥ 화면 배치에 장면별 올린 파일 썸네일 추가(`GET /api/jobs/{id}/scene-visuals`). 단, 자동 배치(기사 이미지·AI 생성)될 결과는 렌더 전에는 "자동"으로만 표시된다
+- **CapCut 드래프트 실사용 미검증.** 트랙·좌표·자막 글자 크기(`size` 13/15/8/5)는 추정값이다. CapCut 목록에 안 뜨면 `root_meta_info.json` 등록이 필요할 수 있으나, 기존 파일 수정이므로 사용자 확인 후 백업을 거쳐서만 할 것
+- **⑦ 미리보기는 마지막 렌더 결과다.** 편집 중 실시간 미리보기는 없다(수정 후 다시 만들기 필요)
+- **timeline 없는 잡**(2026-09-24 이전 잡, 클립 재편집 잡)은 ⑦·CapCut 불가. MP4 다운로드만 된다
+- **다시 만들기 중 서버를 재시작하면** 잡은 디스크상 `done`으로 남는다(재렌더 대기 상태는 저장하지 않음). 기존 `final.mp4`는 보존된다
 - **`typecast.py`의 API 스펙 미확인.** 문서 기준으로 작성했고 호출해 본 적 없다
 - **Pollinations 무료 티어는 저화질+워터마크.** 모델을 바꿔도 같은 이미지가 나온다(실측). 최후 수단
 - **잡은 순차 1개씩** 처리된다. 동시 실행 불가
@@ -439,8 +560,9 @@ python -m app.pipeline.images.gemini "test prompt" lite   # 1장 ≈ 50원
 ### 6️⃣ UI 개선
 
 - `visual_mode` 드롭다운
-- 검토 화면 장면별 비주얼 미리보기 + 교체
+- ~~검토 화면 장면별 비주얼 미리보기 + 교체~~ ✅ 2026-09-24 ⑥ 화면 배치 (올린 파일 썸네일·교체)
 - 잡 취소 버튼
+- ~~단계별 사이드바·자막 수정·댓글 캡처·CapCut 내보내기~~ ✅ 2026-09-24 코드 완성 (실사용 검증은 맨 위 목록)
 
 ---
 
@@ -456,6 +578,9 @@ python -m app.pipeline.images.gemini "test prompt" lite   # 1장 ≈ 50원
 5. **유튜브 자동 업로드는 하지 않는다.** mp4 + 메타 텍스트까지만
 6. 지침은 3계층으로 분리해 각각 저장·재사용할 수 있어야 한다
 7. 웹 UI로 혼자 쓰는 도구. 복잡한 빌드 체인 없이
+8. **자막·댓글은 선택 사항** (2026-09-24). 자막이 필요 없는 영상도 있으니 아무것도 넣지 않고 넘어가도 영상이 완성돼야 한다. ⑦은 「건너뛰기」가 가능해야 하고, ③에서 자막을 처음부터 끌 수 있어야 한다
+9. **왼쪽 단계 메뉴 UI** (TubeFactory 참고) + 마지막에 **CapCut으로 내보내기**. 댓글 캡처는 직접 올리는 방법과 레퍼런스 분석으로 자동 배치하는 방법 둘 다
+10. **Git:** 기존 커밋 히스토리 삭제·수정 금지, force push 금지. 비밀값은 절대 커밋하지 않는다. 인증 문제는 우회하지 말고 사용자에게 설명한다
 
 ---
 
@@ -472,6 +597,9 @@ python -m app.pipeline.images.gemini "test prompt" lite   # 1장 ≈ 50원
 | **`llm.py`의 `CLAUDE_CODE_*` 환경변수 제거** | Claude Code 안에서 실행될 때 중첩 세션이 꼬인다 |
 | **정치·연예 프리셋의 사실기반·중립 규칙** | 명예훼손·허위정보 리스크 |
 | `.venv/`, `output/`, `.env` | 각각 의존성, 결과물, 비밀값 |
+| **사용자의 기존 CapCut 드래프트와 `root_meta_info.json`** | 사용자 작업물. `capcut.export_draft`는 새 폴더만 만들고 이름이 겹치면 `_2`를 붙인다. 이 원칙을 깨지 말 것 |
+| **댓글 캡처는 `overlays/`에** | `uploads/`에 넣으면 `assets.load_assets`가 장면 배경으로 가져간다 |
+| **다시 만들기의 "새 파일로 렌더 후 교체"** (`run.rerender`) | 실패해도 기존 `final.mp4`가 남아야 한다 |
 
 ### 수정할 때 특히 주의할 것
 
@@ -487,7 +615,12 @@ python -m app.pipeline.images.gemini "test prompt" lite   # 1장 ≈ 50원
 | `subtitles.py`의 ASS 문자열 | 색은 `&HAABBGGRR`(BGR 역순)이다. RGB로 착각하기 쉽다 |
 | `config.py`의 `merge_options` | 우선순위가 `config < 프리셋 < UI`다. 새 옵션을 추가할 때 이 순서를 지킬 것 |
 | provider 어댑터 추가 | `ImageProvider`/`TTSProvider` 인터페이스를 지키고, **실패 시 반드시 예외를 던질 것**. 조용히 실패하면 fallback 체인이 동작하지 않는다 |
-| 잡 상태(`jobs.py`) | `awaiting_review`는 `asyncio.Event`로 대기한다. 상태 전이를 바꾸면 검토 화면이 영영 안 풀릴 수 있다 |
+| 잡 상태(`jobs.py`) | `awaiting_review`는 `asyncio.Event`로 대기한다. 상태 전이를 바꾸면 검토 화면이 영영 안 풀릴 수 있다. 큐 항목은 `(job_id, "run"|"rerender")` 튜플이다 |
+| `timeline.py` | 첫 렌더와 다시 만들기가 **같은 `render_timeline`**을 쓴다. 한쪽만 고치지 말 것. `apply_edit`는 클라이언트 입력을 검증한다(시간 범위 자르기, 모르는 댓글 id 무시, 이미지 경로 변경 불가). 이 검증을 약하게 만들지 말 것 |
+| `render._apply_overlays` | 오버레이 입력 번호는 나레이션·BGM 입력 **뒤**부터 매겨진다. 입력 순서를 바꾸면 번호가 어긋난다. ASS 자막보다 먼저 합성해야 자막이 위에 온다 |
+| `capcut.py` | 시간은 µs, `clip.transform`은 가운데 0·반 화면 1·위가 +다. 소재 id와 `extra_material_refs`가 서로 맞아야 CapCut이 연다(테스트가 참조 무결성을 검사) |
+| `app.js`의 단계 이동 | `stepEnabled`(활성 조건)·`go`(표시)·`onJob`(SSE 반영·자동 이동)이 중심이다. ⑦ 편집 중(`capDirty`)에는 이동 전에 확인창을 띄운다 |
+| `/files/{job_id}/{name:path}` | 하위 폴더는 `overlays`·`scenes`·`uploads`만 허용하고 `..`·`\`를 막는다. 허용 목록을 넓힐 때 주의 |
 
 ---
 
@@ -533,7 +666,7 @@ python -c "import sys; sys.path.insert(0,'.'); import app.main"   # import·라�
 ffmpeg를 실제로 돌리지 않고 필터그래프만 보려면 `render.run_ffmpeg`를 가짜 async 함수로
 교체한 뒤 호출해 `-filter_complex` 인자를 확인하는 방식을 쓴다 (Phase E에서 이 방식으로 검증했다).
 
-### API 엔드포인트 (현재 `app/main.py`의 사용자 정의 라우트 22개, 아래 기존 19개와 키 등록 3개)
+### API 엔드포인트 (현재 `app/main.py`의 사용자 정의 라우트 30개)
 
 ```
 GET     /                                    웹 UI
@@ -561,9 +694,18 @@ GET     /api/jobs/{job_id}
 DELETE  /api/jobs/{job_id}
 POST    /api/jobs/{job_id}/approve           대본 확정 → 렌더 진행
 POST    /api/jobs/{job_id}/scene-visual      장면별 파일 지정 (scene_NN_* 로 저장)
+GET     /api/jobs/{job_id}/scene-visuals     ⑥ 장면별로 올린 파일 목록 (미리보기)
 GET     /api/jobs/{job_id}/events            SSE 진행상황
 
-GET     /files/{job_id}/{name}               결과물 (final.mp4, meta.txt 등)
+GET     /api/jobs/{job_id}/timeline          ⑦ 렌더 재료 (없으면 409)
+PUT     /api/jobs/{job_id}/timeline          ⑦ 자막·키워드·댓글 수정 저장 (done 일 때만)
+POST    /api/jobs/{job_id}/rerender          ⑦ 영상만 다시 만들기 (큐에 들어감)
+POST    /api/jobs/{job_id}/overlays          ⑦ 댓글 캡처 이미지 추가 (overlays/ 에 저장)
+GET     /api/capcut                          CapCut 드래프트 폴더 탐지 결과
+POST    /api/jobs/{job_id}/export/capcut     ⑧ CapCut 프로젝트 만들기
+POST    /api/jobs/{job_id}/export/pack       ⑧ 재료 묶음 capcut_pack.zip
+
+GET     /files/{job_id}/{name:path}          결과물. 하위폴더는 overlays·scenes·uploads 만
 ```
 
 ### 편당 비용

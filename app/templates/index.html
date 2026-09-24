@@ -7,26 +7,60 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
-  <h1>AI Shorts Studio</h1>
-  <div class="keys">
-    <span class="key {{ 'ok' if keys.claude_cli else 'no' }}" title="{{ keys.claude_cli or 'claude.exe 없음' }}">Claude 로그인</span>
-    <span id="gemini-key-badge" class="key {{ 'ok' if keys.gemini else 'no' }}">Gemini</span>
-    <span class="key {{ 'ok' if keys.fal else 'no' }}">fal</span>
-    <span class="key {{ 'ok' if keys.hf else 'no' }}">HF</span>
-    <span id="openai-key-badge" class="key {{ 'ok' if keys.openai else 'no' }}">OpenAI</span>
-    <span class="key {{ 'ok' if keys.elevenlabs else 'no' }}">ElevenLabs</span>
-    <span class="key {{ 'ok' if keys.typecast else 'no' }}">Typecast</span>
-    <span class="key {{ 'ok' if keys.naver else 'no' }}">Naver</span>
-  </div>
-</header>
+<div class="app">
+
+<!-- ================= 왼쪽 단계 메뉴 ================= -->
+<aside class="sidebar">
+  <div class="brand">AI Shorts Studio</div>
+  <button class="current" id="cur-box" type="button" title="프로젝트 목록 보기">
+    <small>현재 프로젝트</small>
+    <strong id="cur-title">새 프로젝트</strong>
+    <span id="cur-status" class="hint"></span>
+  </button>
+  <nav id="steps">
+    <div class="nav-group">프로젝트</div>
+    <button class="step" data-step="projects"><span class="n">1</span>프로젝트 목록</button>
+    <div class="nav-group">기획</div>
+    <button class="step" data-step="source"><span class="n">2</span>소재</button>
+    <button class="step" data-step="style"><span class="n">3</span>스타일·지침</button>
+    <div class="nav-group">검토</div>
+    <button class="step" data-step="script"><span class="n">4</span>대본</button>
+    <button class="step" data-step="voice"><span class="n">5</span>음성</button>
+    <button class="step" data-step="visuals"><span class="n">6</span>화면 배치</button>
+    <div class="nav-group">완성</div>
+    <button class="step" data-step="captions"><span class="n">7</span>자막·댓글</button>
+    <button class="step" data-step="export"><span class="n">8</span>내보내기</button>
+  </nav>
+  <button class="step settings" data-step="settings"><span class="n">⚙</span>설정 · API 키</button>
+</aside>
 
 <main>
 <p class="hint warn" id="server-update-msg"></p>
-<section class="card" id="composer">
+
+<!-- 진행 중인 작업 표시 -->
+<div id="runbar" class="card hidden">
+  <div class="run-head"><strong id="run-title"></strong><span id="run-stage" class="badge"></span></div>
+  <div class="progress"><div class="bar" id="run-bar"></div></div>
+  <div class="status" id="run-msg"></div>
+  <details class="logs"><summary>로그</summary><pre id="run-logs"></pre></details>
+</div>
+
+<!-- ① 프로젝트 목록 -->
+<section class="panel hidden" data-panel="projects">
+  <div class="panel-head">
+    <div><h2>프로젝트 목록</h2><p class="hint">눌러서 이어서 작업합니다. 검토 대기 중이면 ④ 대본, 완성됐으면 ⑦ 자막·댓글로 이동합니다.</p></div>
+    <button class="primary" id="new-project" type="button">＋ 새로 만들기</button>
+  </div>
+  <div id="jobs"></div>
+  <p class="hint" id="jobs-empty">아직 만든 영상이 없습니다. 「새로 만들기」로 시작하세요.</p>
+</section>
+
+<!-- ② 소재 -->
+<section class="panel card hidden" data-panel="source">
+  <h2>소재</h2>
   <div class="tabs">
     <button class="tab active" data-mode="topic">주제로 만들기</button>
-    <button class="tab" data-mode="url">유튜브 URL</button>
+    <button class="tab" data-mode="url">유튜브·기사 링크</button>
     <button class="tab" data-mode="upload">영상 업로드</button>
     <button class="tab" data-mode="auto">핫이슈 자동</button>
   </div>
@@ -51,6 +85,8 @@
       </label>
       {% endfor %}
     </div>
+    <p class="hint warn" id="broll-warn">⚠ 연예·정치 프리셋은 <b>영상 짜깁기</b> 모드입니다. 소스 영상을 내려받아 구간을 잘라 쓰므로 저작권 위험이 있습니다.
+      소스당 사용 길이를 제한하고 출처를 자동 기재하지만 면책은 아니니, 인용 범위를 넘지 않는지 직접 확인하세요.</p>
   </div>
 
   <div class="field">
@@ -70,6 +106,14 @@
     <p class="hint upload-only">선택한 영상의 음성을 분석하고, Gemini 키가 있거나 GPT를 선택하면 여러 장면의 화면 내용도 읽습니다. 분석 결과로 연관 영상 후보를 검색하며 업로드 파일도 편집 소재로 쓸 수 있습니다.</p>
   </div>
 
+  <div class="actions step-nav">
+    <button class="primary" data-go="style" type="button">다음 단계 → 스타일·지침</button>
+  </div>
+</section>
+
+<!-- ③ 스타일·지침 -->
+<section class="panel card hidden" data-panel="style">
+  <h2>스타일·지침</h2>
   <div class="field">
     <div class="label-row">
       <label>스타일 <span class="tag-opt">벤치마킹</span></label>
@@ -82,6 +126,17 @@
       <option value="">자동 — 소재를 보고 AI가 구성을 정함</option>
     </select>
     <p class="hint" id="style-hint">참고할 채널의 영상을 넣으면 그 구성·말투를 분석해 지침으로 저장하고, 그 스타일대로 대본을 씁니다.</p>
+  </div>
+
+  <div class="field">
+    <div class="label-row">
+      <label>이번 영상 지침 <span class="tag-opt">선택</span></label>
+      <span class="hint" id="instr-count"></span>
+    </div>
+    <textarea id="instructions" rows="5" placeholder="예: 쉽게 설명하고 비유를 넣어줘.&#10;https://www.youtube.com/watch?v=...&#10;https://youtu.be/..."></textarea>
+    <div class="actions"><button id="instr-analyze" class="copy-prompts hidden" type="button">참고 영상 분석해 지침 채우기</button></div>
+    <details id="instr-findings" class="hidden"><summary>분석 근거 보기</summary><ul id="instr-findings-list"></ul></details>
+    <p class="hint">유튜브 영상 주소를 최대 5개 붙여넣으면 선택한 AI가 자막을 분석해 공통 전개·후킹·감정 흐름·문장 방식을 지침으로 만듭니다. 바로 「대본 만들기」를 눌러도 먼저 자동 분석합니다. 이번 영상에만 적용됩니다.</p>
   </div>
 
   <div class="field">
@@ -105,45 +160,13 @@
       {% endif %}
     </select>
     <p class="hint warn" id="llm-warn"></p>
-    <details id="openai-key-setup">
-      <summary>GPT 연결 · OpenAI API 키 등록</summary>
-      <p class="hint">GPT를 선택하려면 별도로 발급받은 OpenAI API 키가 필요하며, 사용량에 따라 요금이 발생할 수 있습니다. <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI 키 발급 페이지</a>. 화면에서 등록한 키는 OneDrive 프로젝트 폴더 밖의 Windows 사용자 설정에 저장합니다.</p>
-      <div class="actions">
-        <input type="password" id="openai-key-input" autocomplete="off" placeholder="OpenAI API 키 붙여넣기" aria-label="OpenAI API 키">
-        <button id="openai-key-save" class="copy-prompts" type="button">키 저장</button>
-        <span id="openai-key-status" class="hint"></span>
-      </div>
-    </details>
-    <details id="gemini-key-setup">
-      <summary>영상 화면 분석 · Gemini API 키 등록</summary>
-      <p class="hint">Claude를 선택했을 때 업로드 영상의 화면도 분석하려면 등록하세요. GPT를 선택하면 등록된 OpenAI 키로 화면을 분석합니다. Gemini API는 별도 사용량 요금이 발생할 수 있습니다. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gemini 키 발급 페이지</a></p>
-      <div class="actions">
-        <input type="password" id="gemini-key-input" autocomplete="off" placeholder="Gemini API 키 붙여넣기" aria-label="Gemini API 키">
-        <button id="gemini-key-save" class="copy-prompts" type="button">키 저장</button>
-        <span id="gemini-key-status" class="hint"></span>
-      </div>
-    </details>
-    <details id="youtube-key-setup">
-      <summary>댓글 자동 수집 · YouTube Data API 키 등록</summary>
-      <p class="hint">공개된 유튜브 댓글을 가져와 검토 화면에 보여줍니다. 키가 없어도 영상 제작은 가능합니다. 댓글은 원문 텍스트를 카드로 재구성하며 작성자 이름은 표시하지 않습니다. <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer">YouTube Data API 사용 설정</a></p>
-      <div class="actions">
-        <input type="password" id="youtube-key-input" autocomplete="off" placeholder="YouTube Data API 키 붙여넣기" aria-label="YouTube Data API 키">
-        <button id="youtube-key-save" class="copy-prompts" type="button">키 저장</button>
-        <span id="youtube-key-status" class="hint"></span>
-      </div>
-    </details>
   </div>
 
   <div class="field">
-    <div class="label-row">
-      <label>이번 영상 지침 <span class="tag-opt">선택</span></label>
-      <span class="hint" id="instr-count"></span>
-    </div>
-    <textarea id="instructions" rows="5" placeholder="예: 쉽게 설명하고 비유를 넣어줘.&#10;https://www.youtube.com/watch?v=...&#10;https://youtu.be/..."></textarea>
-    <div class="actions"><button id="instr-analyze" class="copy-prompts hidden" type="button">참고 영상 분석해 지침 채우기</button></div>
-    <details id="instr-findings" class="hidden"><summary>분석 근거 보기</summary><ul id="instr-findings-list"></ul></details>
-    <p class="hint">여기에 유튜브 영상 주소를 최대 5개 붙여넣으세요. 선택한 AI가 자막을 분석해 공통 전개·후킹·감정 흐름·문장 방식을 지침으로 만듭니다. 바로 「만들기」를 눌러도 먼저 자동 분석합니다. 생성된 지침은 수정할 수 있습니다.</p>
-    <p class="hint">자막이 있는 영상만 분석할 수 있습니다. 화면이나 음악은 분석하지 않습니다. 이번 영상에만 적용됩니다.</p>
+    <label>자막 <span class="tag-opt">선택</span></label>
+    <label class="check"><input type="checkbox" id="opt-subtitles" checked> 하단 자막 넣기</label>
+    <label class="check"><input type="checkbox" id="opt-titles" checked> 상단 키워드 넣기</label>
+    <p class="hint">자막이 필요 없는 영상이면 끄세요. 완성 후 ⑦ 자막·댓글에서 다시 켜거나 끌 수 있습니다.</p>
   </div>
 
   <details class="options">
@@ -161,7 +184,7 @@
         </select>
       </label>
       <label>목소리 (비우면 프리셋 기본)
-        <input type="text" id="opt-voice" placeholder="예: ko-KR-InJoonNeural">
+        <input type="text" id="opt-voice" list="voice-list" placeholder="예: ko-KR-InJoonNeural">
       </label>
       <label>이미지
         <select id="opt-images">
@@ -181,23 +204,201 @@
         <span class="hint" id="img-cost"></span>
         <span class="hint warn" id="img-warn"></span>
       </label>
-      <label class="check"><input type="checkbox" id="opt-review" checked> 대본 먼저 확인하고 렌더링</label>
+      <label class="check"><input type="checkbox" id="opt-review" checked> 대본 먼저 확인하고 렌더링 (④~⑥ 검토)</label>
       <label class="check url-only"><input type="checkbox" id="opt-related" checked> 관련 영상도 찾아서 편집 (유튜브 링크)</label>
       <label class="check url-only"><input type="checkbox" id="opt-clip"> 원본 영상 클립 재편집 (AI 이미지 대신)</label>
     </div>
-    <p class="hint url-only warn">클립 재편집은 타인의 영상을 그대로 사용하므로 저작권에 유의하세요. 본인 영상이나 허용된 범위에서만 사용하세요.</p>
-    <p class="hint warn" id="broll-warn">⚠ 연예·정치 프리셋은 <b>영상 짜깁기</b> 모드입니다. 소스 영상을 내려받아 구간을 잘라 쓰므로 저작권 위험이 있습니다.
-      소스당 사용 길이를 제한하고 출처를 자동 기재하지만 면책은 아니니, 인용 범위를 넘지 않는지 직접 확인하세요.</p>
+    <p class="hint url-only warn">클립 재편집은 타인의 영상을 그대로 사용하므로 저작권에 유의하세요. 본인 영상이나 허용된 범위에서만 사용하세요. 클립 재편집 영상은 ⑦ 자막 수정을 지원하지 않습니다.</p>
   </details>
 
-  <div class="actions">
-    <button id="submit" class="primary">만들기</button>
+  <div class="actions step-nav">
+    <button class="ghost" data-go="source" type="button">← 소재</button>
+    <button id="submit" class="primary">대본 만들기</button>
     <span id="submit-msg" class="hint"></span>
   </div>
 </section>
 
-<section id="jobs"></section>
+<!-- ④ 대본 -->
+<section class="panel card hidden" data-panel="script">
+  <h2>대본</h2>
+  <p class="hint">나레이션과 화면 키워드를 자유롭게 고치세요. 장면을 지우려면 나레이션을 비우세요.</p>
+  <div class="reference-summary hidden" id="rv-reference"></div>
+  <div class="source-review hidden" id="rv-sources"><h3>편집에 쓸 영상 후보</h3><p class="hint">사용할 영상만 체크하세요. 제목을 눌러 원본을 확인할 수 있습니다. 실제 사용할 구간은 대본에 맞춰 자동으로 고릅니다.</p><div class="source-list"></div></div>
+  <div class="comment-review hidden" id="rv-comments"><h3>댓글 카드 후보 <span class="tag-opt">선택</span></h3><p class="hint">화면에 넣을 댓글을 최대 2개 고르세요. 안 골라도 됩니다. 원문을 확인한 뒤 사용하세요.</p><div class="comment-list"></div></div>
+  <div class="scenes" id="rv-scenes"></div>
+  <div class="actions step-nav">
+    <button class="primary" data-go="voice" type="button">다음 단계 → 음성</button>
+  </div>
+</section>
+
+<!-- ⑤ 음성 -->
+<section class="panel card hidden" data-panel="voice">
+  <h2>음성</h2>
+  <p class="hint">렌더링을 시작할 때 이 목소리로 나레이션을 만듭니다.</p>
+  <div class="grid">
+    <label>TTS
+      <select id="rv-tts">
+        <option value="edge">Edge (무료)</option>
+        <option value="openai">OpenAI</option>
+        <option value="elevenlabs">ElevenLabs</option>
+        <option value="typecast">Typecast</option>
+      </select>
+    </label>
+    <label>목소리 (비우면 프리셋 기본)
+      <input type="text" id="rv-voice" list="voice-list" placeholder="예: ko-KR-InJoonNeural">
+    </label>
+  </div>
+  <p class="hint warn" id="rv-tts-warn"></p>
+  <p class="hint">Edge 목소리 예: <code>ko-KR-InJoonNeural</code>(남) · <code>ko-KR-SunHiNeural</code>(여) · <code>ko-KR-HyunsuMultilingualNeural</code>(남)</p>
+  <div class="actions step-nav">
+    <button class="ghost" data-go="script" type="button">← 대본</button>
+    <button class="primary" data-go="visuals" type="button">다음 단계 → 화면 배치</button>
+  </div>
+</section>
+
+<!-- ⑥ 화면 배치 -->
+<section class="panel card hidden" data-panel="visuals">
+  <h2>화면 배치</h2>
+  <div class="flow-box">
+    <strong>Flow로 무료 이미지 만들기</strong>
+    <p class="hint">프롬프트를 복사해 Google Flow에 붙여넣고, 만든 이미지를 장면별 <b>＋ 파일</b> 버튼으로 올리면 API 비용이 들지 않습니다. 아무것도 올리지 않아도 됩니다.</p>
+    <button class="copy-prompts" id="rv-copy-prompts" type="button">장면별 이미지 프롬프트 복사</button>
+  </div>
+  <div id="rv-visuals"></div>
+  <div class="actions step-nav">
+    <button class="ghost" data-go="voice" type="button">← 음성</button>
+    <button class="primary" id="approve" type="button">렌더링 시작</button>
+    <span class="hint" id="approve-msg"></span>
+  </div>
+</section>
+
+<!-- ⑦ 자막·댓글 -->
+<section class="panel card hidden" data-panel="captions">
+  <div class="panel-head">
+    <div><h2>자막·댓글</h2>
+      <p class="hint">모두 선택 사항입니다. 고칠 게 없으면 「건너뛰기」를 누르세요. 수정한 내용은 「적용해서 다시 만들기」를 눌러야 영상에 들어갑니다 (음성·대본은 그대로, 1~3분).</p></div>
+    <button class="ghost" data-go="export" type="button" id="cap-skip">건너뛰기 →</button>
+  </div>
+  <p class="hint warn hidden" id="cap-unavailable">이 기능 이전에 만든 영상(또는 클립 재편집 영상)이라 자막·댓글을 고칠 수 없습니다. ⑧ 내보내기에서 MP4는 그대로 받을 수 있습니다.</p>
+  <div class="cap-layout" id="cap-editor">
+    <div class="cap-preview">
+      <video id="cap-video" controls playsinline></video>
+      <p class="hint">미리보기는 마지막으로 만든 영상입니다.</p>
+    </div>
+    <div class="cap-body">
+      <div class="cap-block">
+        <div class="label-row"><h3>하단 자막</h3>
+          <label class="check"><input type="checkbox" id="cap-sub-on"> 자막 넣기</label></div>
+        <div id="cap-lines" class="cap-lines"></div>
+        <button class="copy-prompts" id="cap-add-line" type="button">＋ 현재 재생 위치에 줄 추가</button>
+      </div>
+      <div class="cap-block">
+        <div class="label-row"><h3>상단 키워드</h3>
+          <label class="check"><input type="checkbox" id="cap-title-on"> 키워드 넣기</label></div>
+        <div id="cap-titles" class="cap-titles"></div>
+      </div>
+      <div class="cap-block">
+        <h3>댓글 <span class="tag-opt">선택</span></h3>
+        <div id="cap-drop" class="dropzone">
+          <input type="file" id="cap-input" multiple accept="image/*" hidden>
+          <p><strong>댓글 캡처 이미지를 끌어다 놓거나 클릭</strong></p>
+          <p class="hint">현재 재생 위치(0초면 둘째 장면)부터 3.5초 동안 화면에 뜹니다. 여러 장이면 장면마다 하나씩 놓입니다.</p>
+        </div>
+        <div id="cap-comments" class="cap-comments"></div>
+      </div>
+      <div class="actions">
+        <button class="copy-prompts" id="cap-save" type="button">저장</button>
+        <button class="primary" id="cap-rerender" type="button">적용해서 다시 만들기</button>
+        <span class="hint" id="cap-msg"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ⑧ 내보내기 -->
+<section class="panel card hidden" data-panel="export">
+  <h2>내보내기</h2>
+  <div class="result">
+    <video id="ex-video" controls playsinline></video>
+    <div class="meta">
+      <h3>업로드 정보</h3>
+      <div class="titles" id="ex-titles"></div>
+      <textarea class="desc" id="ex-desc" rows="6" readonly></textarea>
+      <div class="tags" id="ex-tags"></div>
+      <div class="actions">
+        <a class="download" id="ex-download" download>MP4 다운로드</a>
+        <button class="copy" id="ex-copy" type="button">제목+설명+태그 복사</button>
+        <a class="folder" id="ex-meta" target="_blank">meta.txt</a>
+      </div>
+
+      <h3 class="ex-sub">CapCut으로 이어서 편집</h3>
+      <p class="hint warn hidden" id="ex-unavailable">이 기능 이전에 만든 영상이라 CapCut 내보내기를 지원하지 않습니다.</p>
+      <div id="ex-capcut">
+        <div class="actions">
+          <button class="primary" id="ex-capcut-btn" type="button">CapCut 프로젝트로 보내기</button>
+          <button class="copy" id="ex-pack-btn" type="button">재료 묶음(zip) 만들기</button>
+        </div>
+        <p class="hint" id="ex-capcut-msg"></p>
+        <p class="hint" id="ex-pack-msg"></p>
+        <p class="hint">장면·나레이션·배경음악·자막·키워드·댓글이 <b>각각 따로 된 층</b>으로 들어가 CapCut에서 하나씩 고칠 수 있습니다.
+          확대 효과·장면 전환·노래방식 자막 강조는 옮겨지지 않습니다. CapCut이 켜져 있었다면 껐다 켜야 목록에 보입니다.</p>
+        <p class="hint" id="ex-root"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 설정 -->
+<section class="panel card hidden" data-panel="settings">
+  <h2>설정 · API 키</h2>
+  <div class="keys">
+    <span class="key {{ 'ok' if keys.claude_cli else 'no' }}" title="{{ keys.claude_cli or 'claude.exe 없음' }}">Claude 로그인</span>
+    <span id="gemini-key-badge" class="key {{ 'ok' if keys.gemini else 'no' }}">Gemini</span>
+    <span class="key {{ 'ok' if keys.fal else 'no' }}">fal</span>
+    <span class="key {{ 'ok' if keys.hf else 'no' }}">HF</span>
+    <span id="openai-key-badge" class="key {{ 'ok' if keys.openai else 'no' }}">OpenAI</span>
+    <span class="key {{ 'ok' if keys.elevenlabs else 'no' }}">ElevenLabs</span>
+    <span class="key {{ 'ok' if keys.typecast else 'no' }}">Typecast</span>
+    <span class="key {{ 'ok' if keys.naver else 'no' }}">Naver</span>
+    <span id="youtube-key-badge" class="key {{ 'ok' if keys.youtube else 'no' }}">YouTube</span>
+  </div>
+  <p class="hint">화면에서 등록한 키는 OneDrive 프로젝트 폴더 밖의 Windows 사용자 설정에 저장합니다.</p>
+  <details id="openai-key-setup">
+    <summary>GPT 연결 · OpenAI API 키 등록</summary>
+    <p class="hint">GPT를 선택하려면 별도로 발급받은 OpenAI API 키가 필요하며, 사용량에 따라 요금이 발생할 수 있습니다. <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI 키 발급 페이지</a></p>
+    <div class="actions">
+      <input type="password" id="openai-key-input" autocomplete="off" placeholder="OpenAI API 키 붙여넣기" aria-label="OpenAI API 키">
+      <button id="openai-key-save" class="copy-prompts" type="button">키 저장</button>
+      <span id="openai-key-status" class="hint"></span>
+    </div>
+  </details>
+  <details id="gemini-key-setup">
+    <summary>영상 화면 분석 · Gemini API 키 등록</summary>
+    <p class="hint">Claude를 선택했을 때 업로드 영상의 화면도 분석하려면 등록하세요. GPT를 선택하면 등록된 OpenAI 키로 화면을 분석합니다. Gemini API는 별도 사용량 요금이 발생할 수 있습니다. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Gemini 키 발급 페이지</a></p>
+    <div class="actions">
+      <input type="password" id="gemini-key-input" autocomplete="off" placeholder="Gemini API 키 붙여넣기" aria-label="Gemini API 키">
+      <button id="gemini-key-save" class="copy-prompts" type="button">키 저장</button>
+      <span id="gemini-key-status" class="hint"></span>
+    </div>
+  </details>
+  <details id="youtube-key-setup">
+    <summary>댓글 자동 수집 · YouTube Data API 키 등록</summary>
+    <p class="hint">공개된 유튜브 댓글을 가져와 ④ 대본 화면에 후보로 보여줍니다. 키가 없어도 영상 제작은 가능합니다. 댓글은 원문 텍스트를 카드로 재구성하며 작성자 이름은 표시하지 않습니다. <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer">YouTube Data API 사용 설정</a></p>
+    <div class="actions">
+      <input type="password" id="youtube-key-input" autocomplete="off" placeholder="YouTube Data API 키 붙여넣기" aria-label="YouTube Data API 키">
+      <button id="youtube-key-save" class="copy-prompts" type="button">키 저장</button>
+      <span id="youtube-key-status" class="hint"></span>
+    </div>
+  </details>
+</section>
 </main>
+</div>
+
+<datalist id="voice-list">
+  <option value="ko-KR-InJoonNeural">
+  <option value="ko-KR-SunHiNeural">
+  <option value="ko-KR-HyunsuMultilingualNeural">
+</datalist>
 
 <div id="preset-modal" class="modal hidden">
   <div class="modal-box card">
@@ -240,55 +441,6 @@
   </div>
 </div>
 
-<template id="job-tpl">
-  <article class="card job">
-    <div class="job-head">
-      <div>
-        <span class="badge mode"></span>
-        <span class="badge preset"></span>
-        <strong class="title"></strong>
-      </div>
-      <div class="job-meta">
-        <span class="created"></span>
-        <button class="del" title="삭제">✕</button>
-      </div>
-    </div>
-    <div class="progress"><div class="bar"></div></div>
-    <div class="status"></div>
-    <div class="review hidden">
-      <h3>대본 검토</h3>
-      <p class="hint">나레이션과 화면 키워드를 자유롭게 고친 뒤 렌더링을 시작하세요. 장면을 지우려면 나레이션을 비우세요.</p>
-      <div class="reference-summary hidden"></div>
-      <div class="source-review hidden"><h3>편집에 쓸 영상 후보</h3><p class="hint">사용할 영상만 체크하세요. 제목을 눌러 원본을 확인할 수 있습니다. 실제 사용할 구간은 대본과 자막을 맞춰 자동으로 고릅니다.</p><div class="source-list"></div></div>
-      <div class="comment-review hidden"><h3>댓글 카드 후보</h3><p class="hint">화면에 넣을 댓글을 최대 2개 선택하세요. 원문을 확인한 뒤 사용하세요.</p><div class="comment-list"></div></div>
-      <div class="flow-box">
-        <strong>Flow로 무료 이미지 만들기</strong>
-        <p class="hint">프롬프트를 복사해 Google Flow에 붙여넣고, 만든 이미지를 장면별 <b>＋</b> 버튼으로 올리면 API 비용이 들지 않습니다.</p>
-        <button class="copy-prompts">장면별 이미지 프롬프트 복사</button>
-      </div>
-      <div class="scenes"></div>
-      <div class="actions">
-        <button class="approve primary">렌더링 시작</button>
-      </div>
-    </div>
-    <div class="result hidden">
-      <video controls playsinline></video>
-      <div class="meta">
-        <h3>업로드 정보</h3>
-        <div class="titles"></div>
-        <textarea class="desc" rows="6" readonly></textarea>
-        <div class="tags"></div>
-        <div class="actions">
-          <a class="download" download>mp4 다운로드</a>
-          <button class="copy">제목+설명+태그 복사</button>
-          <a class="folder" target="_blank">meta.txt</a>
-        </div>
-      </div>
-    </div>
-    <details class="logs"><summary>로그</summary><pre></pre></details>
-  </article>
-</template>
-
 <div id="style-modal" class="modal hidden">
   <div class="modal-box card">
     <div class="modal-head">
@@ -304,6 +456,8 @@
       <label>메모 <span class="tag-opt">선택</span>
         <input type="text" id="sm-hint" placeholder="예: 훅이 특히 좋음. 그 부분 위주로 분석해줘">
       </label>
+      <label class="check"><input type="checkbox" id="sm-comment-layout"> 댓글 캡처가 언제·어디에 뜨는지도 분석</label>
+      <p class="hint" id="sm-comment-layout-hint">참고 영상을 내려받아 화면을 영상당 최대 24장 확인합니다. Gemini 또는 OpenAI 키가 필요하고 사용량 요금이 조금 발생할 수 있습니다. 찾은 자리에는 이 스타일로 만들 때 댓글이 자동으로 배치됩니다.</p>
       <div class="actions">
         <button id="sm-run" class="primary">분석하기</button>
         <span id="sm-progress" class="hint"></span>
@@ -339,6 +493,11 @@
       <label>기타 특징
         <textarea id="sm-notes" rows="3"></textarea>
       </label>
+      <div id="sm-comment-box" class="hidden">
+        <label>댓글 자동 배치</label>
+        <p class="hint" id="sm-comment-pattern"></p>
+        <button id="sm-comment-clear" class="link" type="button">댓글 자동 배치 끄기</button>
+      </div>
       <details id="sm-findings-box" class="hidden">
         <summary>분석 근거</summary>
         <ul id="sm-findings"></ul>
