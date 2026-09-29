@@ -3,3 +3,7 @@
 output/
 __pycache__/
 *.pyc
+# 참고 영상 분석용 (원본 1GB·추출 프레임은 저장소에 올리지 않는다)
+reference/frames/
+reference.mp4
+reference/*.mp4
