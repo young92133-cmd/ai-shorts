@@ -3,14 +3,22 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-29 — 자동 제작 MVP 2B.** 바로 아래 2B 절이 현재 상태다. 이어지는 2A·1단계·과거 기록은 당시 이력으로 읽는다.
+> **최종 갱신: 2026-09-29 — 2B 구현 결과의 GitHub 체크포인트.** 바로 아래 체크포인트와 2B 절이 현재 상태다. 이어지는 2A·1단계·과거 기록은 당시 이력으로 읽는다.
+
+### 이번 체크포인트에서 이어받을 상태
+
+- 현재 브랜치는 `feature/auto-video-mvp`이며 2B 기능 커밋은 `1845fca`다. 체크포인트 시작 시 작업 폴더는 clean, 원격 `origin/feature/auto-video-mvp`는 `503db41`로 로컬보다 1개 뒤였다. 이번 요청에서는 아래 2B 코드를 고치지 않고 이 문서만 갱신해 별도 체크포인트 커밋을 만든 뒤 두 커밋을 현재 원격 브랜치로 일반 push한다. 기존 커밋 변경·force push·다른 브랜치 수정은 금지한다.
+- 2B 커밋에 포함된 **13개 파일**: 새 파일 `app/pipeline/script_split.py`, `scripts/demo_script_split_mvp.py`, `tests/test_script_split.py`; 수정 파일 `HANDOFF.md`, `IMPLEMENTATION_PLAN.md`, `README.md`, `app/jobs.py`, `app/main.py`, `app/pipeline/blueprint.py`, `app/pipeline/models.py`, `app/pipeline/run.py`, `app/static/app.js`, `app/templates/index.html`. 각 파일의 역할은 아래 표에 적었다. 이번 체크포인트에서 코드/기능 변경은 없다.
+- 현재 진행 중인 기능 개발은 없으며 **다음 첫 개발 작업은 2C**다. 현재 확인된 차단 오류는 없다. 남은 제약은 설계도의 시간값이 TTS 실측 전 추정치라는 점(2C), 설계도 화면 종류·모션이 아직 실제 렌더 선택에 연결되지 않았다는 점(2D/2E), 주장별 팩트체크가 아직 없다는 점(후속 A)이다. 실제 GPT 호출과 브라우저의 전체 클릭 흐름은 미검증이다. `.env.example`의 “ANTHROPIC_API_KEY 필수” 머리말은 현재 기본 `config.yaml`의 `provider: claude`와 맞지 않는 오래된 안내다. Claude Code 로그인만으로 기본 AI 경로를 사용할 수 있으며, 예시 안내 수정은 후속 문서 정리로 남긴다.
+- 우선순위: ① 2C TTS 실측 시간으로 `blueprint.json` 갱신 및 `timeline.json`과 대조 ② 2D 허용 소스 기반 화면 자동 배치 ③ 2E 장면별 자막/모션 연결 ④ 2F/2G 최종 자동 렌더·제작 버튼 ⑤ 주장별 출처·팩트체크와 검토 게이트. 처음부터 편집기를 새로 만들지 말고 기존 TTS·ASS·FFmpeg·소스 대장을 재사용한다.
+- 이 문서의 아래 과거 절에 있는 “2B 미구현”, “다음은 2B/팩트체크”, “원격에 push하지 않음” 등은 **당시 이력**이다. 현재 기능·우선순위와 브랜치 상태는 이 체크포인트와 바로 아래 2B 절을 기준으로 한다.
 
 ## 2026-09-29 — 자동 제작 MVP 2B 완료 (현재 상태)
 
 ### 프로젝트·브랜치·안전한 시작점
 
 - 이 프로젝트는 개인용 한국어 쇼츠 제작기다. 목표 흐름은 주제/URL 또는 완성 대본 → 대본/장면 설계 → TTS → 권리 확인 화면 자료 → 자동 자막/효과 → 세로 MP4다. Python 3.12, FastAPI, 순수 JS, 기존 Claude Code/GPT 연동, Edge TTS, FFmpeg를 사용한다. CapCut 없이 기존 파이프라인으로 완성 MP4를 만든다.
-- 작업 브랜치는 `feature/auto-video-mvp`. 2B 시작 전 깨끗한 `503db41`을 `origin/feature/auto-video-mvp`에 push하고 양쪽 커밋 ID 일치를 확인했다. **2B 신규 커밋은 로컬에만 둔다.** `main`, 기존 `feature/source-registry`/`checkpoint/source-registry-stage1`, 원격 히스토리를 변경하지 않는다.
+- 작업 브랜치는 `feature/auto-video-mvp`. 2B 시작 전 깨끗한 `503db41`을 `origin/feature/auto-video-mvp`에 push하고 양쪽 커밋 ID 일치를 확인했다. 2B 기능 커밋 `1845fca`는 당시 요청에 따라 처음에는 로컬에만 뒀으며, **이번 체크포인트에서 현재 브랜치로 push한다.** `main`, 기존 `feature/source-registry`/`checkpoint/source-registry-stage1`은 건드리지 않고 원격 커밋 히스토리를 덮어쓰지 않는다.
 - 우선순위는 `IMPLEMENTATION_PLAN.md`의 2C→2G, 그 뒤 주장별 팩트체크와 검토 게이트, 스타일·차트·스톡 등이다. 팩트체크는 삭제된 기능이 아니다.
 
 ### 2B 구현과 사용자 흐름
