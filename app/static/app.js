@@ -4,11 +4,12 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const MODE_TEXT = {
   topic: { label: "주제", ph: "예: 철근 콘크리트가 강한 이유", hint: "한 줄이면 충분합니다. 리서치 → 대본 → 음성 → 이미지 → 영상까지 자동으로 만듭니다." },
   url: { label: "링크 (유튜브 / 뉴스 / 글)", ph: "https://www.youtube.com/watch?v=...\nhttps://n.news.naver.com/article/...", hint: "외부 링크는 내용과 구성 참고용입니다. 원본 영상·기사 이미지는 영상에 넣지 않습니다." },
+  script: { label: "완성 대본 붙여넣기", ph: "첫 문장으로 시선을 끕니다.\n다음 문장에서 상황을 설명합니다.\n핵심 정보를 이야기합니다.\n마지막에 결론을 전합니다.", hint: "최소 4문장으로 입력하세요. AI가 문장 순서를 지키며 4~8개 장면으로 나눕니다. 장면을 확인한 뒤 렌더링을 시작합니다." },
   upload: { label: "메모 (선택)", ph: "예: 이 영상과 같은 인물의 최근 인터뷰를 찾아줘", hint: "아래에 참고 영상을 올리고 선택하세요. 음성 내용을 분석하며, Gemini 키 또는 GPT를 쓰면 화면도 분석합니다." },
   auto: { label: "키워드 힌트 (선택)", ph: "비워두면 지금 뜨는 트렌드에서 프리셋에 맞는 주제를 자동으로 고릅니다", hint: "Google Trends(KR) + 뉴스에서 지금 핫한 키워드를 가져와 Claude 가 카테고리에 맞는 걸 고릅니다." },
 };
 const STAGE_LABEL = { queued: "대기", research: "리서치", script: "대본", tts: "음성", images: "이미지", render: "렌더링", done: "완료", error: "오류" };
-const MODE_LABEL = { topic: "주제", url: "URL", upload: "업로드 영상", auto: "핫이슈" };
+const MODE_LABEL = { topic: "주제", url: "URL", script: "완성 대본", upload: "업로드 영상", auto: "핫이슈" };
 
 let mode = "topic";
 const streams = {};
@@ -23,6 +24,10 @@ $$(".tab").forEach(b => b.addEventListener("click", () => {
   $("#input-label").textContent = t.label;
   $("#input").placeholder = t.ph;
   $("#input-hint").textContent = t.hint;
+  $("#input").rows = mode === "script" ? 10 : 2;
+  $("#submit").textContent = mode === "script" ? "대본으로 쇼츠 만들기" : "대본 만들기";
+  $("#opt-review").checked = mode === "script" ? true : $("#opt-review").checked;
+  $("#opt-review").disabled = mode === "script";
   $("#up-label").textContent = mode === "upload" ? "참고 영상 올리기" : "내 파일 첨부";
   $("#up-optional").classList.toggle("hidden", mode === "upload");
   $("#up-hint").textContent = mode === "upload"
@@ -36,10 +41,10 @@ $("#submit").addEventListener("click", async () => {
   const btn = $("#submit"), msg = $("#submit-msg");
   btn.disabled = true; msg.textContent = "";
   try {
-    const problem = llmRequirement();
+    const problem = mode === "script" ? "" : llmRequirement();
     if (problem) throw new Error(problem);
     if (mode === "upload" && !$("#reference-file").value) throw new Error("② 소재에서 분석할 영상 파일을 올리고 선택해 주세요.");
-    if (!["auto", "upload"].includes(mode) && !$("#input").value.trim()) throw new Error("② 소재에서 주제나 링크를 입력해 주세요.");
+    if (!["auto", "upload"].includes(mode) && !$("#input").value.trim()) throw new Error(mode === "script" ? "② 소재에 완성 대본을 붙여넣어 주세요." : "② 소재에서 주제나 링크를 입력해 주세요.");
     if (referenceLinks($("#instructions").value).length) {
       msg.textContent = "참고 영상 자막을 분석해 지침을 만드는 중입니다...";
       await analyzeInstructionLinks();
@@ -54,7 +59,7 @@ $("#submit").addEventListener("click", async () => {
         image_provider: $("#opt-images").value || undefined,
         ...selectedLLM(),
         voice: $("#opt-voice").value.trim() || undefined,
-        review: $("#opt-review").checked,
+        review: mode === "script" || $("#opt-review").checked,
         clip_mode: mode === "url" && $("#opt-clip").checked,
         visual_mode: mode === "url" && $("#opt-related").checked && /(?:youtu\.be|youtube\.com)\//i.test($("#input").value)
           ? "broll" : undefined,
@@ -833,13 +838,25 @@ function fillReview(job) {
 
   const box = $("#rv-scenes");
   box.innerHTML = "";
+  const planned = result.blueprint?.scenes || [];
+  if (job.mode === "script") {
+    const intro = document.createElement("p");
+    intro.className = "hint";
+    intro.textContent = result.split_method === "fallback"
+      ? "AI 분석에 실패해 문장 경계 기준으로 나눴습니다. 장면과 내용을 확인해 주세요. 화면 종류는 계획이며 실제로는 허용된 첨부·생성 이미지·내부 카드만 사용합니다."
+      : "AI가 이야기 흐름을 분석했습니다. 장면을 확인·수정한 뒤 렌더링을 시작하세요. 화면 종류는 계획이며 실제로는 허용된 첨부·생성 이미지·내부 카드만 사용합니다.";
+    box.append(intro);
+  }
   job.script.scenes.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "scene";
     row.dataset.orig = i;
+    const plan = planned[i];
     row.innerHTML = `<div class="num">${i + 1}</div>
       <textarea rows="2" data-k="narration">${esc(s.narration)}</textarea>
-      <input type="text" data-k="on_screen_text" value="${esc(s.on_screen_text)}" placeholder="화면 키워드">`;
+      <input type="text" data-k="on_screen_text" value="${esc(s.on_screen_text)}" placeholder="화면 키워드">
+      ${plan ? `<p class="hint">${esc(plan.scene_type || "장면")} · 예상 ${Number(plan.estimated_duration || plan.duration).toFixed(1)}초 · 화면 ${esc(plan.visual_type)}</p>
+      <p class="hint">자막: ${esc(plan.subtitle)}</p><p class="hint">화면 설명: ${esc(plan.visual_description || plan.image_prompt)}</p>` : ""}`;
     box.append(row);
   });
 

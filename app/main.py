@@ -47,7 +47,7 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 class CreateJob(BaseModel):
-    mode: str  # topic | url | auto | upload
+    mode: str  # topic | url | auto | upload | script
     input: str = ""
     preset: str
     options: dict[str, Any] = {}
@@ -305,10 +305,12 @@ async def list_jobs():
 
 @app.post("/api/jobs")
 async def create_job(body: CreateJob):
-    if body.mode not in ("topic", "url", "auto", "upload"):
-        raise HTTPException(400, "mode 는 topic | url | auto | upload")
+    if body.mode not in ("topic", "url", "auto", "upload", "script"):
+        raise HTTPException(400, "mode 는 topic | url | auto | upload | script")
     if body.mode not in ("auto", "upload") and not body.input.strip():
         raise HTTPException(400, "입력이 비어 있습니다.")
+    if body.mode == "script" and len(body.input.strip()) > 15000:
+        raise HTTPException(400, "완성 대본은 15,000자 이하로 입력해 주세요.")
     if body.options.get("clip_mode"):
         raise HTTPException(400, "URL 원본 클립 재편집은 권리 확인 기능이 없어 현재 사용할 수 없습니다. 권리 증빙을 입력한 내 영상을 업로드해 주세요.")
     if body.mode == "upload":
@@ -320,11 +322,11 @@ async def create_job(body: CreateJob):
             raise HTTPException(400, "선택한 영상 파일이 업로드 목록에 없습니다.")
         body.options["visual_mode"] = "broll"
     provider = body.options.get("llm_provider") or manager.cfg["llm"]["provider"]
-    if provider == "openai" and not env("OPENAI_API_KEY"):
+    if body.mode != "script" and provider == "openai" and not env("OPENAI_API_KEY"):
         raise HTTPException(400, "OPENAI_API_KEY 가 .env 에 없습니다.")
-    if provider == "anthropic" and not env("ANTHROPIC_API_KEY"):
+    if body.mode != "script" and provider == "anthropic" and not env("ANTHROPIC_API_KEY"):
         raise HTTPException(400, "ANTHROPIC_API_KEY 가 .env 에 없습니다.")
-    if provider == "claude" and not find_claude_cli():
+    if body.mode != "script" and provider == "claude" and not find_claude_cli():
         raise HTTPException(400, "claude.exe 를 찾을 수 없습니다. README 의 Claude 로그인 안내를 확인하세요.")
     try:
         job = manager.create(body.mode, body.input.strip(), body.preset, body.options)

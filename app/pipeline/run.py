@@ -15,7 +15,7 @@ from . import assets as assetmod
 from . import blueprint as blueprintmod
 from . import broll as brollmod
 from . import clips as clipmod
-from . import comments as commentmod, reference as refmod, research, script as scriptmod, youtube
+from . import comments as commentmod, reference as refmod, research, script as scriptmod, script_split, youtube
 from .assets import kind_of
 from .images import get_images
 from .images.base import make_fallback_card, resize_cover
@@ -184,7 +184,7 @@ async def run_pipeline(
     reference_name: str = "",
     upload_rights: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """mode: topic | url | auto. 결과 dict 에 산출물 경로를 담아 돌려준다.
+    """mode: topic | url | auto | upload | script. 결과 dict 에 산출물 경로를 담아 돌려준다.
 
     style 이 주어지면 그 지침을 따르고, 없으면 소재를 분석해 구성을 자동으로 정한다.
     visual_mode: images | broll | clip. 비우면 프리셋 기본값 → 자동 분석 결과 순.
@@ -203,6 +203,8 @@ async def run_pipeline(
     fonts_dir = Path(cfg["paths"]["assets"]) / "fonts"
     sub_cfg = preset.get("subtitle", {})
     visual_mode = visual_mode or preset.get("visual_mode", "")
+    if mode == "script":
+        visual_mode = "images"  # 권리 미확인 외부 자료를 자동 탐색하지 않는다.
     if clip_mode:
         visual_mode = "clip"
     result: dict[str, Any] = {"job_dir": str(job_dir), "mode": mode, "style": (style or {}).get("name", "")}
@@ -221,7 +223,9 @@ async def run_pipeline(
     reference_query = ""
 
     # 유튜브가 아닌 링크(기사·커뮤니티 글)가 섞여 있으면 기사 모드
-    if mode == "upload":
+    if mode == "script":
+        progress("research", 100, "입력한 완성 대본을 사용합니다. 별도 자료 조사는 하지 않습니다.")
+    elif mode == "upload":
         reference_path = job_dir / "uploads" / Path(reference_name).name
         if not reference_name or not reference_path.is_file() or kind_of(reference_path) != "video":
             raise RuntimeError("참고 영상 파일이 없습니다. 영상 파일을 올린 뒤 다시 시도해 주세요.")
@@ -317,7 +321,7 @@ async def run_pipeline(
 
     # ---------- 2. 제작 방향 (자동 모드) ----------
     plan = None
-    if not style:
+    if not style and mode != "script":
         progress("script", 5, "소재 분석해서 구성 정하는 중")
         try:
             plan = await scriptmod.make_plan(llm, preset, topic, docs, int(vcfg["target_seconds"]), instructions)
@@ -330,9 +334,19 @@ async def run_pipeline(
 
     # ---------- 3. 대본 ----------
     style_note = f" / 스타일: {style['name']}" if style else ""
-    progress("script", 10, f"대본 작성 중 ({llm['provider']} / {llm['model']}{style_note})")
-    script = await scriptmod.write_script(llm, preset, topic, docs, int(vcfg["target_seconds"]),
-                                          extra_context, instructions, style, plan)
+    if mode == "script":
+        progress("script", 10, "완성 대본을 이야기 흐름에 따라 장면으로 나누는 중")
+        script, split_method = await script_split.split_finished_script(
+            llm, input_text, preset=preset, instructions=instructions)
+        topic = script.topic
+        result["topic"] = topic
+        result["split_method"] = split_method
+        if split_method == "fallback":
+            progress("script", 75, "AI 장면 분석이 어려워 문장 경계 기준으로 나눴습니다. 검토 화면에서 확인해 주세요.")
+    else:
+        progress("script", 10, f"대본 작성 중 ({llm['provider']} / {llm['model']}{style_note})")
+        script = await scriptmod.write_script(llm, preset, topic, docs, int(vcfg["target_seconds"]),
+                                              extra_context, instructions, style, plan)
     (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 80, f"대본 {len(script.scenes)}장면, {len(script.full_narration())}자")
     # Show actual candidate sources/comments before the user approves the edit.
@@ -375,6 +389,11 @@ async def run_pipeline(
                  [:min(2, len(comment_slots))]]
     result["suggested_comment_ids"] = suggested
     choices: dict[str, Any] = {"comment_ids": suggested}
+    if mode == "script":
+        draft = blueprintmod.from_script(script, gap=float(vcfg.get("scene_gap", 0.25)),
+                                         width=int(vcfg["width"]), height=int(vcfg["height"]),
+                                         fps=int(vcfg["fps"]))
+        blueprintmod.save(job_dir, draft)
     if review:
         script, choices = await review(script, {
             "topic": topic,
@@ -382,6 +401,8 @@ async def run_pipeline(
             "comment_candidates": comment_candidates,
             "suggested_comment_ids": suggested,
             "reference": result.get("reference"),
+            "blueprint": draft.model_dump() if mode == "script" else None,
+            "split_method": result.get("split_method", ""),
         })
         (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
         _apply_voice(cfg, choices)

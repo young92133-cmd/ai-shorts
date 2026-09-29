@@ -1,6 +1,6 @@
 """기존 장면별 Script를 자동 영상 제작 설계도로 변환한다.
 
-2A에서는 이미 생성된 대본을 연결한다. 직접 쓴 텍스트의 AI 장면 분할은 2B,
+2A의 기존 대본 및 2B의 완성 대본 분할 결과를 연결한다.
 TTS 실측 시간 반영은 2C가 담당한다. 기존 timeline.json의 렌더 계약은 바꾸지 않는다.
 """
 from __future__ import annotations
@@ -30,13 +30,16 @@ def from_script(script: Script, *, gap: float = 0.25, width: int = 1080,
         duration = round(speech + (0.5 if index == len(script.scenes) - 1 else gap), 3)
         end = round(start + duration, 3)
         scenes.append(BlueprintScene(
-            index=index, start=start, end=end, duration=duration,
-            narration=narration, subtitle=narration,
-            visual_type="image" if scene.image_prompt.strip() else "card",
+            index=index, scene_id=f"scene_{index + 1:02d}", scene_type=getattr(scene, "scene_type", ""),
+            start=start, end=end, duration=duration, estimated_duration=duration,
+            narration=narration, subtitle=getattr(scene, "subtitle", "").strip() or narration,
+            visual_type=getattr(scene, "visual_type", "") or ("image" if scene.image_prompt.strip() else "card"),
+            visual_description=getattr(scene, "visual_description", "").strip() or scene.image_prompt.strip(),
             image_prompt=scene.image_prompt.strip(),
-            motion="zoom_in" if index % 2 == 0 else "zoom_out",
+            source_requirement=getattr(scene, "source_requirement", ""), notes=getattr(scene, "notes", ""),
+            motion=getattr(scene, "motion", "") or ("zoom_in" if index % 2 == 0 else "zoom_out"),
             emphasis_text=scene.on_screen_text.strip(),
-            transition="cut" if index == 0 else "fade",
+            transition=getattr(scene, "transition", "") or ("cut" if index == 0 else "fade"),
         ))
         start = end
     return VideoBlueprint(topic=script.topic, width=width, height=height, fps=fps,

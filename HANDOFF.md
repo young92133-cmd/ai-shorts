@@ -3,7 +3,44 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-29 — 자동 제작 MVP 2A.** 아래 1단계·2026-09-24 기록은 당시 이력이다. 현재 상태는 이 절을 우선한다.
+> **최종 갱신: 2026-09-29 — 자동 제작 MVP 2B.** 바로 아래 2B 절이 현재 상태다. 이어지는 2A·1단계·과거 기록은 당시 이력으로 읽는다.
+
+## 2026-09-29 — 자동 제작 MVP 2B 완료 (현재 상태)
+
+### 프로젝트·브랜치·안전한 시작점
+
+- 이 프로젝트는 개인용 한국어 쇼츠 제작기다. 목표 흐름은 주제/URL 또는 완성 대본 → 대본/장면 설계 → TTS → 권리 확인 화면 자료 → 자동 자막/효과 → 세로 MP4다. Python 3.12, FastAPI, 순수 JS, 기존 Claude Code/GPT 연동, Edge TTS, FFmpeg를 사용한다. CapCut 없이 기존 파이프라인으로 완성 MP4를 만든다.
+- 작업 브랜치는 `feature/auto-video-mvp`. 2B 시작 전 깨끗한 `503db41`을 `origin/feature/auto-video-mvp`에 push하고 양쪽 커밋 ID 일치를 확인했다. **2B 신규 커밋은 로컬에만 둔다.** `main`, 기존 `feature/source-registry`/`checkpoint/source-registry-stage1`, 원격 히스토리를 변경하지 않는다.
+- 우선순위는 `IMPLEMENTATION_PLAN.md`의 2C→2G, 그 뒤 주장별 팩트체크와 검토 게이트, 스타일·차트·스톡 등이다. 팩트체크는 삭제된 기능이 아니다.
+
+### 2B 구현과 사용자 흐름
+
+- ② 소재에서 **「완성 대본 직접 입력」** 탭에 최소 4문장의 완성 대본을 붙여넣고 ③ **「대본으로 쇼츠 만들기」**를 누른다. 기존 **주제/URL → AI 대본 생성** 경로는 그대로다. 직접 대본은 별도 리서치·재작성 없이 원문을 보존한다.
+- 기존 `ask_structured()`로 Claude/GPT가 원문 문장 번호를 의미별로 4~8묶음으로 계획한다. Hook/상황/핵심/변화/근거/결론/CTA, 화면 종류·설명, 강조 문구, 줌/팬·전환, 소스 요구·메모를 제안한다. 원문 순서/누락, 장면 수, 화면 선택지, 과도한 길이를 검사한다. API/JSON/계획 오류는 문장 경계에서 길이를 균형 있게 나누는 내부 카드 계획으로 대체한다. AI 없이도 이 대체 경로는 사용 가능하다. 최소 4문장 미만은 입력 오류를 안내한다.
+- `PlannedScene/PlannedScript`는 기존 `Scene/Script`의 별도 하위 모델이다. 주제/URL 대본용 AI 구조화 응답 형식을 바꾸지 않는다. `blueprint.json`에 `scene_id`, `scene_type`, 예상 시작/종료/길이, 내레이션/자막, 화면 종류/설명, 강조 문구, 움직임/전환, `source_requirement`, `notes`를 기록한다.
+- 직접 대본은 `review=false`여도 ④ 검토에서 **반드시 일시정지**한다. 장면 순서·나레이션·자막·화면 설명·예상 시간을 확인한다. 기존 UI에서 나레이션·키워드를 수정하고 장면을 삭제할 수 있다. 나레이션 수정 시 설계도 자막도 함께 바꾼다. 승인 후 기존 TTS·자막·소스 대장 가드·렌더가 실행된다. 기존 화면 자료 선택/렌더는 설계도 `visual_type`을 아직 직접 사용하지 않는다(2D/2E).
+- 주제/URL의 기존 생성 대본도 2A 설계도로 이어진다. 직접 대본은 출처/숫자를 자동 확인하지 않는다. 타인 영상·기사·댓글은 참고 전용이며 실제 화면에는 권리 확인된 첨부·AI 생성 이미지·내부 카드를 쓴다. 게시 전 사실 검토가 필요하다.
+
+### 이번 변경 파일
+
+| 파일 | 실제 변경 |
+|---|---|
+| 신규 `app/pipeline/script_split.py` | 문장 분리, 구조화 AI 장면 계획, 원문/길이 검증, 오류 시 길이 균형 대체. |
+| `app/pipeline/models.py`, `app/pipeline/blueprint.py` | 2B 전용 계획 모델과 확장된 장면 설계도. 기존 `Script` 계약 유지. |
+| `app/pipeline/run.py` | `script` 입력 모드, 검토 전 설계도 저장, 검토 후 재생성, 기존 렌더 경로 연결. |
+| `app/jobs.py`, `app/main.py` | 직접 대본 API 모드, 강제 검토, 승인 수정 보존, 설계도/AI 대체 상태 노출. |
+| `app/static/app.js`, `app/templates/index.html` | 직접 대본 입력 탭·버튼, ④ 장면 계획 미리보기와 실패 안내. |
+| 신규 `tests/test_script_split.py` | 짧은/긴/경제 대본, 원문·정보 보존, AI 실패, API 입력, 검토 전 설계도, 승인 수정 테스트 9개. |
+| 신규 `scripts/demo_script_split_mvp.py` | 새 입력 경로의 무료 실제 렌더 재현. AI 응답만 고정 목. |
+| `README.md`, `IMPLEMENTATION_PLAN.md`, `HANDOFF.md` | 사용자 사용법, 2B 완료 상태·검증 결과·다음 단계 갱신. |
+
+### 검증·남은 일·실행
+
+- 기존 41개 + 신규 9개 = **50개 자동 테스트 통과**: `.venv\Scripts\python.exe -m unittest discover -s tests -q`. 실제 Claude Code 구조화 호출 1회에서 4장면/원문 보존을 확인했다. GPT API 실호출과 실제 브라우저 클릭 흐름은 미검증이다.
+- 새 경로에서 Edge TTS(20.1초) → 내부 생성 카드 4장 → ASS 자막 → FFmpeg로 **20.07초, 1080×1920 MP4**를 실제 만들었다. 2B 전용 모델 분리 후 재검증한 산출물: `output/mvp_script_split_20260929_214546/final.mp4`, 같은 폴더의 `blueprint.json`/`sources.json`/`timeline.json`. MP4는 968,119바이트이며 대장에 기록된 5개 소스는 모두 사용 가능 상태다. `output/`은 Git 제외. 재현: `.venv\Scripts\python.exe scripts/demo_script_split_mvp.py`; 이 데모의 AI 계획만 고정 목이며 음성/렌더는 실제다.
+- 다음 **2C**: `blueprint.json`의 추정 시간을 장면별 TTS 실제 길이에 맞춰 갱신하고 `timeline.json`과 일치시킨다. 현재 MP4는 기존 실측 타임라인으로 정상 렌더되지만 설계도의 `timing`은 `estimated`다. 장면별 `visual_type` 렌더 적용은 2D, 장면별 모션은 2E, 원클릭 전체 제작은 2G다. BGM 자동 선택/효과음/차트 실제 생성/여러 편 동시 제작은 이번 2B 범위가 아니다.
+- 실행: 루트 `AI Shorts 실행.cmd` 더블클릭 또는 `.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8765`. 기존 서버를 켜 둔 상태라면 새 코드가 반영되도록 서버를 재시작해야 한다. 테스트에는 `.venv`, FFmpeg가 필요하고 실기기 데모의 Edge TTS는 인터넷 연결이 필요하다. 실제 AI 분석은 로그인한 `claude.exe` 또는 `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`가 필요하며 실패 시 문장 경계 대체가 동작한다. `.env`, 키, 토큰, `output/`, 참고 원본 영상을 Git에 넣지 말 것.
+- 절대 건드리지 말 것: 기존 완료 영상, CapCut 드래프트/`root_meta_info.json`, 원격 히스토리·다른 브랜치. 수정 주의: `SourceRegistry`/`guard_timeline`의 권리 검사, `Script`의 기존 LLM 구조화 계약, `timeline.json`의 재렌더 계약, `awaiting_review` 이벤트 상태. 자세한 역사적 설계·환경 변수는 아래 기록과 `.env.example`을 참조한다.
 
 ## 2026-09-29 — 자동 MP4 제작 우선순위와 2A 장면 설계도
 

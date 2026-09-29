@@ -26,17 +26,39 @@ class Script(BaseModel):
         return " ".join(s.narration for s in self.scenes)
 
 
+class PlannedScene(Scene):
+    """2B 완성 대본 전용 장면 정보. 기존 Script AI 응답 형식은 유지한다."""
+    scene_type: str = ""
+    subtitle: str = ""
+    visual_type: str = ""
+    visual_description: str = ""
+    source_requirement: str = ""
+    notes: str = ""
+    motion: str = ""
+    transition: str = ""
+
+
+class PlannedScript(Script):
+    scenes: list[PlannedScene] = Field(description="완성 대본을 이야기 흐름에 따라 나눈 4~8개 장면")
+
+
 class BlueprintScene(BaseModel):
     """대본에서 만든 장면 설계. 2A의 시간은 TTS 측정 전 추정치다."""
     index: int
+    scene_id: str = ""
+    scene_type: str = ""
     start: float
     end: float
     duration: float
+    estimated_duration: float = 0.0
     narration: str
     subtitle: str
-    visual_type: Literal["image", "video", "chart", "motion", "card"] = "image"
+    visual_type: Literal["image", "video", "chart", "motion", "card", "generated_image", "stock_image", "stock_video", "source_material", "text_card", "motion_graphic"] = "image"
+    visual_description: str = ""
     image_prompt: str = ""
     source_id: str = ""
+    source_requirement: str = ""
+    notes: str = ""
     motion: Literal["zoom_in", "zoom_out", "pan_left", "pan_right", "static"] = "zoom_in"
     emphasis_text: str = ""
     transition: Literal["cut", "fade"] = "fade"
@@ -221,4 +243,4 @@ class ResearchDoc(BaseModel):
     published: str = ""
 
 
-JobMode = Literal["topic", "url", "auto"]
+JobMode = Literal["topic", "url", "auto", "upload", "script"]

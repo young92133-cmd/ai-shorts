@@ -14,7 +14,7 @@ from typing import Any
 
 from .config import load_config, load_presets, merge_options, save_preset
 from .pipeline.assets import move_uploads
-from .pipeline.models import Script
+from .pipeline.models import PlannedScript, Script
 from .pipeline.run import rerender, run_pipeline
 from .pipeline.sources import SourceRegistry
 from .pipeline.styles import delete_style, load_styles, nfc, save_style
@@ -45,7 +45,7 @@ class Job:
             "id": self.id, "mode": self.mode, "input": self.input, "preset": self.preset, "options": self.options,
             "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message,
             "created": self.created, "error": self.error, "logs": self.logs[-40:], "script": self.script,
-            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "suggested_comment_ids", "final_sources", "timeline", "blueprint", "exports", "rendered_at")},
+            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "suggested_comment_ids", "final_sources", "timeline", "blueprint", "split_method", "exports", "rendered_at")},
         }
 
 
@@ -162,7 +162,10 @@ class JobManager:
                                       or any(not isinstance(i, int) or not 0 <= i < n_orig for i in scene_map)):
             raise ValueError("장면 순서 정보가 올바르지 않습니다.")
         if script_data:
-            new_script = Script.model_validate(script_data).model_dump()
+            new_script = (PlannedScript if job.mode == "script" else Script).model_validate(script_data).model_dump()
+            if job.mode == "script":
+                for scene in new_script["scenes"]:
+                    scene["subtitle"] = scene["narration"]  # 검토 화면에서 고친 문구와 설계도 자막을 동기화
             if scene_map is not None and len(scene_map) != len(new_script["scenes"]):
                 raise ValueError("장면 순서 정보와 대본 장면 수가 다릅니다.")
             job.script = new_script
@@ -255,7 +258,7 @@ class JobManager:
             await job._review_event.wait()
             job.status, job.message = "running", "대본 확정"
             self._emit(job)
-            return Script.model_validate(job.script), job.review_choices
+            return (PlannedScript if job.mode == "script" else Script).model_validate(job.script), job.review_choices
         return fn
 
     async def _rerender(self, job: Job) -> None:
@@ -296,7 +299,7 @@ class JobManager:
                 result = await run_pipeline(
                     self._job_dir(job.id), job.mode, job.input, run_cfg,
                     progress=self._progress(job),
-                    review=self._review(job) if job.options.get("review") else None,
+                    review=self._review(job) if job.mode == "script" or job.options.get("review") else None,
                     clip_mode=bool(job.options.get("clip_mode")),
                     instructions=str(job.options.get("instructions") or ""),
                     style=self.styles.get(nfc(job.options.get("style_id") or "")),
