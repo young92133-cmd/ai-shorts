@@ -23,6 +23,7 @@ from .jobs import JobManager
 from .pipeline.assets import kind_of
 from .pipeline.llm import find_claude_cli
 from .pipeline import capcut as capcutmod, timeline as timelinemod
+from .pipeline.sources import SourceRegistry, guard_timeline
 from .pipeline.comment_layout import analyze_comment_layout, place as place_comment
 from .pipeline.styles import analyze_references, style_to_dict
 
@@ -308,6 +309,8 @@ async def create_job(body: CreateJob):
         raise HTTPException(400, "mode 는 topic | url | auto | upload")
     if body.mode not in ("auto", "upload") and not body.input.strip():
         raise HTTPException(400, "입력이 비어 있습니다.")
+    if body.options.get("clip_mode"):
+        raise HTTPException(400, "URL 원본 클립 재편집은 권리 확인 기능이 없어 현재 사용할 수 없습니다. 권리 증빙을 입력한 내 영상을 업로드해 주세요.")
     if body.mode == "upload":
         token = re.sub(r"[^a-zA-Z0-9_-]", "", str(body.options.get("upload_token") or ""))
         name = str(body.options.get("reference_name") or "")
@@ -338,6 +341,13 @@ async def get_job(job_id: str):
     return job.public()
 
 
+@app.get("/api/jobs/{job_id}/sources")
+async def get_sources(job_id: str):
+    if not manager.get(job_id):
+        raise HTTPException(404)
+    return [item.model_dump() for item in SourceRegistry(manager.job_dir(job_id)).items.values()]
+
+
 @app.post("/api/jobs/{job_id}/approve")
 async def approve(job_id: str, body: Approve):
     if not manager.get(job_id):
@@ -351,7 +361,8 @@ async def approve(job_id: str, body: Approve):
 
 
 @app.post("/api/jobs/{job_id}/scene-visual")
-async def scene_visual(job_id: str, scene: int = Form(...), file: UploadFile = File(...)):
+async def scene_visual(job_id: str, scene: int = Form(...), file: UploadFile = File(...),
+                       rights: str = Form("{}")):
     """대본 검토 중에 특정 장면에 쓸 파일을 올린다 (Flow 에서 만든 이미지 등).
 
     scene_NN_ 파일명 규칙으로 저장하면 assets.plan_assets 가 그 장면에 고정 배치한다.
@@ -367,14 +378,24 @@ async def scene_visual(job_id: str, scene: int = Form(...), file: UploadFile = F
     name = Path(file.filename or "file").name.replace("\\", "_")
     if kind_of(Path(name)) is None:
         raise HTTPException(400, f"지원하지 않는 형식입니다: {name}")
+    try:
+        proof = json.loads(rights)
+        if not isinstance(proof, dict):
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(400, "권리 확인 정보가 올바르지 않습니다.")
 
     up = manager.output / job_id / "uploads"
     up.mkdir(parents=True, exist_ok=True)
     for old in up.glob(f"scene_{scene:02d}_*"):   # 같은 장면에 다시 올리면 교체
         old.unlink(missing_ok=True)
+        if (manager.job_dir(job_id) / "sources.json").exists():
+            SourceRegistry(manager.job_dir(job_id)).remove_path(old)
     out = up / f"scene_{scene:02d}_{name}"
     out.write_bytes(await file.read())
-    return {"ok": True, "scene": scene, "name": out.name, "kind": kind_of(out)}
+    item = SourceRegistry(manager.job_dir(job_id)).add(kind=kind_of(out) or "image", origin="upload",
+                path=str(out), title=out.name, rights=proof, used_for=f"scene_{scene:02d}")
+    return {"ok": True, "scene": scene, "name": out.name, "kind": kind_of(out), "usable_in_video": item.usable_in_video}
 
 
 @app.get("/api/jobs/{job_id}/scene-visuals")
@@ -383,10 +404,13 @@ async def scene_visuals(job_id: str):
     if not manager.get(job_id):
         raise HTTPException(404)
     up = manager.output / job_id / "uploads"
-    out: dict[int, dict[str, str]] = {}
+    registry = SourceRegistry(manager.job_dir(job_id))
+    out: dict[int, dict[str, Any]] = {}
     for p in sorted(up.glob("scene_[0-9][0-9]_*")) if up.is_dir() else []:
         if p.is_file() and kind_of(p):
-            out[int(p.name[6:8])] = {"name": p.name, "kind": kind_of(p) or ""}
+            item = registry.by_path(p)
+            out[int(p.name[6:8])] = {"name": p.name, "kind": kind_of(p) or "",
+                                     "usable_in_video": bool(item and item.usable_in_video)}
     return out
 
 
@@ -424,12 +448,18 @@ async def put_timeline(job_id: str, body: dict[str, Any]):
         p = (job_dir / rel_path).resolve()
         if p.parent == overlays:
             p.unlink(missing_ok=True)
+            if (job_dir / "sources.json").exists():
+                SourceRegistry(job_dir).remove_path(p)
     return tl
 
 
 @app.post("/api/jobs/{job_id}/rerender")
 async def rerender_job(job_id: str):
-    _editable_job(job_id)
+    job_dir = _editable_job(job_id)
+    try:
+        guard_timeline(job_dir, timelinemod.load(job_dir))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     try:
         return manager.request_rerender(job_id).public()
     except ValueError as e:
@@ -438,10 +468,18 @@ async def rerender_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/overlays")
 async def add_overlays(job_id: str, files: list[UploadFile] = File(...), scene: int = Form(-1),
-                       start: float = Form(-1.0), duration: float = Form(3.5)):
+                       start: float = Form(-1.0), duration: float = Form(3.5), rights: str = Form("{}")):
     """댓글 캡처 등 이미지를 영상 위에 얹을 카드로 추가한다. 여러 장이면 장면을 하나씩 밀며 배치."""
     job_dir = _editable_job(job_id)
     _require_done(job_id)
+    try:
+        proof = json.loads(rights)
+        if not isinstance(proof, dict):
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(400, "권리 확인 정보를 다시 입력해 주세요.")
+    if not proof.get("rights_confirmed") or proof.get("license") not in ("my_channel", "ai_generated", "pexels", "pixabay", "kogl_type0", "kogl_type1"):
+        raise HTTPException(400, "댓글 캡처는 사용 권한을 확인한 직접 제작·허용 소재만 올릴 수 있습니다.")
     tl = timelinemod.load(job_dir)
     total = timelinemod.total_duration(tl)
     scenes = tl["scenes"]
@@ -466,6 +504,12 @@ async def add_overlays(job_id: str, files: list[UploadFile] = File(...), scene: 
             out = out_dir / f"{Path(name).stem}_{n}{Path(name).suffix}"
             n += 1
         out.write_bytes(data)
+        item = SourceRegistry(job_dir).add(kind="comment", origin="upload", path=str(out), title=out.name,
+                                            rights=proof, used_for="overlay")
+        if not item.usable_in_video:
+            out.unlink(missing_ok=True)
+            skipped.append(f"{out.name} (권리 증빙 불충분)")
+            continue
         slot = place_comment(slots, used_slots, total) if start < 0 and scene < 0 else None
         length, y = max(0.5, duration), None
         if slot:
@@ -507,6 +551,10 @@ async def capcut_info():
 async def export_capcut(job_id: str):
     job_dir = _editable_job(job_id)
     _require_done(job_id)
+    try:
+        guard_timeline(job_dir, timelinemod.load(job_dir))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     root = capcutmod.find_drafts_root(manager.cfg)
     if not root:
         raise HTTPException(400, "CapCut 프로젝트 폴더를 찾지 못했습니다. CapCut 을 설치·실행했는지 확인해 주세요.")
@@ -523,6 +571,10 @@ async def export_capcut(job_id: str):
 async def export_pack(job_id: str):
     job_dir = _editable_job(job_id)
     _require_done(job_id)
+    try:
+        guard_timeline(job_dir, timelinemod.load(job_dir))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     try:
         out = await capcutmod.export_pack(timelinemod.load(job_dir), job_dir, job_dir / "capcut_pack.zip")
     except Exception as e:  # noqa: BLE001

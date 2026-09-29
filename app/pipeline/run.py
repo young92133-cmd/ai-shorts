@@ -21,9 +21,10 @@ from .images.base import make_fallback_card, resize_cover
 from .media import concat_audio, extract_frames, has_audio, probe_duration, require_ffmpeg
 from .models import ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
 from . import timeline as timelinemod
+from .sources import SourceRegistry, guard_timeline
 from .comment_layout import clean_slots, place as place_comment
-from .render import make_thumbnail, render_clips
-from .subtitles import build_ass, words_to_lines
+from .render import make_thumbnail
+from .subtitles import words_to_lines
 from .tts import get_tts
 
 ProgressFn = Callable[[str, int, str], None]
@@ -180,6 +181,7 @@ async def run_pipeline(
     style: dict[str, Any] | None = None,
     visual_mode: str = "",
     reference_name: str = "",
+    upload_rights: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """mode: topic | url | auto. 결과 dict 에 산출물 경로를 담아 돌려준다.
 
@@ -188,6 +190,12 @@ async def run_pipeline(
     """
     require_ffmpeg()
     job_dir.mkdir(parents=True, exist_ok=True)
+    registry = SourceRegistry(job_dir)
+    registry.save()
+    for file in (job_dir / "uploads").glob("*"):
+        if file.is_file() and kind_of(file):
+            registry.add(kind=kind_of(file), origin="upload", path=str(file), title=file.name,
+                         rights=(upload_rights or {}).get(file.name), used_for="reference" if file.name == reference_name else "candidate")
     preset = cfg["preset"]
     llm = cfg["llm"]
     vcfg = cfg["video"]
@@ -232,7 +240,7 @@ async def run_pipeline(
     elif mode == "url" and article_urls and not youtube_urls:
         progress("research", 5, f"링크 {len(article_urls)}개 분석 중")
         docs, sourced = await articlemod.fetch_articles(
-            article_urls, job_dir / "sourced", with_images=True,
+            article_urls, job_dir / "sourced", with_images=False,
             log=lambda m: progress("research", 40, m))
         if not docs:
             raise RuntimeError("링크에서 본문을 읽지 못했습니다. 주소를 확인해 주세요.")
@@ -247,6 +255,8 @@ async def run_pipeline(
         progress("research", 5, "유튜브 정보 가져오는 중")
         input_text = youtube_urls[0] if youtube_urls else input_text
         info = await youtube.fetch_info(input_text)
+        registry.add(kind="video", origin="url", url=input_text, title=info.get("title", ""),
+                     used_for="script_research")
         result["source"] = info
         progress("research", 20, f"'{info['title']}' 자막 가져오는 중")
         words = await youtube.fetch_transcript(input_text, job_dir)
@@ -269,20 +279,7 @@ async def run_pipeline(
             if until in ("research", "script"):
                 return result
 
-            progress("images", 10, "원본 영상 다운로드 중")
-            source = await youtube.download_media(input_text, job_dir, audio_only=False)
-            progress("render", 10, "자막·렌더링 중")
-            new_words = clipmod.retime_words(words, segments)
-            ass = build_ass(new_words, job_dir / "subs.ass", vcfg["width"], vcfg["height"], font=vcfg["font"],
-                            size=int(sub_cfg.get("size", 64)), highlight=sub_cfg.get("highlight", "#FFD400"),
-                            outline=sub_cfg.get("outline", "#000000")) if vcfg.get("subtitles", True) else None
-            final = await render_clips(source, segments, job_dir / "final.mp4", ass_path=ass, bgm=_find_bgm(cfg),
-                                       width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
-                                       bgm_volume=float(vcfg.get("bgm_volume", 0.1)) * 0.6, fonts_dir=fonts_dir)
-            await make_thumbnail(final, job_dir / "thumb.jpg")
-            result.update(video=str(final), thumb=str(job_dir / "thumb.jpg"), meta=str(job_dir / "meta.txt"))
-            progress("done", 100, "완료")
-            return result
+            raise ValueError("유튜브 원본 클립은 사용 권한이 확인되지 않아 제작할 수 없습니다. 권리 증빙을 입력한 내 영상을 업로드해 주세요.")
 
         topic = info["title"]
         docs = [ResearchDoc(title=info["title"], url=info["webpage_url"], text=youtube.words_to_text(words)[:12000])]
@@ -310,6 +307,9 @@ async def run_pipeline(
 
     result["topic"] = topic
     result["docs"] = [{"title": d.title, "url": d.url} for d in docs]
+    for doc in docs:
+        if doc.url:
+            registry.add(kind="article", origin="url", url=doc.url, title=doc.title, used_for="script_research")
     progress("research", 100, f"리서치 완료 ({len(docs)}건)")
     if until == "research":
         return result
@@ -352,10 +352,21 @@ async def run_pipeline(
                                       log=lambda m: progress("script", 86, m)))
         except Exception as exc:  # a missing search result must not prevent use of the local reference
             progress("script", 86, f"연관 영상 검색 실패: {exc}")
+        for source in broll_sources:
+            if source.url:
+                registry.add(kind="video", origin="url", url=source.url, title=source.title,
+                             used_for="broll_candidate")
         candidate_urls = youtube_urls + [s.url for s in broll_sources if s.url]
         comment_candidates = await commentmod.fetch_candidates(candidate_urls,
                                   log=lambda m: progress("script", 89, m))
-        result["source_candidates"] = [s.model_dump() for s in broll_sources]
+        for comment in comment_candidates:
+            if comment.get("url"):
+                registry.add(kind="comment", origin="url", url=comment["url"],
+                             title=comment.get("text", "")[:80], used_for="script_research")
+        result["source_candidates"] = [{**s.model_dump(), "usable_in_video": bool(
+            (registry.by_path(s.path) if s.path else registry.by_url(s.url)) and
+            (registry.by_path(s.path) if s.path else registry.by_url(s.url)).usable_in_video)}
+            for s in broll_sources]
         result["comment_candidates"] = comment_candidates
     # 스타일이 참고 영상에서 댓글 자리를 찾아 뒀으면, 좋아요 많은 댓글을 그 수만큼 미리 골라 둔다
     comment_slots = clean_slots((style or {}).get("comment_slots"))
@@ -373,9 +384,18 @@ async def run_pipeline(
         })
         (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
         _apply_voice(cfg, choices)
+        registry = SourceRegistry(job_dir)  # 검토 화면에서 새로 올린 장면 파일 반영
     if broll_sources and "source_indexes" in choices:
         chosen = set(choices["source_indexes"])
         broll_sources = [s for i, s in enumerate(broll_sources) if i in chosen]
+    permitted = []
+    for source in broll_sources:
+        item = registry.by_path(source.path) if source.path else registry.by_url(source.url)
+        if item and item.usable_in_video and source.path:
+            permitted.append(source)
+        else:
+            progress("images", 0, f"'{source.title}'은 영상 사용 권한이 없어 화면 소재에서 제외합니다.")
+    broll_sources = permitted
     selected_comments = [c for c in comment_candidates if c["id"] in set(choices.get("comment_ids", []))][:2]
     result["selected_comments"] = selected_comments
     # 화면에 쓴 기사 이미지의 출처를 설명란 출처 목록에 합친다
@@ -394,6 +414,7 @@ async def run_pipeline(
     narration, scene_audio = await _synthesize_scenes(cfg, script, job_dir, progress)
     total = await probe_duration(narration)
     result["narration"] = str(narration)
+    registry.add(kind="audio", origin="generated", path=str(narration), title="나레이션", used_for="narration")
     result["duration"] = total
     progress("tts", 100, f"나레이션 {total:.1f}초")
     if until == "tts":
@@ -450,6 +471,8 @@ async def run_pipeline(
                                          log=lambda m: progress("images", 80, m))
     if reference_path:
         uploads = [a for a in uploads if Path(a.path) != reference_path]
+    uploads = [a for a in uploads if (registry.by_path(a.path) and registry.by_path(a.path).usable_in_video)]
+    sourced = []  # 기사 이미지는 권리 증빙이 없으므로 영상 소재에서 제외
     if uploads:
         await assetmod.describe_assets(uploads, log=lambda m: progress("images", 82, m))
     visuals = await assetmod.resolve_visuals(llm, script.scenes, uploads, sourced,
@@ -470,6 +493,12 @@ async def run_pipeline(
         progress("images", 86, f"이미지 준비 {len(need_image)}장 ({cfg['images']['provider']})")
         made = await _prepare_visuals(cfg, script, need_image, job_dir, progress)
         images_by_scene = {v.scene_index: p for v, p in zip(need_image, made)}
+        for v, path in zip(need_image, made):
+            parent = registry.by_path(v.path) if v.kind == "upload" and v.path else None
+            registry.add(kind="image", origin="derived" if parent else "generated", path=str(path),
+                         title=f"장면 {v.scene_index + 1}",
+                         rights=parent.model_dump() if parent else None, parent_id=parent.id if parent else "",
+                         used_for=f"scene_{v.scene_index:02d}")
     result["images"] = [str(p) for p in images_by_scene.values()]
     result["visuals"] = [v.model_dump() for v in visuals]
     progress("images", 100, "비주얼 완료")
@@ -510,7 +539,7 @@ async def run_pipeline(
     bgm_volume = float(vcfg.get("bgm_volume", 0.1)) * (0.6 if use_broll else 1.0)
     tl = timelinemod.build_timeline(
         job_dir, width=vcfg["width"], height=vcfg["height"], fps=vcfg["fps"],
-        mode="broll" if use_broll else "slideshow", narration=narration, bgm=_find_bgm(cfg),
+        mode="broll" if use_broll else "slideshow", narration=narration, bgm=None,
         bgm_volume=bgm_volume, source_volume=float(vcfg.get("broll_source_volume", 0.12)),
         transition=float(vcfg.get("transition", 0.4)), scenes=tl_scenes,
         lines=words_to_lines([s.words for s in scene_audio]),
@@ -519,6 +548,9 @@ async def run_pipeline(
                         "outline": sub_cfg.get("outline", "#000000")},
         subtitles_enabled=bool(vcfg.get("subtitles", True)), titles_enabled=bool(vcfg.get("titles", True)),
         comments=tl_comments, comment_slots=comment_slots)
+    # 타인 댓글 후보는 대본 검토에만 남기고 영상에는 싣지 않는다.
+    tl["comments"] = []
+    guard_timeline(job_dir, tl)
     timelinemod.save(job_dir, tl)
     result["timeline"] = timelinemod.FILE
 
@@ -537,6 +569,7 @@ async def rerender(job_dir: Path, cfg: dict[str, Any], progress: ProgressFn = _n
     """
     require_ffmpeg()
     tl = timelinemod.load(job_dir)
+    guard_timeline(job_dir, tl)
     progress("render", 10, "자막·댓글을 적용해서 다시 렌더링 중 (1~3분)")
     tmp = job_dir / "final_new.mp4"
     tmp.unlink(missing_ok=True)

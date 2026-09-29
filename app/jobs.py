@@ -16,6 +16,7 @@ from .config import load_config, load_presets, merge_options, save_preset
 from .pipeline.assets import move_uploads
 from .pipeline.models import Script
 from .pipeline.run import rerender, run_pipeline
+from .pipeline.sources import SourceRegistry
 from .pipeline.styles import delete_style, load_styles, nfc, save_style
 
 
@@ -192,8 +193,9 @@ class JobManager:
         up = self._job_dir(job_id) / "uploads"
         if not up.is_dir():
             return
+        registry = SourceRegistry(self._job_dir(job_id)) if (self._job_dir(job_id) / "sources.json").exists() else None
         new_of = {orig: new for new, orig in enumerate(scene_map)}
-        staged: list[tuple[Path, str]] = []
+        staged: list[tuple[Path, Path, str]] = []
         for p in list(up.iterdir()):
             m = SCENE_FILE.match(p.name)
             if not p.is_file() or not m:
@@ -201,12 +203,16 @@ class JobManager:
             orig, rest = int(m.group(1)), m.group(2)
             if orig not in new_of:
                 p.replace(up / f"_removed_{p.name}")
+                if registry:
+                    registry.remove_path(p)
             elif new_of[orig] != orig:
                 tmp = up / f"_remap_{p.name}"
                 p.replace(tmp)                       # 이름이 겹치지 않게 두 단계로 옮긴다
-                staged.append((tmp, f"scene_{new_of[orig]:02d}_{rest}"))
-        for tmp, name in staged:
+                staged.append((p, tmp, f"scene_{new_of[orig]:02d}_{rest}"))
+        for old, tmp, name in staged:
             tmp.replace(up / name)
+            if registry:
+                registry.relocate(old, up / name)
 
     def delete(self, job_id: str) -> None:
         job = self.jobs.pop(job_id, None)
@@ -296,6 +302,7 @@ class JobManager:
                     style=self.styles.get(nfc(job.options.get("style_id") or "")),
                     visual_mode=str(job.options.get("visual_mode") or ""),
                     reference_name=str(job.options.get("reference_name") or ""),
+                    upload_rights=job.options.get("upload_rights") or {},
                 )
                 job.result = result
                 result["rendered_at"] = dt.datetime.now().isoformat(timespec="seconds")

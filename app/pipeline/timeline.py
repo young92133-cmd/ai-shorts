@@ -15,6 +15,7 @@ from typing import Any
 
 from .render import render_broll, render_slideshow
 from .subtitles import build_ass
+from .sources import guard_timeline
 
 VERSION = 1
 FILE = "timeline.json"
@@ -227,6 +228,8 @@ def ass_inputs(tl: dict[str, Any]) -> dict[str, Any]:
 async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
                           fonts_dir: Path | None = None) -> Path:
     """timeline.json 하나로 subs.ass 를 만들고 최종 영상을 렌더한다. 첫 렌더와 다시 만들기가 같은 코드를 쓴다."""
+    if (job_dir / "sources.json").exists():
+        guard_timeline(job_dir, tl)
     w, h, fps = int(tl["width"]), int(tl["height"]), int(tl["fps"])
     st = tl["subtitles"]["style"]
     ass = build_ass([], job_dir / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),

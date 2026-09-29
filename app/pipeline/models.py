@@ -78,6 +78,29 @@ class SourceVideo(BaseModel):
     used: float = 0.0       # 이 소스에서 쓴 총 길이(초)
 
 
+class SourceItem(BaseModel):
+    """잡별 소스 대장. usable_in_video는 클라이언트 입력을 신뢰하지 않고 계산한다."""
+    id: str
+    kind: str
+    origin: str
+    url: str = ""
+    path: str = ""
+    title: str = ""
+    parent_id: str = ""  # 리사이즈 등 가공 결과의 원본 소스
+    license: str = "unknown"
+    license_url: str = ""
+    license_checked_at: str = ""
+    commercial_allowed: bool = False
+    adaptation_allowed: bool = False
+    third_party_rights_checked: bool = False
+    rights_confirmed: bool = False
+    usable_in_video: bool = False
+    credit: str = ""
+    license_note: str = ""
+    used_for: list[str] = Field(default_factory=list)
+    retrieved_at: str = ""
+
+
 class BrollPick(BaseModel):
     scene_index: int = Field(description="이 구간을 쓸 장면 번호 (0부터)")
     source_index: int = Field(description="소스 영상 번호 (0부터). 쓸 만한 구간이 없으면 -1")

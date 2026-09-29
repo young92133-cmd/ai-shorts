@@ -148,7 +148,7 @@ class RenderTests(unittest.IsolatedAsyncioTestCase):
             job_dir = Path(folder)
             timeline.save(job_dir, _make_timeline(job_dir))
             (job_dir / "final.mp4").write_bytes(b"old")
-            with patch.object(run, "require_ffmpeg"), \
+            with patch.object(run, "guard_timeline"), patch.object(run, "require_ffmpeg"), \
                  patch.object(run.timelinemod, "render_timeline", new=AsyncMock(side_effect=RuntimeError("x"))):
                 with self.assertRaises(RuntimeError):
                     await run.rerender(job_dir, {"paths": {"assets": folder}})

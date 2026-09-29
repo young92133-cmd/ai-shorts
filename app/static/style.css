@@ -164,6 +164,11 @@ button.del { background: transparent; border: none; color: var(--muted); cursor:
 .dropzone.disabled { opacity: .4; cursor: not-allowed; }
 #up-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .up-item { display: flex; align-items: center; gap: 8px; background: #0c0e12; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.up-item { flex-wrap: wrap; }
+.source-rights { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0 6px; }
+.source-rights input, .source-rights select, #rv-rights input, #rv-rights select, #cap-rights input, #cap-rights select { min-width: 160px; max-width: 100%; }
+#rv-rights, #cap-rights { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+#rv-rights h3, #rv-rights p { flex: 0 0 100%; margin: 0; }
 .up-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .up-kind { flex: none; }
 .hidden { display: none !important; }

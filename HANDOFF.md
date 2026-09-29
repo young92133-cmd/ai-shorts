@@ -3,7 +3,46 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-24 (오후)** · §12의 9월 22일 숫자와 검증 결과는 당시 기록이다. 현재 상태는 아래 체크포인트 요약을 우선한다.
+> **최종 갱신: 2026-09-29 — 소스 대장 1단계.** 아래 2026-09-24 기록은 당시 이력이다. 현재 정책과 상태는 이 절을 우선한다.
+
+## 2026-09-29 — 1단계 소스 대장 완료 (`feature/source-registry`)
+
+### 프로젝트와 현재 상태
+
+- 한국어 AI 쇼츠를 주제·유튜브/기사 URL·업로드 영상·핫이슈에서 만들고, 조사→대본 검토→TTS→장면→9:16 MP4·메타 파일을 생산하는 개인 PC용 FastAPI 웹앱이다. Claude Code 구독 또는 OpenAI/Anthropic API를 선택할 수 있다. 완성 후 자막·댓글 이미지 편집, 재렌더, CapCut·재료 ZIP 내보내기가 있다. 자동 유튜브 업로드와 원격 웹앱은 없다.
+- 기술 스택: Python 3.12, FastAPI, Jinja/순수 JS, asyncio 단일 잡 큐, Pydantic, ffmpeg, yt-dlp, edge-tts. 실행은 루트 `AI Shorts 실행.cmd`, 주소 `http://127.0.0.1:8765/`.
+- `main`의 설계 문서 체크포인트 `8cbc5b5`는 GitHub에 push 완료. 이후 개발은 `feature/source-registry`에서만 진행했고 2단계(주장별 팩트체크) 이후는 미착수. `REFERENCE_VIDEO_ANALYSIS.md`는 영상 분석 근거, `IMPLEMENTATION_PLAN.md`는 단계·비용·저작권·장기 설계다.
+
+### 완료된 1단계와 수정 파일
+
+| 파일 | 실제 변경 |
+|---|---|
+| **신규** `app/pipeline/sources.py` | 잡별 `sources.json` 저장·로드, 권리 판정, 경로 이동/삭제, 렌더 전 검사. 기본 불허. |
+| **신규** `tests/test_sources.py` | 권리 유형·증빙·최초/재렌더/내보내기 차단·API 오류·장면 경로 이동 테스트 12개. |
+| `app/pipeline/models.py` | `SourceItem` 모델과 가공 결과의 원본 `parent_id`. |
+| `app/pipeline/run.py` | 업로드·리서치 URL·영상 후보·댓글 참고자료·TTS·장면 결과를 등록. 허용된 업로드 영상만 broll, 기사 이미지는 제외, 타인 댓글은 화면에서 제외, 외부 YouTube 클립 렌더 차단. 최초 렌더 전 검사. 권리 미확인 BGM 제외. |
+| `app/pipeline/timeline.py`, `app/pipeline/capcut.py` | 소스 대장이 있는 작업의 직접 렌더·CapCut·ZIP 출력 직전에 재검사. |
+| `app/main.py` | `GET /api/jobs/{id}/sources`, 장면/댓글 이미지 업로드 권리 입력, 재렌더·내보내기에서 명확한 409 안내. |
+| `app/jobs.py` | 업로드 파일별 권리 정보 전달, 장면 번호 변경 시 대장 경로도 이동. |
+| `app/static/app.js`, `app/static/style.css`, `app/templates/index.html` | 파일별 권리 유형·링크·근거·출처·확인 UI, 장면 후보 허용 배지와 댓글 참고 전용 안내. |
+| `README.md` | 사용자용 사용 흐름·소스 규칙을 새 정책에 맞게 갱신. |
+| `config.yaml` | `source_policy: strict`, 빈 `my_channels` 자리. 실제 채널 ID는 넣지 않는다. |
+| `tests/test_timeline_export.py` | 기존 ‘재렌더 실패 시 원본 보존’ 테스트에서 권리 검사만 격리. 정책의 허용/차단은 새 테스트에서 검증. |
+| `IMPLEMENTATION_PLAN.md` | 1단계 완료 표시, 실제 구현 차이 기록. |
+
+### 사용 규칙과 주의
+
+- 잡마다 `output/<id>/sources.json`에 소스 유형, URL/경로, 권리 종류·증빙·확인일, 상업/수정/제3자 권리, 사용 가능 여부, 사용처를 저장한다. `output/`과 `.env`는 Git 제외. API 키·토큰·개인 설정값을 Git에 넣지 말 것.
+- 업로드 기본값 `unknown`: 파일명이나 내 채널이라는 선택만으로 허용되지 않는다. 내 제작물/AI 생성 업로드는 권리 확인 체크와 개별 근거 링크 또는 설명이 필요하다. Pexels/Pixabay/공공누리 0·1유형은 개별 저작물 링크와 출처 표기까지 필요하다. 공공누리 2~4유형, 외부 유튜브/기사/댓글은 참고 전용이다. 프로그램이 새로 만든 음성·장면·카드는 대장에 기록해 사용한다. 업로드를 리사이즈한 장면은 `parent_id`로 원본 권리를 잇는다.
+- 기존 완료 잡의 `final.mp4`는 건드리지 않는다. 권리 대장이 없는 예전 잡은 재렌더/CapCut/ZIP을 막고 안내한다. 장면 파일을 삭제·교체·번호 이동할 때 대장 경로도 갱신할 것. CapCut 기존 드래프트 및 `root_meta_info.json`은 건드리지 말 것. 강제 push/기존 히스토리 수정 금지.
+- 검토 화면에서는 참고 후보를 보여주지만 외부 영상 체크박스는 비활성화한다. 타인 댓글 후보는 대본 참고용이다. 증빙 없는 업로드는 장면 재료에서 제외해 AI 이미지/카드로 대체한다. 기존 자막·TTS·이미지 제작·출력 구조를 유지한다.
+
+### 확인 결과, 한계, 다음 작업
+
+- 기존 자동 테스트 23개 + 신규 12개 = **35개 통과** (`.venv\Scripts\python.exe -m unittest discover -s tests -v`). `python -m compileall -q app tests`, `node --check app/static/app.js`, `git diff --check` 통과. 로컬 ffmpeg로 생성 이미지·음성의 2초짜리 180×320 MP4 실제 렌더 성공. 실제 유튜브/기사·유료 이미지 API·CapCut 데스크톱 열기 전체 시나리오는 이번 단계에서 실행하지 않았다.
+- 남은 제약: 채널 소유권을 URL로 자동 검증하지 않아 원격 URL 클립은 모두 차단한다. `my_channels`는 현재 미사용 설정이다. BGM은 별도 권리 입력 경로가 없어 새 영상에서 사용하지 않는다. AI 이미지 제공자별 약관 자동 검증은 없다. 사용자 권리 확인 진술의 진위와 스톡/공공누리 링크 내용은 자동 조사하지 않는다. 기존 완료 영상 자체는 지우거나 변경하지 않는다. 완성 화면의 실제 브라우저 사용성/CapCut 실기기 검증은 필요하다.
+- **다음 첫 작업은 2단계 주장별 팩트체크**다. `IMPLEMENTATION_PLAN.md`의 2단계만 별도로 구현하고, 기존 35개 회귀 테스트를 유지한다. 그 다음 3단계에서 G1 주제·G2 대본·G3 렌더 승인 게이트를 만든다. 권리 검사 우회가 생기지 않도록 신규 영상·음성·파일 경로를 항상 대장에 연결할 것.
+- 필요한 서비스: ffmpeg/ffprobe 필수. `claude.exe` 로그인 또는 `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`, 선택 기능에 `GEMINI_API_KEY`, `YOUTUBE_API_KEY` 등 기존 `.env.example` 참고. 테스트 자체는 유료 API를 호출하지 않는다. 사용자용 상세 실행법은 `README.md` 참고.
 
 ## 2026-09-24 오후 — 단계별 사이드바 UI · 자막 수정 · 댓글 캡처 · CapCut 내보내기 (다음 작업자는 여기서 시작)
 

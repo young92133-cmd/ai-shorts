@@ -1,4 +1,6 @@
 # 기본 설정. 웹 UI 옵션이 이 값을 덮어씁니다.
+source_policy: strict
+my_channels: []  # 채널 일치만으로 권리 허용되지 않음. 개별 파일 증빙 필요.
 
 llm:
   # claude  : Claude Code 로그인(구독) 사용, API 키 불필요. 모델: claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5
@@ -20,7 +22,7 @@ tts:
   rate: "+5%"                 # edge-tts 속도
 
 images:
-  # none         : AI 생성 안 함. 첨부 파일 + 기사 이미지만 사용 (0원)  ← 기본
+  # none         : AI 생성 안 함. 권리 확인된 첨부 파일 + 대체 카드 사용 (0원)  ← 기본
   #                Flow/Gemini 앱에서 무료로 만든 이미지를 첨부하는 방식
   # 장당 비용 (환율 1450원 기준)
   #   fal          : FLUX schnell        약 4원    (FAL_KEY)

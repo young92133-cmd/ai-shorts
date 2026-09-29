@@ -3,7 +3,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 const MODE_TEXT = {
   topic: { label: "주제", ph: "예: 철근 콘크리트가 강한 이유", hint: "한 줄이면 충분합니다. 리서치 → 대본 → 음성 → 이미지 → 영상까지 자동으로 만듭니다." },
-  url: { label: "링크 (유튜브 / 뉴스 / 글)", ph: "https://www.youtube.com/watch?v=...\nhttps://n.news.naver.com/article/...", hint: "유튜브는 자막을 분석하고, 뉴스·커뮤니티 글은 본문과 이미지까지 가져옵니다. 여러 개면 줄바꿈으로 구분하세요." },
+  url: { label: "링크 (유튜브 / 뉴스 / 글)", ph: "https://www.youtube.com/watch?v=...\nhttps://n.news.naver.com/article/...", hint: "외부 링크는 내용과 구성 참고용입니다. 원본 영상·기사 이미지는 영상에 넣지 않습니다." },
   upload: { label: "메모 (선택)", ph: "예: 이 영상과 같은 인물의 최근 인터뷰를 찾아줘", hint: "아래에 참고 영상을 올리고 선택하세요. 음성 내용을 분석하며, Gemini 키 또는 GPT를 쓰면 화면도 분석합니다." },
   auto: { label: "키워드 힌트 (선택)", ph: "비워두면 지금 뜨는 트렌드에서 프리셋에 맞는 주제를 자동으로 고릅니다", hint: "Google Trends(KR) + 뉴스에서 지금 핫한 키워드를 가져와 Claude 가 카테고리에 맞는 걸 고릅니다." },
 };
@@ -27,7 +27,7 @@ $$(".tab").forEach(b => b.addEventListener("click", () => {
   $("#up-optional").classList.toggle("hidden", mode === "upload");
   $("#up-hint").textContent = mode === "upload"
     ? "참고 영상의 음성을 분석하고, Gemini 키 또는 GPT를 쓰면 여러 화면도 읽습니다. 관련 영상을 찾아 편집하며 사진을 함께 올릴 수도 있습니다."
-    : "AI가 내용을 보고 어울리는 장면에 배치합니다. 남는 장면은 기사 이미지나 AI 생성으로 채웁니다.";
+    : "권리 확인된 파일만 장면에 배치합니다. 남는 장면은 AI 이미지나 대체 카드로 채웁니다.";
 }));
 document.body.dataset.mode = mode;
 
@@ -64,6 +64,7 @@ $("#submit").addEventListener("click", async () => {
         style_id: $("#opt-style").value || undefined,
         upload_token: $("#up-list").children.length ? uploadToken : undefined,
         reference_name: mode === "upload" ? $("#reference-file").value : undefined,
+        upload_rights: uploadRights,
       },
     };
     msg.textContent = "";
@@ -78,6 +79,7 @@ $("#submit").addEventListener("click", async () => {
       uploadToken = Math.random().toString(36).slice(2, 14);
       localStorage.setItem("uploadToken", uploadToken);
       renderUploads([]);
+      Object.keys(uploadRights).forEach(k => delete uploadRights[k]);
     }
   } catch (e) {
     msg.textContent = "오류: " + e.message;
@@ -88,7 +90,22 @@ $("#submit").addEventListener("click", async () => {
 
 // ---------- 파일 첨부 ----------
 let uploadToken = localStorage.getItem("uploadToken") || (Math.random().toString(36).slice(2, 14));
+const uploadRights = {};
 localStorage.setItem("uploadToken", uploadToken);
+
+function readRights(box) {
+  const checked = $(".rights-confirm", box).checked;
+  return {
+    license: $(".rights-license", box).value,
+    license_url: $(".rights-url", box).value.trim(),
+    credit: $(".rights-credit", box).value.trim(),
+    license_note: $(".rights-note", box).value.trim(),
+    rights_confirmed: checked,
+    commercial_allowed: checked,
+    adaptation_allowed: checked,
+    third_party_rights_checked: checked,
+  };
+}
 
 function fmtSize(n) {
   return n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(n / 1024)) + "KB";
@@ -103,12 +120,26 @@ function renderUploads(files) {
   else if (videos.length === 1) $("#reference-file").value = videos[0].name;
   $("#up-count").textContent = files.length ? `${files.length}개 첨부됨` : "";
   $("#up-list").innerHTML = files.map(f => `
-    <div class="up-item">
+    <div class="up-item" data-file="${esc(f.name)}">
       <span class="up-kind">${f.kind === "video" ? "🎬" : "🖼"}</span>
       <span class="up-name">${esc(f.name)}</span>
       <span class="hint">${fmtSize(f.size)}</span>
       <button class="del" data-name="${esc(f.name)}">✕</button>
+      <div class="source-rights"><select class="rights-license"><option value="unknown">권리 미확인 (참고만)</option><option value="my_channel">내 채널·내 제작물</option><option value="ai_generated">AI 생성물</option><option value="pexels">Pexels</option><option value="pixabay">Pixabay</option><option value="kogl_type0">공공누리 0유형</option><option value="kogl_type1">공공누리 1유형</option></select>
+        <input class="rights-url" placeholder="개별 저작물·이용조건 링크"><input class="rights-credit" placeholder="출처 표기"><input class="rights-note" placeholder="내 제작물/AI 생성물 권리 근거·도구명">
+        <label class="check"><input class="rights-confirm" type="checkbox"> 상업 이용·수정·제3자 권리 확인</label></div>
     </div>`).join("");
+  $$("#up-list .up-item").forEach(row => {
+    const old = uploadRights[row.dataset.file];
+    if (old) {
+      $(".rights-license", row).value = old.license;
+      $(".rights-url", row).value = old.license_url;
+      $(".rights-credit", row).value = old.credit;
+      $(".rights-note", row).value = old.license_note;
+      $(".rights-confirm", row).checked = old.rights_confirmed;
+    }
+    $$("select, input", row).forEach(el => el.addEventListener("change", () => { uploadRights[row.dataset.file] = readRights(row); }));
+  });
   $$("#up-list .del").forEach(b => b.addEventListener("click", async () => {
     await fetch(`/api/uploads/${uploadToken}?name=${encodeURIComponent(b.dataset.name)}`, { method: "DELETE" });
     refreshUploads();
@@ -455,7 +486,7 @@ $("#sm-delete").addEventListener("click", async () => {
 // ---------- 이미지 provider: 키 경고 + 예상 비용 ----------
 // [필요한 키, 경고 문구, 장당 원화]
 const IMG_INFO = {
-  none: [null, "AI 생성을 하지 않습니다. 첨부·기사 이미지로 못 채운 장면은 단색 카드가 됩니다.", 0],
+  none: [null, "AI 생성을 하지 않습니다. 권리 확인된 첨부 파일로 못 채운 장면은 단색 카드가 됩니다.", 0],
   "gemini-lite": ["gemini", "GEMINI_API_KEY 가 없어 단색 카드로 만들어집니다. aistudio.google.com/apikey 에서 발급", 49],
   "gemini": ["gemini", "GEMINI_API_KEY 가 없어 단색 카드로 만들어집니다. aistudio.google.com/apikey 에서 발급", 97],
   "gemini-pro": ["gemini", "GEMINI_API_KEY 가 없어 단색 카드로 만들어집니다. aistudio.google.com/apikey 에서 발급", 194],
@@ -778,21 +809,21 @@ function fillReview(job) {
   const sources = result.source_candidates || [];
   $("#rv-sources").classList.toggle("hidden", !sources.length);
   $("#rv-sources .source-list").innerHTML = sources.map((s, i) => `<label class="candidate">
-    <input type="checkbox" data-source-index="${i}" checked>
+    <input type="checkbox" data-source-index="${i}" ${s.usable_in_video ? "checked" : "disabled"}>
     <span>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a>` : esc(s.title || "내 영상")}
-    <small>${esc(s.channel || "")} · ${Math.round(s.duration || 0)}초</small></span>
+    <small>${esc(s.channel || "")} · ${Math.round(s.duration || 0)}초 · ${s.usable_in_video ? "영상 사용 가능" : "분석 참고 전용"}</small></span>
   </label>`).join("");
 
   const comments = result.comment_candidates || [];
   $("#rv-comments").classList.toggle("hidden", !sources.length && !comments.length);
   const clist = $("#rv-comments .comment-list");
   clist.innerHTML = comments.length ? comments.map(c => `<label class="candidate">
-    <input type="checkbox" data-comment-id="${esc(c.id)}">
+    <input type="checkbox" data-comment-id="${esc(c.id)}" disabled>
     <span><a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.text)}</a>
     <small>좋아요 ${c.likes || 0}개 · 원문 확인</small></span>
   </label>`).join("") : '<p class="hint">댓글 후보가 없습니다. 필요하면 ⚙ 설정에서 YouTube Data API 키를 등록하세요. 완성 후 ⑦ 에서 댓글 캡처를 직접 넣을 수도 있습니다.</p>';
   const suggested = result.suggested_comment_ids || [];
-  suggested.forEach(id => { const box = $$("[data-comment-id]", clist).find(x => x.dataset.commentId === id); if (box) box.checked = true; });
+  // 타인 댓글은 참고용으로만 표시한다.
   if (suggested.length) clist.insertAdjacentHTML("afterbegin",
     `<p class="hint">스타일의 댓글 배치에 맞춰 좋아요가 많은 댓글 ${suggested.length}개를 미리 골라 뒀습니다. 바꿔도 됩니다.</p>`);
   clist.onchange = () => {
@@ -853,7 +884,7 @@ function renderVisuals() {
       <div class="vis-thumb">${preview}</div>
       <div class="vis-text"><strong>${esc(r.keyword || "(키워드 없음)")}</strong>
         <span class="hint">${kept ? esc(r.narration.slice(0, 70)) : "④ 에서 나레이션을 비워 삭제된 장면"}</span>
-        <span class="hint vis-file">${f ? "✓ " + esc(f.name.replace(/^scene_\d\d_/, "")) : "올린 파일 없음 → 첨부·기사 이미지나 대체 카드로 채움"}</span></div>
+        <span class="hint vis-file">${f ? (f.usable_in_video ? "✓ 사용 가능 · " : "⚠ 권리 미확인 · ") + esc(f.name.replace(/^scene_\d\d_/, "")) : "올린 파일 없음 → 허용된 이미지나 대체 카드로 채움"}</span></div>
       ${kept ? `<label class="scene-up" title="이 장면에 쓸 이미지·영상 올리기">＋ 파일
         <input type="file" accept="image/*,video/*" hidden data-scene="${r.orig}"></label>` : ""}
     </div>`;
@@ -867,9 +898,10 @@ function renderVisuals() {
     const fd = new FormData();
     fd.append("scene", String(idx));
     fd.append("file", file);
+    fd.append("rights", JSON.stringify(readRights($("#rv-rights"))));
     try {
       const data = await api(`/api/jobs/${job.id}/scene-visual`, { method: "POST", body: fd });
-      sceneFiles[idx] = { name: data.name, kind: data.kind };
+      sceneFiles[idx] = { name: data.name, kind: data.kind, usable_in_video: data.usable_in_video };
       renderVisuals();
     } catch (err) {
       cell.textContent = "실패: " + err.message;
@@ -1101,6 +1133,7 @@ async function addCaptures(fileList) {
     if (capDirty) await saveCaptions();
     const fd = new FormData();
     files.forEach(f => fd.append("files", f));
+    fd.append("rights", JSON.stringify(readRights($("#cap-rights"))));
     const t = $("#cap-video").currentTime || 0;
     fd.append("start", String(t > 0.05 ? t : -1));
     $("#cap-msg").textContent = `올리는 중... (${files.length}장)`;

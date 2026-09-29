@@ -448,6 +448,9 @@ def default_font_path() -> str:
 
 async def export_draft(tl: dict[str, Any], job_dir: Path, root: Path, name: str) -> Path:
     """CapCut 드래프트 폴더에 새 프로젝트를 만든다. 실패하면 만들다 만 폴더를 지운다."""
+    if (job_dir / "sources.json").exists():
+        from .sources import guard_timeline
+        guard_timeline(job_dir, tl)
     if not root or not Path(root).is_dir():
         raise RuntimeError("CapCut 프로젝트 폴더를 찾지 못했습니다. CapCut 을 한 번 실행해 주세요.")
     draft_dir = _unique_dir(Path(root), safe_name(name))
@@ -467,6 +470,9 @@ def _clock(sec: float) -> str:
 
 async def export_pack(tl: dict[str, Any], job_dir: Path, out_zip: Path) -> Path:
     """장면 파일·음성·SRT·댓글 캡처·순서표를 zip 하나로 묶는다. CapCut 에서 순서대로 끌어다 쓰면 된다."""
+    if (job_dir / "sources.json").exists():
+        from .sources import guard_timeline
+        guard_timeline(job_dir, tl)
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         order = ["[장면 순서] 번호 / 시작 / 길이 / 파일 / 상단 키워드"]
