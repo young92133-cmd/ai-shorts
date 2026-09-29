@@ -45,7 +45,7 @@ class Job:
             "id": self.id, "mode": self.mode, "input": self.input, "preset": self.preset, "options": self.options,
             "status": self.status, "stage": self.stage, "pct": self.pct, "message": self.message,
             "created": self.created, "error": self.error, "logs": self.logs[-40:], "script": self.script,
-            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "suggested_comment_ids", "final_sources", "timeline", "exports", "rendered_at")},
+            "result": {k: v for k, v in self.result.items() if k in ("video", "thumb", "meta", "duration", "topic", "docs", "trend", "segments", "source", "visuals", "reference", "source_candidates", "comment_candidates", "selected_comments", "suggested_comment_ids", "final_sources", "timeline", "blueprint", "exports", "rendered_at")},
         }
 
 

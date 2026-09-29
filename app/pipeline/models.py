@@ -26,6 +26,34 @@ class Script(BaseModel):
         return " ".join(s.narration for s in self.scenes)
 
 
+class BlueprintScene(BaseModel):
+    """대본에서 만든 장면 설계. 2A의 시간은 TTS 측정 전 추정치다."""
+    index: int
+    start: float
+    end: float
+    duration: float
+    narration: str
+    subtitle: str
+    visual_type: Literal["image", "video", "chart", "motion", "card"] = "image"
+    image_prompt: str = ""
+    source_id: str = ""
+    motion: Literal["zoom_in", "zoom_out", "pan_left", "pan_right", "static"] = "zoom_in"
+    emphasis_text: str = ""
+    transition: Literal["cut", "fade"] = "fade"
+
+
+class VideoBlueprint(BaseModel):
+    """완성 MP4를 만들기 위한 장면별 설계도. timeline.json과 역할이 다르다."""
+    version: int = 1
+    timing: Literal["estimated", "tts_aligned"] = "estimated"
+    topic: str
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    estimated_duration: float
+    scenes: list[BlueprintScene]
+
+
 class StyleProfile(BaseModel):
     """벤치마킹할 채널에서 뽑아낸 스타일 지침."""
     name: str = Field(description="이 스타일의 이름 (예: 'OO채널 뉴스 요약형')")

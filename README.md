@@ -53,6 +53,10 @@ uvicorn app.main:app --port 8765
 
 브라우저에서 http://localhost:8765
 
+**현재 자동 제작 범위:** 주제 또는 URL을 넣고 「대본 만들기」를 누르면 기존 경로가 장면별 대본·TTS·자막·내부 카드/권리 확인 이미지·기본 줌/전환을 거쳐 MP4를 만듭니다. 중간 검토 없이 끝까지 돌리려면 「대본 먼저 확인하고 렌더링」 체크를 끄세요. CapCut은 필요하지 않습니다. 대본 확정 후에는 장면별 예상 시간과 화면 제안을 `output/<작업번호>/blueprint.json`에 저장합니다. **완성된 짧은 대본을 직접 붙여넣어 4~8장면으로 자동 분할하는 기능은 다음 2B 단계**입니다.
+
+20~30초 무료 실기기 데모를 다시 만들려면 프로젝트 폴더에서 `.venv\Scripts\python.exe scripts/demo_blueprint_mvp.py`를 실행하세요. 내부 생성 카드와 Edge TTS만 쓰며 결과는 Git 제외 `output/mvp_blueprint_demo_<시각>/final.mp4`에 저장됩니다. 이 스크립트는 고정 테스트 대본을 사용하고 Claude/GPT 호출은 하지 않습니다.
+
 ### 화면 구성 — 왼쪽 단계 메뉴
 
 | 단계 | 하는 일 |

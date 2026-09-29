@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable
 from ..config import load_config, load_presets, merge_options
 from . import article as articlemod
 from . import assets as assetmod
+from . import blueprint as blueprintmod
 from . import broll as brollmod
 from . import clips as clipmod
 from . import comments as commentmod, reference as refmod, research, script as scriptmod, youtube
@@ -405,6 +406,11 @@ async def run_pipeline(
     _write_meta(job_dir, script.titles, script.description, script.hashtags, all_sources)
     result["final_sources"] = all_sources
     result["script"] = script.model_dump()
+    blueprint = blueprintmod.from_script(script, gap=float(vcfg.get("scene_gap", 0.25)),
+                                           width=int(vcfg["width"]), height=int(vcfg["height"]),
+                                           fps=int(vcfg["fps"]))
+    blueprintmod.save(job_dir, blueprint)
+    result["blueprint"] = blueprint.model_dump()
     progress("script", 100, "대본 확정")
     if until == "script":
         return result

@@ -22,7 +22,7 @@ from .config import USER_ENV, env
 from .jobs import JobManager
 from .pipeline.assets import kind_of
 from .pipeline.llm import find_claude_cli
-from .pipeline import capcut as capcutmod, timeline as timelinemod
+from .pipeline import blueprint as blueprintmod, capcut as capcutmod, timeline as timelinemod
 from .pipeline.sources import SourceRegistry, guard_timeline
 from .pipeline.comment_layout import analyze_comment_layout, place as place_comment
 from .pipeline.styles import analyze_references, style_to_dict
@@ -346,6 +346,16 @@ async def get_sources(job_id: str):
     if not manager.get(job_id):
         raise HTTPException(404)
     return [item.model_dump() for item in SourceRegistry(manager.job_dir(job_id)).items.values()]
+
+
+@app.get("/api/jobs/{job_id}/blueprint")
+async def get_blueprint(job_id: str):
+    if not manager.get(job_id):
+        raise HTTPException(404)
+    job_dir = manager.job_dir(job_id)
+    if not (job_dir / blueprintmod.FILE).is_file():
+        raise HTTPException(409, "대본이 완성되면 장면 설계도를 볼 수 있습니다.")
+    return blueprintmod.load(job_dir).model_dump()
 
 
 @app.post("/api/jobs/{job_id}/approve")
