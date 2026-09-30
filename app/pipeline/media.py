@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -111,8 +112,49 @@ async def extract_frames(video: Path, out_dir: Path, count: int = 3, max_width: 
     return out
 
 
-async def concat_audio(parts: list[Path], out: Path, gap: float = 0.25, sample_rate: int = 24000) -> list[float]:
-    """오디오 조각을 gap 초 무음을 끼워 이어붙이고, 각 조각의 시작 오프셋을 돌려준다."""
+def edge_silence_sync(path: Path, threshold_db: int = -40, min_len: float = 0.1) -> tuple[float, float]:
+    """음성 앞뒤 무음 길이 (앞 무음, 뒤 무음). 말 중간의 쉼은 세지 않는다."""
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path), "-af",
+                        f"silencedetect=n={threshold_db}dB:d={min_len}", "-f", "null", "-"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", p.stderr)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", p.stderr)]
+    total = probe_duration_sync(path)
+    head = ends[0] if starts and starts[0] <= 0.01 and ends else 0.0
+    tail = 0.0
+    if starts and (len(starts) > len(ends) or abs(ends[-1] - total) < 0.05):
+        tail = max(0.0, total - starts[-1])
+    return round(head, 3), round(tail, 3)
+
+
+async def trim_edge_silence(path: Path, keep_head: float = 0.05, keep_tail: float = 0.15) -> float:
+    """TTS 음성 파일의 앞뒤 무음만 잘라 제자리에 저장한다. 잘라낸 앞부분 길이(초)를 돌려준다.
+
+    Edge TTS 는 장면마다 앞 약 0.35초, 뒤 약 1초의 무음을 붙인다. 그대로 이으면 장면이 바뀔 때마다
+    말이 1.5초 넘게 멈춘다. 말 중간의 쉼은 건드리지 않는다. 자를 게 없으면 파일을 그대로 둔다.
+    """
+    head, tail = await asyncio.to_thread(edge_silence_sync, path)
+    total = await probe_duration(path)
+    cut_head = max(0.0, head - keep_head)
+    cut_tail = max(0.0, tail - keep_tail)
+    if cut_head < 0.02 and cut_tail < 0.02:
+        return 0.0
+    keep = total - cut_head - cut_tail
+    if keep < 0.2:   # 거의 전부 무음이면 자르지 않는다 (호출자가 길이로 실패 판정)
+        return 0.0
+    tmp = path.with_name(path.stem + "_trim" + path.suffix)
+    await run_ffmpeg(["-ss", f"{cut_head:.3f}", "-t", f"{keep:.3f}", "-i", str(path),
+                      "-c:a", "libmp3lame", "-q:a", "2", str(tmp)])
+    tmp.replace(path)
+    return round(cut_head, 3)
+
+
+async def concat_audio(parts: list[Path], out: Path, gap: float = 0.25, sample_rate: int = 24000,
+                       tail: float = 0.0) -> list[float]:
+    """오디오 조각을 gap 초 무음을 끼워 이어붙이고, 각 조각의 시작 오프셋을 돌려준다.
+
+    tail 을 주면 마지막 조각 뒤에 그만큼 무음을 붙인다 (영상 끝 여운과 길이를 맞추기 위함).
+    """
     durations = [await probe_duration(p) for p in parts]
     offsets: list[float] = []
     t = 0.0
@@ -130,6 +172,9 @@ async def concat_audio(parts: list[Path], out: Path, gap: float = 0.25, sample_r
         if i < len(parts) - 1:
             filters.append(f"anullsrc=r={sample_rate}:cl=mono,atrim=0:{gap}[g{i}]")
             labels.append(f"[g{i}]")
+        elif tail > 0:
+            filters.append(f"anullsrc=r={sample_rate}:cl=mono,atrim=0:{tail}[tail]")
+            labels.append("[tail]")
     filters.append("".join(labels) + f"concat=n={len(labels)}:v=0:a=1[out]")
     await run_ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2", str(out)])
     return offsets

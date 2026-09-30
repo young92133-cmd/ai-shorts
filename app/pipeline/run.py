@@ -19,7 +19,7 @@ from . import comments as commentmod, reference as refmod, research, script as s
 from .assets import kind_of
 from .images import get_images
 from .images.base import make_fallback_card, resize_cover
-from .media import concat_audio, extract_frames, has_audio, probe_duration, require_ffmpeg
+from .media import concat_audio, trim_edge_silence, extract_frames, has_audio, probe_duration, require_ffmpeg
 from .models import ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
 from . import timeline as timelinemod
 from .sources import SourceRegistry, guard_timeline
@@ -72,27 +72,108 @@ def _apply_voice(cfg: dict[str, Any], choices: dict[str, Any]) -> None:
         cfg["tts"]["voice"] = voice
 
 
+class TTSFailed(RuntimeError):
+    """장면 음성을 끝내 만들지 못했다. 가짜 길이로 대신하지 않고 렌더를 멈춘다."""
+
+
+MIN_SCENE_AUDIO = 0.2   # 이보다 짧은 음성 파일은 실패로 본다
+
+
+def _fit_words(words: list[Word] | None, raw: float, dur: float, lead: float) -> list[Word] | None:
+    """무음을 잘라낸 뒤 단어 시간을 새 음성 파일에 맞춘다.
+
+    - TTS 가 준 실제 단어 경계: 잘라낸 앞부분(lead)만큼 당긴다.
+    - 단어 경계가 없어 파일 전체 길이에 글자 수로 나눈 추정값(fallback_words): 새 길이에 맞게 비율로 줄인다.
+      (추정값은 무음까지 포함한 길이로 나눈 것이라, 그냥 당기면 뒤쪽 자막이 음성보다 늦어진다)
+    """
+    if not words or (not lead and abs(raw - dur) < 0.02):
+        return words
+    spread = words[0].start < 0.01 and abs(words[-1].end - raw) < 0.05
+    if spread and raw > 0:
+        k = dur / raw
+        return [Word(text=w.text, start=round(w.start * k, 3), end=round(w.end * k, 3)) for w in words]
+    return [Word(text=w.text, start=round(max(0.0, w.start - lead), 3), end=round(max(0.0, w.end - lead), 3))
+            for w in words]
+
+
+async def _synthesize_one(tts: Any, text: str, out: Path, voice: str, attempts: int,
+                          wait: float, log: Callable[[str], None] = lambda m: None,
+                          ) -> tuple[list[Word] | None, float]:
+    """장면 하나의 음성을 만들고 실제 길이를 잰다. 실패하면 재시도, 끝내 실패하면 마지막 원인을 올린다.
+
+    TTS 가 붙인 앞뒤 무음은 잘라낸다(말 중간의 쉼은 유지). 돌려주는 길이는 잘라낸 뒤의 실측값이고,
+    단어 시간도 잘라낸 만큼 앞으로 당긴다.
+    """
+    last = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            out.unlink(missing_ok=True)
+            words = await tts.synthesize(text, out, voice)
+            if not out.is_file() or out.stat().st_size == 0:
+                raise RuntimeError("음성 파일이 만들어지지 않았습니다")
+            try:
+                raw = await probe_duration(out)
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"음성 길이를 측정하지 못했습니다 ({e})") from e
+            lead = 0.0
+            try:
+                lead = await trim_edge_silence(out)
+            except Exception as e:  # noqa: BLE001 - 무음 정리는 품질 개선일 뿐, 실패하면 원본 그대로 쓴다
+                log(f"앞뒤 무음 정리를 건너뜁니다 ({e})")
+            try:
+                dur = await probe_duration(out)
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"음성 길이를 측정하지 못했습니다 ({e})") from e
+            if not dur or dur < MIN_SCENE_AUDIO:
+                raise RuntimeError(f"음성 길이가 비정상입니다 ({dur}초)")
+            return _fit_words(words, raw, dur, lead), dur
+        except Exception as e:  # noqa: BLE001
+            last = f"{type(e).__name__}: {e}" if not isinstance(e, RuntimeError) else str(e)
+            if attempt < attempts:
+                await asyncio.sleep(wait * attempt)
+    raise TTSFailed(last)
+
+
 async def _synthesize_scenes(cfg: dict[str, Any], script: Script, job_dir: Path, progress: ProgressFn) -> tuple[Path, list[SceneAudio]]:
+    """장면별 음성 생성 → 실제 길이 측정 → 장면 사이 여백을 넣어 나레이션 한 파일로 잇는다 (2C).
+
+    어느 장면이든 재시도 끝에 실패하면 TTSFailed 로 멈춘다. 잘못된 타임라인으로 렌더하지 않는다.
+    """
     tts = get_tts(cfg)
     voice = cfg["tts"]["voice"]
+    attempts = 1 + max(0, int(cfg["tts"].get("retries", 2)))
+    wait = float(cfg["tts"].get("retry_wait", 1.5))
     audio_dir = job_dir / "audio"
     audio_dir.mkdir(exist_ok=True)
     parts: list[Path] = []
     words_per_scene: list[list[Word]] = []
+    measured: list[float] = []
     for i, scene in enumerate(script.scenes):
         p = audio_dir / f"scene_{i:02d}.mp3"
-        words = await tts.synthesize(scene.narration, p, voice)
+        try:
+            words, dur = await _synthesize_one(tts, scene.narration, p, voice, attempts, wait,
+                                               log=lambda m: progress("tts", 0, m))
+        except TTSFailed as e:
+            head = " ".join(scene.narration.split())[:30]
+            raise TTSFailed(f"{i + 1}번 장면 음성 생성 실패({attempts}회 시도): {e} · 내레이션: '{head}…'") from e
         parts.append(p)
         words_per_scene.append(words or [])
-        progress("tts", int(10 + 80 * (i + 1) / len(script.scenes)), f"음성 합성 {i + 1}/{len(script.scenes)}")
+        measured.append(dur)
+        progress("tts", int(10 + 80 * (i + 1) / len(script.scenes)),
+                 f"음성 합성 {i + 1}/{len(script.scenes)} · 실제 {dur:.2f}초")
 
     narration = job_dir / "narration.mp3"
     gap = float(cfg["video"].get("scene_gap", 0.25))
-    offsets = await concat_audio(parts, narration, gap=gap)
+    try:
+        # 끝 여운까지 나레이션에 넣어 두면 최종 영상 길이가 설계도 길이와 정확히 같아진다
+        offsets = await concat_audio(parts, narration, gap=gap, tail=blueprintmod.TAIL)
+    except Exception as e:  # noqa: BLE001
+        raise TTSFailed(f"장면 음성을 하나로 잇지 못했습니다: {e}") from e
     scenes: list[SceneAudio] = []
-    for i, (p, off, words) in enumerate(zip(parts, offsets, words_per_scene)):
-        dur = await probe_duration(p)
-        abs_words = [Word(text=w.text, start=round(w.start + off, 3), end=round(w.end + off, 3)) for w in words]
+    for i, (p, off, words, dur) in enumerate(zip(parts, offsets, words_per_scene, measured)):
+        # 단어 시간은 그 장면 음성 안에 있어야 한다 (자막이 다음 장면으로 넘어가지 않게)
+        abs_words = [Word(text=w.text, start=round(min(w.start, dur) + off, 3), end=round(min(w.end, dur) + off, 3))
+                     for w in words]
         scenes.append(SceneAudio(index=i, path=str(p), duration=dur, words=abs_words, offset=off))
     return narration, scenes
 
@@ -389,11 +470,11 @@ async def run_pipeline(
                  [:min(2, len(comment_slots))]]
     result["suggested_comment_ids"] = suggested
     choices: dict[str, Any] = {"comment_ids": suggested}
-    if mode == "script":
-        draft = blueprintmod.from_script(script, gap=float(vcfg.get("scene_gap", 0.25)),
-                                         width=int(vcfg["width"]), height=int(vcfg["height"]),
-                                         fps=int(vcfg["fps"]))
-        blueprintmod.save(job_dir, draft)
+    # 검토 화면용 장면 설계 초안 (예상 시간). 직접 대본·AI 대본 두 경로 모두 만든다.
+    draft = blueprintmod.from_script(script, gap=float(vcfg.get("scene_gap", 0.25)),
+                                     width=int(vcfg["width"]), height=int(vcfg["height"]),
+                                     fps=int(vcfg["fps"]))
+    blueprintmod.save(job_dir, draft)
     if review:
         script, choices = await review(script, {
             "topic": topic,
@@ -401,7 +482,7 @@ async def run_pipeline(
             "comment_candidates": comment_candidates,
             "suggested_comment_ids": suggested,
             "reference": result.get("reference"),
-            "blueprint": draft.model_dump() if mode == "script" else None,
+            "blueprint": draft.model_dump(),
             "split_method": result.get("split_method", ""),
         })
         (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
@@ -439,17 +520,28 @@ async def run_pipeline(
     # ---------- 4. TTS ----------
     progress("tts", 5, f"음성 합성 ({cfg['tts']['provider']} / {cfg['tts']['voice']})")
     narration, scene_audio = await _synthesize_scenes(cfg, script, job_dir, progress)
-    total = await probe_duration(narration)
+    try:
+        total = await probe_duration(narration)
+    except Exception as e:  # noqa: BLE001
+        raise TTSFailed(f"완성된 나레이션 길이를 측정하지 못했습니다: {e}") from e
     result["narration"] = str(narration)
     registry.add(kind="audio", origin="generated", path=str(narration), title="나레이션", used_for="narration")
     result["duration"] = total
-    progress("tts", 100, f"나레이션 {total:.1f}초")
+
+    # ---------- 4-B. 실제 음성 길이로 장면 시간 확정 (2C) ----------
+    gap = float(vcfg.get("scene_gap", 0.25))
+    blueprint = blueprintmod.align_to_audio(blueprint, scene_audio, gap=gap)
+    blueprintmod.save(job_dir, blueprint)
+    result["blueprint"] = blueprint.model_dump()
+    for s in blueprint.scenes:
+        progress("tts", 95, f"장면 {s.index + 1}: 예상 {s.estimated_duration:.2f}초 → 실제 음성 "
+                            f"{s.actual_tts_duration:.2f}초 ({s.timeline_start:.2f}~{s.timeline_end:.2f})")
+    progress("tts", 100, f"나레이션 {total:.1f}초 · 영상 길이 {blueprint.actual_duration:.1f}초로 확정")
     if until == "tts":
         return result
 
-    gap = float(vcfg.get("scene_gap", 0.25))
-    durations = [s.duration + gap for s in scene_audio]
-    durations[-1] = scene_audio[-1].duration + 0.5   # 마지막 장면 여운
+    # 장면별 화면 길이는 확정된 설계도가 기준이다 (실제 음성 + 장면 사이 여백, 마지막은 여운)
+    durations = blueprintmod.scene_durations(blueprint)
 
     # ---------- 5-B. 영상 짜깁기 (broll) ----------
     broll_picks: list[Any] = []
@@ -577,6 +669,7 @@ async def run_pipeline(
         comments=tl_comments, comment_slots=comment_slots)
     # 타인 댓글 후보는 대본 검토에만 남기고 영상에는 싣지 않는다.
     tl["comments"] = []
+    blueprintmod.check_timeline(blueprint, tl)   # 설계도와 어긋난 타임라인으로는 렌더하지 않는다
     guard_timeline(job_dir, tl)
     timelinemod.save(job_dir, tl)
     result["timeline"] = timelinemod.FILE

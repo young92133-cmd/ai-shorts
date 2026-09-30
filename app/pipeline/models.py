@@ -62,6 +62,11 @@ class BlueprintScene(BaseModel):
     motion: Literal["zoom_in", "zoom_out", "pan_left", "pan_right", "static"] = "zoom_in"
     emphasis_text: str = ""
     transition: Literal["cut", "fade"] = "fade"
+    # 2C: TTS 실측 뒤 채워진다. 옛 설계도에는 없으므로 None 이 기본이다.
+    actual_tts_duration: float | None = None   # 이 장면 음성 파일의 실제 길이
+    timeline_start: float | None = None        # 최종 영상에서 장면이 시작하는 시각
+    speech_end: float | None = None            # 이 장면 음성이 끝나는 시각
+    timeline_end: float | None = None          # 다음 장면이 시작하는 시각 (마지막은 여운 포함)
 
 
 class VideoBlueprint(BaseModel):
@@ -73,6 +78,9 @@ class VideoBlueprint(BaseModel):
     height: int = 1920
     fps: int = 30
     estimated_duration: float
+    actual_duration: float | None = None       # 2C: 실제 음성 기준 전체 영상 길이
+    scene_gap: float | None = None             # 장면 사이 여백(초)
+    tail: float | None = None                  # 마지막 장면 뒤 여운(초)
     scenes: list[BlueprintScene]
 
 

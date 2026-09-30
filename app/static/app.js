@@ -847,6 +847,13 @@ function fillReview(job) {
       : "AI가 이야기 흐름을 분석했습니다. 장면을 확인·수정한 뒤 렌더링을 시작하세요. 화면 종류는 계획이며 실제로는 허용된 첨부·생성 이미지·내부 카드만 사용합니다.";
     box.append(intro);
   }
+  if (planned.length) {
+    const total = planned.reduce((a, p) => a + Number(p.estimated_duration || p.duration || 0), 0);
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = `예상 영상 길이 약 ${total.toFixed(1)}초 (글자 수 기준 예상). 렌더링을 시작하면 장면마다 실제 음성을 만들고 그 길이로 장면 시간을 다시 맞춥니다. 결과는 ⑧ 내보내기의 「장면 타임라인」에서 볼 수 있습니다.`;
+    box.append(note);
+  }
   job.script.scenes.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "scene";
@@ -855,7 +862,7 @@ function fillReview(job) {
     row.innerHTML = `<div class="num">${i + 1}</div>
       <textarea rows="2" data-k="narration">${esc(s.narration)}</textarea>
       <input type="text" data-k="on_screen_text" value="${esc(s.on_screen_text)}" placeholder="화면 키워드">
-      ${plan ? `<p class="hint">${esc(plan.scene_type || "장면")} · 예상 ${Number(plan.estimated_duration || plan.duration).toFixed(1)}초 · 화면 ${esc(plan.visual_type)}</p>
+      ${plan ? `<p class="hint">${esc(plan.scene_type || "장면")} · 예상 ${Number(plan.estimated_duration || plan.duration).toFixed(1)}초 <span class="muted-note">(실제 시간은 음성 생성 후 확정)</span> · 화면 ${esc(plan.visual_type)}</p>
       <p class="hint">자막: ${esc(plan.subtitle)}</p><p class="hint">화면 설명: ${esc(plan.visual_description || plan.image_prompt)}</p>` : ""}`;
     box.append(row);
   });
@@ -1171,6 +1178,29 @@ $("#cap-input").addEventListener("change", e => { addCaptures(e.target.files); e
 capDrop.addEventListener("drop", e => addCaptures(e.dataTransfer.files));
 
 // ---------- ⑧ 내보내기 ----------
+// 장면 타임라인: 예상 시간과 실제 음성 시간, 영상 속 시작·종료를 한 표로 보여준다 (2C)
+function renderSceneTimeline(bp) {
+  const box = $("#ex-timeline");
+  if (!bp || bp.timing !== "tts_aligned") {
+    box.innerHTML = '<p class="hint">이 영상은 실제 음성 시간 기록 이전에 만들어져 장면 타임라인이 없습니다.</p>';
+    return;
+  }
+  const f = v => (v == null ? "-" : Number(v).toFixed(2) + "초");
+  const est = bp.scenes.reduce((a, s) => a + Number(s.estimated_duration || 0), 0);
+  const speech = bp.scenes.reduce((a, s) => a + Number(s.actual_tts_duration || 0), 0);
+  box.innerHTML = `<div class="tl-scroll"><table class="tl-table">
+    <thead><tr><th>장면</th><th>역할</th><th>내레이션</th><th>예상</th><th>실제 음성</th><th>시작</th><th>종료</th></tr></thead>
+    <tbody>${bp.scenes.map(s => `<tr>
+      <td>${s.index + 1}</td><td>${esc(s.scene_type || "-")}</td>
+      <td class="tl-text" title="${esc(s.narration)}">${esc(s.narration.slice(0, 40))}${s.narration.length > 40 ? "…" : ""}</td>
+      <td>${f(s.estimated_duration)}</td><td><b>${f(s.actual_tts_duration)}</b></td>
+      <td>${f(s.timeline_start)}</td><td>${f(s.timeline_end)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="3">합계</td><td>${f(est)}</td><td>${f(speech)}</td><td colspan="2">영상 ${f(bp.actual_duration)}</td></tr></tfoot>
+  </table></div>
+  <p class="hint">영상 길이 = 장면별 실제 음성 길이의 합 + 장면 사이 여백 ${Number(bp.scene_gap ?? 0.25).toFixed(2)}초 × ${bp.scenes.length - 1}
+    + 마지막 여운 ${Number(bp.tail ?? 0.5).toFixed(2)}초. 각 장면의 화면·자막은 자기 음성이 끝날 때까지 유지됩니다.</p>`;
+}
+
 async function renderExport() {
   const j = currentJob();
   if (!j || !hasVideo(j)) return;
@@ -1185,6 +1215,7 @@ async function renderExport() {
   };
   if (j.script) fill({ ...j.script, sources: j.result.final_sources || j.script.sources });
   else fetch(`/files/${j.id}/meta.json`).then(r => r.ok ? r.json() : null).then(m => m && fill(m));
+  renderSceneTimeline(j.result.blueprint);
 
   const ok = hasTimeline(j);
   $("#ex-capcut").classList.toggle("hidden", !ok);

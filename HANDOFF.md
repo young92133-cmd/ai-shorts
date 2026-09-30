@@ -3,9 +3,62 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-29 — 2B 구현 결과의 GitHub 체크포인트.** 바로 아래 체크포인트와 2B 절이 현재 상태다. 이어지는 2A·1단계·과거 기록은 당시 이력으로 읽는다.
+> **최종 갱신: 2026-09-30 — 2C(실제 TTS 길이 기반 타임라인) 완료, 로컬 커밋.** 바로 아래 2C 절이 현재 상태다. 그 아래 2B·2A·1단계·과거 기록은 당시 이력으로 읽는다.
 
-### 이번 체크포인트에서 이어받을 상태
+## 2026-09-30 — 2C 실제 TTS 길이 기반 타임라인 (현재 상태)
+
+### 상태·브랜치
+- 브랜치 `feature/auto-video-mvp`. 시작 전 `563c59f`(2B+문서)가 `origin/feature/auto-video-mvp`와 일치(0/0)하고 clean인 것을 확인했다. 2B는 이미 GitHub에 백업되어 있다.
+- 2C는 **로컬 체크포인트 커밋만** 했고 push하지 않았다(사용자 지시). `main`·다른 브랜치·원격 히스토리는 건드리지 않았다.
+- **다음 첫 작업은 2D**(설계도의 화면 종류 → 소스 대장 기반 장면 화면 자동 선택)다. 사용자는 "2C까지만 하고 멈추라"고 했으므로 2D는 승인 뒤에 시작한다.
+
+### 무엇이 바뀌었나 (흐름)
+완성 대본 또는 AI 대본 → 4~8장면 → 검토(④에 예상 시간) → **장면별 Edge TTS → 앞뒤 무음 정리 → 실제 길이 측정 → 설계도 시간 확정(`timing: tts_aligned`)** → 장면 화면·자막을 그 시간으로 → `timeline.json`과 설계도 대조 → 권리 가드 → 렌더.
+
+- 장면 i는 자기 음성 시작에 시작하고, 다음 장면 음성 시작 때 끝난다. 장면 사이 여백은 0.25초, 마지막 장면만 여운 0.5초다. 영상 길이 = 실제 음성 합 + 0.25×(장면 수−1) + 0.5.
+- 설계도 필드(모두 선택, 옛 JSON 호환):
+  - 장면: `actual_tts_duration`, `timeline_start`, `speech_end`, `timeline_end`. `start/end/duration`은 확정 후 실제값이 된다. `estimated_duration`은 보존한다.
+  - 전체: `actual_duration`, `scene_gap`, `tail`.
+- **새로 찾아 고친 문제 2가지:**
+  - Edge TTS 파일마다 앞 약 0.35초, 뒤 약 1.1초의 무음이 있어 장면 전환마다 약 1.8초씩 멈췄다. `media.trim_edge_silence`로 앞뒤 무음만 잘라 **약 0.46초**로 줄였다.
+  - `edge-tts` 7.x의 기본값이 문장 단위 경계라 **단어 시간이 오지 않았다**. 그래서 자막이 추정 시간으로 돌고 있었다. `tts/edge.py`에 `boundary="WordBoundary"`를 명시했다.
+- **TTS 실패:** 장면마다 최대 3회 시도한다(`tts.retries`=2, `tts.retry_wait`=1.5). 빈 파일·길이 측정 실패도 실패다. 끝내 실패하면 `run.TTSFailed`에 "N번 장면 음성 생성 실패(3회 시도): 원인 · 내레이션: '…'"를 담아 잡을 `error`로 만든다. 설계도는 `estimated`로 남고 `timeline.json`·`final.mp4`는 만들지 않는다. **가짜 길이로 대체하지 않는다.**
+
+### 변경 파일
+| 파일 | 변경 |
+|---|---|
+| `app/pipeline/models.py` | `BlueprintScene`·`VideoBlueprint`에 실측 시간 필드(선택) 추가 |
+| `app/pipeline/blueprint.py` | `align_to_audio`, `scene_durations`, `check_timeline`, `TAIL` |
+| `app/pipeline/run.py` | `TTSFailed`, `_synthesize_one`(재시도·검증·무음 정리), `_fit_words`, 단어를 장면 음성 안으로 제한, 두 경로 모두 검토용 설계도, TTS 직후 설계도 확정·저장·진행 로그, 렌더 길이를 설계도에서, 렌더 전 `check_timeline` |
+| `app/pipeline/media.py` | `edge_silence_sync`, `trim_edge_silence`, `concat_audio(tail=)` (기본 0이라 기존 호출 영향 없음) |
+| `app/pipeline/tts/edge.py` | 단어 경계(`WordBoundary`) 요청 |
+| `app/static/app.js`, `app/templates/index.html`, `app/static/style.css` | ④ 예상 시간 안내, ⑧ 「장면 타임라인」 표 |
+| 신규 `tests/test_tts_timeline.py` | 14개: 짧은/긴/8장면, 옛 설계도 호환·왕복, 불일치 감지, 재시도·전체 실패·빈 파일·측정 실패, 무음 정리 후 단어 이동, 자막 경계, 직접 대본·AI 대본 경로, 실패 시 렌더 안 함 |
+| 신규 `scripts/verify_tts_timeline.py` | 실제 Edge TTS로 A·B·A2 MP4를 만들고 자동 검증(표 출력, 확인용 프레임 저장) |
+| `IMPLEMENTATION_PLAN.md`, `HANDOFF.md` | 2C 완료·실제 구현 차이·다음 2D |
+
+### 검증 결과
+- 자동 테스트 **64개 통과**(기존 50 + 신규 14): `.venv\Scripts\python.exe -m unittest discover -s tests -q`
+- 실제 MP4(무료 Edge TTS + 내부 카드, CapCut·유료 API·LLM 호출 없음). 모두 1080×1920이고, 설계도 길이 = MP4 길이, 장면 밖 자막 0줄, 장면 전환 무음 약 0.46초, 끝 무음 0.66초다.
+
+  | 편 | 내용 | 영상 길이 | 산출물 |
+  |---|---|---|---|
+  | A | 직접 대본 5장면 | 20.78초 | `output/tts_timeline_A_short_20260930_215251/` |
+  | B | 경제 8장면 | 52.53초 | `output/tts_timeline_B_econ_20260930_215251/` |
+  | A2 | 주제 경로 4장면 (리서치·대본만 고정 데이터) | 16.37초 | `output/tts_timeline_A2_topic_20260930_215251/` |
+
+- 자막 동기화(B): 장면별 첫 자막과 실제 말 시작의 차이는 평균 −0.05초, 최대 0.07초다. 마지막 자막은 음성 끝 +0.15초에 사라지고 다음 장면으로 넘어가지 않는다.
+- 재현: `.venv\Scripts\python.exe scripts/verify_tts_timeline.py` (인터넷·ffmpeg 필요). A·B의 장면 분할은 LLM 없이 실제 문장 경계 대체 경로를 쓴다.
+- 브라우저: ⑧ 「장면 타임라인」 표에 실제 B 설계도로 8행과 합계(예상 61.62초 / 실제 음성 50.28초 / 영상 52.53초)가 표시되는 것을 확인했다. 가로 넘침 없음.
+
+### 남은 제약·주의
+- 첫 단어 자막은 Edge 단어 경계 기준으로 소리보다 약 0.05~0.25초 먼저 뜰 수 있다(허용 범위로 판단).
+- AI 없이 문장 단위로 나눈 직접 대본은 상단 키워드에 문장 전체가 들어가 화면 양옆이 잘린다(2B 대체 분할의 기존 동작, 2D/2E에서 다룰 것).
+- 사람이 해야 할 것: 실제 청취로 억양·끊김 확인, 브라우저에서 실제 잡으로 끝까지 클릭해 보기, GPT 실호출, 게시 전 사실 확인.
+- 수정 주의: `trim_edge_silence`의 −40dB·앞 0.05초·뒤 0.15초 여유를 줄이면 음절이 잘릴 수 있다. `check_timeline`을 끄지 말 것. `concat_audio`의 `tail`은 2C 파이프라인만 사용한다.
+- `.env.example` 머리말("ANTHROPIC_API_KEY 필수")은 여전히 오래된 안내다(범위 밖, 미수정).
+
+### 이번 체크포인트에서 이어받을 상태 (2B 당시 기록)
 
 - 현재 브랜치는 `feature/auto-video-mvp`이며 2B 기능 커밋은 `1845fca`다. 체크포인트 시작 시 작업 폴더는 clean, 원격 `origin/feature/auto-video-mvp`는 `503db41`로 로컬보다 1개 뒤였다. 이번 요청에서는 아래 2B 코드를 고치지 않고 이 문서만 갱신해 별도 체크포인트 커밋을 만든 뒤 두 커밋을 현재 원격 브랜치로 일반 push한다. 기존 커밋 변경·force push·다른 브랜치 수정은 금지한다.
 - 2B 커밋에 포함된 **13개 파일**: 새 파일 `app/pipeline/script_split.py`, `scripts/demo_script_split_mvp.py`, `tests/test_script_split.py`; 수정 파일 `HANDOFF.md`, `IMPLEMENTATION_PLAN.md`, `README.md`, `app/jobs.py`, `app/main.py`, `app/pipeline/blueprint.py`, `app/pipeline/models.py`, `app/pipeline/run.py`, `app/static/app.js`, `app/templates/index.html`. 각 파일의 역할은 아래 표에 적었다. 이번 체크포인트에서 코드/기능 변경은 없다.
@@ -786,7 +839,7 @@ python -c "import sys; sys.path.insert(0,'.'); import app.main"   # import·라�
 ffmpeg를 실제로 돌리지 않고 필터그래프만 보려면 `render.run_ffmpeg`를 가짜 async 함수로
 교체한 뒤 호출해 `-filter_complex` 인자를 확인하는 방식을 쓴다 (Phase E에서 이 방식으로 검증했다).
 
-### API 엔드포인트 (현재 `app/main.py`의 사용자 정의 라우트 30개)
+### API 엔드포인트 (현재 `app/main.py`의 사용자 정의 라우트 32개 — 아래 목록 + 소스 대장 `GET /api/jobs/{job_id}/sources`, 설계도 `GET /api/jobs/{job_id}/blueprint`)
 
 ```
 GET     /                                    웹 UI
@@ -815,6 +868,8 @@ DELETE  /api/jobs/{job_id}
 POST    /api/jobs/{job_id}/approve           대본 확정 → 렌더 진행
 POST    /api/jobs/{job_id}/scene-visual      장면별 파일 지정 (scene_NN_* 로 저장)
 GET     /api/jobs/{job_id}/scene-visuals     ⑥ 장면별로 올린 파일 목록 (미리보기)
+GET     /api/jobs/{job_id}/sources           소스 대장 (권리·사용 가능 여부)
+GET     /api/jobs/{job_id}/blueprint         장면 설계도 (2C 이후 실제 음성 시간 포함)
 GET     /api/jobs/{job_id}/events            SSE 진행상황
 
 GET     /api/jobs/{job_id}/timeline          ⑦ 렌더 재료 (없으면 409)

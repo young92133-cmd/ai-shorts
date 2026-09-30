@@ -16,7 +16,10 @@ class EdgeTTS(TTSProvider):
         self.rate = rate
 
     async def synthesize(self, text: str, out_path: Path, voice: str) -> list[Word] | None:
-        comm = edge_tts.Communicate(text, voice or "ko-KR-SunHiNeural", rate=self.rate)
+        # edge-tts 7.x 는 기본이 문장 단위(SentenceBoundary)라 단어 시간이 오지 않는다.
+        # 자막을 음성에 맞추려면 단어 단위 경계를 명시해서 받아야 한다.
+        comm = edge_tts.Communicate(text, voice or "ko-KR-SunHiNeural", rate=self.rate,
+                                    boundary="WordBoundary")
         words: list[Word] = []
         with open(out_path, "wb") as f:
             async for chunk in comm.stream():
