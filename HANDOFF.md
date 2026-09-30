@@ -3,7 +3,40 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-30 — 2D(장면별 화면 자동 선택) 완료.** 가장 위 절이 현재 상태다. 그 아래 2C·2B·2A·1단계·과거 기록은 당시 이력으로 읽는다.
+> **최종 갱신: 2026-09-30 — A0 채팅 중심 콘텐츠팩토리 작업 인계.** 가장 위 A0 절이 현재 상태다. 그 아래 2D·2C·2B·2A·1단계·과거 기록은 당시 이력으로 읽는다.
+
+## 2026-09-30 — A0 에이전트 콘텐츠팩토리 (현재 상태)
+
+### 목적·Git·작업 원칙
+
+- 개인용 한국어 9:16 쇼츠 제작기다. 주제/URL/완성 대본/핫이슈 → 조사·대본·장면 → TTS → 권리 확인 화면 → 자막 → FFmpeg MP4가 기존 `app/pipeline`에 있다. 이번 A0의 목표는 **Claude Code/Codex 채팅 자체를 메인 인터페이스**로 삼고, 웹 UI를 결과 확인·세부 수정용 보조 화면으로 쓰는 것이다.
+- 현재 브랜치는 `feature/agent-content-factory`, 기반 커밋 `ec86915`(2D 완료·`origin/feature/auto-video-mvp`에 push됨). 이 브랜치는 원격에 없고 시작 시 미커밋 변경이 있었다. 기존 `app/pipeline/run.py` 변경 및 `CLAUDE.md`, `app/factory/` 4개 파일, `tests/test_factory.py`를 **그대로 보존해** 이어서 작업했다. `pull`/`reset`/`checkout`으로 덮어쓰지 않았다. 이번 작업에서는 `AGENTS.md`와 문서만 추가·수정해 로컬 체크포인트 커밋까지 만든다. GitHub push는 하지 않는다.
+- 설계 방향: 엔진 중복 구현이나 대규모 리팩토링을 하지 않는다. `app/factory`는 JSON 명령층, `app/pipeline`은 기존 제작 엔진, 웹 UI는 같은 엔진의 보조 화면이다. 자연어 → CLI 매핑·권리 정책·비용 규칙은 `CLAUDE.md`와 Codex용 `AGENTS.md`에 동일하게 적었다.
+
+### 구현 파일과 사용법
+
+| 파일 | 실제 역할 |
+|---|---|
+| 수정 `app/pipeline/run.py` | `script_in`을 받는 `resume` 경로. 저장 대본에서 이어서 제작하고 조사·기획·대본을 다시 하지 않는다. |
+| 신규 `app/factory/__init__.py`, `__main__.py` | 패키지와 CLI 진입점. `make`, `resume`, `status`, `inspect`, `rerender`, `styles`, `trends`, `export`, `edit-scene`, `set-visual`. stdout 단일 JSON·stderr 진행 로그·종료 코드 0/1/2. |
+| 신규 `app/factory/core.py`, `state.py` | 기존 파이프라인 호출, 명령별 검증, `next_action`, `project_state.json` 단계·실패 원인 기록, 최종 `job.json`으로 웹 UI 목록 연결. |
+| 신규 `CLAUDE.md`, `AGENTS.md` | Claude Code/Codex에서 채팅을 기본 화면으로 쓰는 방법, 권리·비용·Git 규칙. `compare_card`/`summary_card` 명칭은 `app/pipeline/cards.py`의 실제 카드 종류와 일치한다. |
+| 신규 `tests/test_factory.py` | factory 명령·상태·검토/재개·권리·재렌더·JSON 응답 자동 테스트 18개. |
+| 수정 `IMPLEMENTATION_PLAN.md`, `HANDOFF.md` | 실제 구현/실기기 검증, Claude 한도에 막힌 B 경로, 다음 작업 순서. |
+
+- 실행: 프로젝트 루트에서 `.venv\Scripts\python.exe -m app.factory make --topic "고양이가 상자를 좋아하는 이유" --seconds 45`. 대본 검토 후 멈춤: `make --topic "..." --review`; 이어 만들기: `resume <project_id>`; 조회: `status <project_id>`, `inspect <project_id> --part script`; 다시 렌더: `rerender <project_id>`. 전체 명령 옵션은 `.venv\Scripts\python.exe -m app.factory --help`와 `AGENTS.md`에 있다. 결과는 Git 제외 `output/<project_id>/`에 저장된다.
+- 기본 환경: `config.yaml`은 Claude Code 구독 로그인(`claude.exe`), 무료 Edge TTS, 이미지 API 비활성(`provider: none`, 내부 카드), FFmpeg/FFprobe를 사용한다. `.env`·API 키·토큰·비밀번호를 출력하거나 Git에 넣지 말 것. 실제 업로드 파일은 권리 근거와 확인 플래그가 필요하다. 타인 유튜브/기사/댓글 원문은 내용 참고 전용이고 `sources.json` 및 렌더 가드를 우회하지 않는다. 유료 API·자동 게시·여러 편 연속 제작은 사용자 요청 없이 시작하지 않는다.
+
+### 검증 결과 A~E와 남은 문제
+
+- **자동 테스트:** 기존 77개 + 신규 18개 = **95개 통과** (`.venv\Scripts\python.exe -m unittest discover -s tests -q`). 2D 기능도 현재 코드에서 통과했다.
+- **A 주제부터 MP4:** `make --topic "고양이가 상자를 좋아하는 이유" --seconds 45` 실제 실행. 조사 6건 → Claude 대본 7장면 → 무료 Edge TTS → 내부 카드·자막 → `output/20260930_230432_ae95/final.mp4` **42.61초, 1080×1920** 완성. `project_state.json=render_complete`, `job.json=done`. 장면별 AI 화면 분석은 실패해 기존 내용 규칙 대체가 쓰였다. 조사 기사 6건은 `sources.json`에 사용 불가/참고 전용으로 남지만 실제 렌더 재료는 권리 가드를 통과했다. 영상 내용의 사실·숫자는 별도 검증되지 않았으므로 게시 전 확인이 필요하다.
+- **B 새 주제 대본까지만:** `make --topic ... --seconds 30 --review` 실제 호출은 Claude 구독 세션 한도(`2:30am Asia/Seoul` 초기화 안내) 때문에 대본 작성 전 실패했다. `output/20260930_230726_85df/project_state.json`에 `failed_at: research_complete`, `next_action: make`가 기록됐다. 유료 API로 우회하지 않았다. **대신** A의 실제 대본을 Git 제외 `output/factory_resume_input.txt`에 보관하고 `make --script-file ... --review`로 새 검토 프로젝트 `20260930_230910_910e`를 만들었다. 이때 Claude 한도로 장면 분할은 문장 경계 대체 경로를 썼다. 7장면 대본만 저장되고 음성/MP4는 없는 상태에서 멈췄다. 새 주제 → 새 대본 검토 경로의 실기기 검증은 아직 남아 있다.
+- **C 상태 / D 대본 조회:** 검토 프로젝트의 `status`는 `waiting_for_script_approval`과 `next_action: resume`을 반환했고, `inspect --part script`는 7장면 대본을 보여줬다.
+- **B 이어서 완성:** `resume 20260930_230910_910e`는 저장 대본을 그대로 써서 다시 조사·작성하지 않고 **42.61초, 1080×1920 MP4**와 웹용 `job.json`을 만들었다. 실제 영상의 소스 권리 가드를 통과했다.
+- **E 다시 렌더:** 같은 프로젝트의 `rerender`가 `rerendered: true`와 완성 MP4를 반환했다. 전후 `script.json` SHA-256 앞 16자 `b4eb15553d93ba2a`, `narration.mp3`는 `f7587288f320412e`로 같았다. 재렌더 후 `final.mp4`도 동일 내용으로 생성됐다.
+- **남은 첫 작업:** Claude 구독 한도 초기화 후 새 주제의 `make --review` → `status`/`inspect` → `resume` 전체를 재검증한다. 실패한 프로젝트를 지우지 말고 새 `make`로 시도한다. 그다음 2E 장면별 자막·모션·전환, 2F 오디오/렌더 안정화, 2G 한 번에 제작 흐름, 주장별 팩트체크·스타일팩 순서다. 브라우저의 새 factory 결과 실제 클릭 확인과 GPT 실호출은 아직 하지 않았다.
+- **절대 건드리지 말 것/주의:** 기존 완료 MP4·`output/` 산출물, `feature/auto-video-mvp` 원격 히스토리, 소스 대장 권리 검사, 2C 실측 타임라인과 2D 카드 선택기. 실제 출력 경로는 로컬 전용이며 Git에 추가하지 않는다. 커밋 전 민감정보 검사와 전체 95개 테스트를 다시 확인한다.
 
 ## 2026-09-30 — 2D 장면별 화면 자동 선택 완료
 

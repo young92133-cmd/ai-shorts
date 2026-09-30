@@ -20,7 +20,7 @@ from .assets import kind_of
 from .images import get_images
 from . import visuals as visualsmod
 from .media import concat_audio, trim_edge_silence, has_audio, probe_duration, require_ffmpeg
-from .models import ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
+from .models import PlannedScript, ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
 from . import timeline as timelinemod
 from .sources import SourceRegistry, guard_timeline
 from .comment_layout import clean_slots, place as place_comment
@@ -218,8 +218,9 @@ async def run_pipeline(
     visual_mode: str = "",
     reference_name: str = "",
     upload_rights: dict[str, dict[str, Any]] | None = None,
+    script_in: Script | None = None,
 ) -> dict[str, Any]:
-    """mode: topic | url | auto | upload | script. 결과 dict 에 산출물 경로를 담아 돌려준다.
+    """mode: topic | url | auto | upload | script | resume(승인된 script_in 으로 이어서). 결과 dict 에 산출물 경로를 담아 돌려준다.
 
     style 이 주어지면 그 지침을 따르고, 없으면 소재를 분석해 구성을 자동으로 정한다.
     visual_mode: images | broll | clip. 비우면 프리셋 기본값 → 자동 분석 결과 순.
@@ -260,6 +261,14 @@ async def run_pipeline(
     # 유튜브가 아닌 링크(기사·커뮤니티 글)가 섞여 있으면 기사 모드
     if mode == "script":
         progress("research", 100, "입력한 완성 대본을 사용합니다. 별도 자료 조사는 하지 않습니다.")
+    elif mode == "resume":
+        # 승인된 대본으로 이어서 만든다 (factory resume). 조사·기획·대본 작성을 다시 하지 않는다.
+        if script_in is None:
+            raise ValueError("이어서 만들 대본이 없습니다.")
+        topic = script_in.topic
+        if reference_name:
+            reference_path = job_dir / "uploads" / Path(reference_name).name
+        progress("research", 100, "저장된 대본으로 이어서 만듭니다. 자료 조사와 대본 작성은 다시 하지 않습니다.")
     elif mode == "upload":
         reference_path = job_dir / "uploads" / Path(reference_name).name
         if not reference_name or not reference_path.is_file() or kind_of(reference_path) != "video":
@@ -356,7 +365,7 @@ async def run_pipeline(
 
     # ---------- 2. 제작 방향 (자동 모드) ----------
     plan = None
-    if not style and mode != "script":
+    if not style and mode not in ("script", "resume"):
         progress("script", 5, "소재 분석해서 구성 정하는 중")
         try:
             plan = await scriptmod.make_plan(llm, preset, topic, docs, int(vcfg["target_seconds"]), instructions)
@@ -369,7 +378,11 @@ async def run_pipeline(
 
     # ---------- 3. 대본 ----------
     style_note = f" / 스타일: {style['name']}" if style else ""
-    if mode == "script":
+    if mode == "resume":
+        script = PlannedScript.model_validate(script_in.model_dump())
+        result["plan_method"] = "resumed"
+        progress("script", 70, f"승인된 대본 {len(script.scenes)}장면을 그대로 사용")
+    elif mode == "script":
         progress("script", 10, "완성 대본을 이야기 흐름에 따라 장면으로 나누는 중")
         script, split_method = await script_split.split_finished_script(
             llm, input_text, preset=preset, instructions=instructions)
