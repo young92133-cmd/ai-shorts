@@ -248,6 +248,8 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             p1, p2, p3, p4, p5 = self._patches()
             with p1, p2, p3, p4, p5, \
                     patch.object(run.research, "research_topic", new=AsyncMock(return_value=[])), \
+                    patch.object(run.script_split, "ask_structured",
+                                 new=AsyncMock(side_effect=RuntimeError("테스트: AI 호출 없음"))), \
                     patch.object(run.scriptmod, "make_plan", new=AsyncMock(side_effect=RuntimeError("no plan"))), \
                     patch.object(run.scriptmod, "write_script", new=AsyncMock(return_value=script)):
                 result = await run.run_pipeline(job, "topic", "경제 주제", self._cfg(), review=review, until="tts")

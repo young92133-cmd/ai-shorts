@@ -41,6 +41,7 @@ def from_script(script: Script, *, gap: float = 0.25, width: int = 1080,
             motion=getattr(scene, "motion", "") or ("zoom_in" if index % 2 == 0 else "zoom_out"),
             emphasis_text=scene.on_screen_text.strip(),
             transition=getattr(scene, "transition", "") or ("cut" if index == 0 else "fade"),
+            content_kind=getattr(scene, "content_kind", ""),
         ))
         start = end
     return VideoBlueprint(topic=script.topic, width=width, height=height, fps=fps,

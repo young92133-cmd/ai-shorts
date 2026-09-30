@@ -195,6 +195,8 @@ button.del { background: transparent; border: none; color: var(--muted); cursor:
 .vis-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .vis-text strong { font-size: 14px; }
 .vis-text .hint { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vis-text .vis-decision { color: var(--text); white-space: normal; }
+.vis-text .vis-reason { white-space: normal; }
 .vis-row .scene-up { padding: 0 12px; font-size: 13px; white-space: nowrap; }
 
 /* ⑦ 자막·댓글 */
@@ -234,6 +236,7 @@ button.icon:hover:not(:disabled) { border-color: var(--accent); color: var(--tex
 .tl-table th { color: var(--muted); font-weight: 500; background: #12151b; }
 .tl-table th:nth-child(-n+3), .tl-table td:nth-child(-n+3) { text-align: left; }
 .tl-table td.tl-text { white-space: normal; min-width: 160px; color: var(--muted); }
+.tl-table th:nth-child(4), .tl-table td.tl-shot { text-align: left; cursor: help; }
 .tl-table tfoot td { border-bottom: none; font-weight: 600; }
 .muted-note { color: var(--muted); opacity: .8; }
 .scene .num { color: var(--muted); font-size: 12px; padding-top: 10px; text-align: center; }

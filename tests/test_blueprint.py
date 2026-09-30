@@ -67,6 +67,7 @@ class BlueprintPipelineTests(unittest.IsolatedAsyncioTestCase):
             script = sample_script()
             with (patch.object(run, "require_ffmpeg"),
                   patch.object(run.research, "research_topic", new=AsyncMock(return_value=[])),
+                  patch.object(run.script_split, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 호출 없음"))),
                   patch.object(run.scriptmod, "write_script", new=AsyncMock(return_value=script))):
                 result = await run.run_pipeline(job, "topic", "콘크리트 구조", cfg,
                                                  style={"name": "test"}, until="script")

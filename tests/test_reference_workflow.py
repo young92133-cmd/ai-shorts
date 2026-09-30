@@ -143,6 +143,7 @@ class ReferenceWorkflowTests(unittest.IsolatedAsyncioTestCase):
                   patch.object(run.refmod, "analyze_uploaded_video", new=AsyncMock(return_value=(brief, doc, [Word(text="발표", start=1, end=2)]))),
                   patch.object(run, "probe_duration", new=AsyncMock(return_value=60)),
                   patch.object(run.research, "research_topic", new=AsyncMock(return_value=[])),
+                  patch.object(run.script_split, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 호출 없음"))),
                   patch.object(run.scriptmod, "make_plan", new=AsyncMock(return_value=plan)),
                   patch.object(run.scriptmod, "write_script", new=AsyncMock(return_value=script)),
                   patch.object(run.brollmod, "gather_sources", new=AsyncMock(return_value=[source])) as search,

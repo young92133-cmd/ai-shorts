@@ -96,8 +96,8 @@ async def write_script(llm: dict[str, Any], preset: dict[str, Any], topic: str, 
                        plan: AutoPlan | None = None) -> Script:
     target_chars = int(target_seconds * CHARS_PER_SEC)
     lo, hi = int(target_chars * 0.9), target_chars
-    n_scenes = plan.scene_count if plan else 8
-    scene_count = f"{plan.scene_count}개 내외" if plan else "6~10개"
+    n_scenes = min(8, max(4, plan.scene_count)) if plan else 6
+    scene_count = f"{n_scenes}개 내외 (4~8개)" if plan else "4~8개"
     user = (
         f"{_preset_block(preset)}\n"
         f"{_style_block(style)}"
@@ -121,7 +121,7 @@ AUTOPLAN_SYSTEM = """당신은 유튜브 쇼츠 PD입니다. 소재를 먼저 �
 - 소재의 성격에 맞는 구성을 고른다. 사건·논란이면 시간순 브리핑, 개념이면 질문-설명-정리, 꿀팁이면 문제-해결-실천 식으로.
 - visual_mode 판단: 실제 현장 화면이나 인물 발언이 있어야 설득되는 소재(사건, 발언, 경기, 공연)는 broll.
   개념·원리·팁처럼 그림으로 설명하는 게 나은 소재는 images.
-- scene_count 는 6~10 사이에서 소재의 정보량에 맞춰 정한다.
+- scene_count 는 4~8 사이에서 소재의 정보량에 맞춰 정한다.
 - 모든 내용은 한국어로."""
 
 

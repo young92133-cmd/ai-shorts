@@ -893,22 +893,44 @@ function updateTTSWarn() {
 }
 $("#rv-tts").addEventListener("change", updateTTSWarn);
 
+// 2D: 장면 화면 자동 선택 결과를 사람이 읽을 수 있는 말로
+const VISUAL_LABEL = {
+  upload_image: "직접 올린 사진", upload_video_frame: "직접 올린 영상의 한 장면", upload_video: "내 영상 구간",
+  ai_image: "AI 생성 이미지", number_card: "숫자 카드", trend_card: "변화 카드", compare_card: "비교 카드",
+  hook_card: "도입 카드", statement_card: "핵심 카드", focus_card: "포인트 카드", quote_card: "인용 카드",
+  summary_card: "정리 카드", safe_card: "기본 카드",
+};
+const SOURCE_LABEL = { user_upload: "직접 올린 자료", ai_generated: "AI 생성", internal_generated: "앱이 직접 그림" };
+function decisionText(d) {
+  if (!d) return "";
+  const rights = d.rights_status === "allowed" ? "✓ 사용 가능" : "⚠ 사용 불가";
+  return `화면: ${VISUAL_LABEL[d.resolved_visual_type] || d.resolved_visual_type} · 출처: ${SOURCE_LABEL[d.asset_source] || d.asset_source}`
+    + ` · ${rights}${d.fallback_used ? " · 대체 화면" : ""}`;
+}
+
 function renderVisuals() {
   const job = currentJob();
   if (!job || !reviewScript) return;
+  const plan = (job.result && job.result.visual_plan) || [];
   let n = 0;
   $("#rv-visuals").innerHTML = reviewRows().map(r => {
     const kept = !!r.narration;
     const f = sceneFiles[r.orig];
+    const d = plan[r.orig];
     const url = f ? `/files/${job.id}/uploads/${encodeURIComponent(f.name)}` : "";
-    const preview = !f ? '<div class="vis-empty">자동</div>'
-      : f.kind === "video" ? `<video src="${url}" muted preload="metadata"></video>` : `<img src="${url}" alt="">`;
+    // 미리보기 단계에서 그린 카드·맞춤 처리한 업로드는 scenes/preview_NN.jpg 에 있다 (AI 이미지는 렌더 때 생성)
+    const cardUrl = d && d.asset_path ? `/files/${job.id}/scenes/preview_${String(r.orig).padStart(2, "0")}.jpg` : "";
+    const preview = f ? (f.kind === "video" ? `<video src="${url}" muted preload="metadata"></video>` : `<img src="${url}" alt="">`)
+      : cardUrl ? `<img src="${cardUrl}" alt="">` : '<div class="vis-empty">자동</div>';
+    const decided = f ? "올린 파일로 다시 정합니다 (렌더할 때 확정)" : decisionText(d);
     return `<div class="vis-row${kept ? "" : " removed"}" data-orig="${r.orig}">
       <div class="num">${kept ? ++n : "✕"}</div>
       <div class="vis-thumb">${preview}</div>
       <div class="vis-text"><strong>${esc(r.keyword || "(키워드 없음)")}</strong>
         <span class="hint">${kept ? esc(r.narration.slice(0, 70)) : "④ 에서 나레이션을 비워 삭제된 장면"}</span>
-        <span class="hint vis-file">${f ? (f.usable_in_video ? "✓ 사용 가능 · " : "⚠ 권리 미확인 · ") + esc(f.name.replace(/^scene_\d\d_/, "")) : "올린 파일 없음 → 허용된 이미지나 대체 카드로 채움"}</span></div>
+        ${kept && decided ? `<span class="hint vis-decision">${esc(decided)}</span>` : ""}
+        ${kept && d && !f ? `<span class="hint vis-reason">이유: ${esc(d.selection_reason)}</span>` : ""}
+        <span class="hint vis-file">${f ? (f.usable_in_video ? "✓ 사용 가능 · " : "⚠ 권리 미확인 · ") + esc(f.name.replace(/^scene_\d\d_/, "")) : "자동 선택됨 · 바꾸려면 권리 확인된 파일을 올리세요"}</span></div>
       ${kept ? `<label class="scene-up" title="이 장면에 쓸 이미지·영상 올리기">＋ 파일
         <input type="file" accept="image/*,video/*" hidden data-scene="${r.orig}"></label>` : ""}
     </div>`;
@@ -1189,13 +1211,19 @@ function renderSceneTimeline(bp) {
   const est = bp.scenes.reduce((a, s) => a + Number(s.estimated_duration || 0), 0);
   const speech = bp.scenes.reduce((a, s) => a + Number(s.actual_tts_duration || 0), 0);
   box.innerHTML = `<div class="tl-scroll"><table class="tl-table">
-    <thead><tr><th>장면</th><th>역할</th><th>내레이션</th><th>예상</th><th>실제 음성</th><th>시작</th><th>종료</th></tr></thead>
-    <tbody>${bp.scenes.map(s => `<tr>
+    <thead><tr><th>장면</th><th>역할</th><th>내레이션</th><th>화면</th><th>예상</th><th>실제 음성</th><th>시작</th><th>종료</th></tr></thead>
+    <tbody>${bp.scenes.map(s => {
+      const d = s.visual_decision;
+      const shot = d ? `${VISUAL_LABEL[d.resolved_visual_type] || d.resolved_visual_type}${d.fallback_used ? " (대체)" : ""}` : "-";
+      const why = d ? `${decisionText(d)}\n이유: ${d.selection_reason}` : "";
+      return `<tr>
       <td>${s.index + 1}</td><td>${esc(s.scene_type || "-")}</td>
       <td class="tl-text" title="${esc(s.narration)}">${esc(s.narration.slice(0, 40))}${s.narration.length > 40 ? "…" : ""}</td>
+      <td class="tl-shot" title="${esc(why)}">${esc(shot)}${d && d.rights_status !== "allowed" ? " ⚠" : ""}</td>
       <td>${f(s.estimated_duration)}</td><td><b>${f(s.actual_tts_duration)}</b></td>
-      <td>${f(s.timeline_start)}</td><td>${f(s.timeline_end)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td colspan="3">합계</td><td>${f(est)}</td><td>${f(speech)}</td><td colspan="2">영상 ${f(bp.actual_duration)}</td></tr></tfoot>
+      <td>${f(s.timeline_start)}</td><td>${f(s.timeline_end)}</td></tr>`;
+    }).join("")}</tbody>
+    <tfoot><tr><td colspan="4">합계</td><td>${f(est)}</td><td>${f(speech)}</td><td colspan="2">영상 ${f(bp.actual_duration)}</td></tr></tfoot>
   </table></div>
   <p class="hint">영상 길이 = 장면별 실제 음성 길이의 합 + 장면 사이 여백 ${Number(bp.scene_gap ?? 0.25).toFixed(2)}초 × ${bp.scenes.length - 1}
     + 마지막 여운 ${Number(bp.tail ?? 0.5).toFixed(2)}초. 각 장면의 화면·자막은 자기 음성이 끝날 때까지 유지됩니다.</p>`;

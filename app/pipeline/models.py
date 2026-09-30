@@ -36,10 +36,29 @@ class PlannedScene(Scene):
     notes: str = ""
     motion: str = ""
     transition: str = ""
+    # 2D: 장면 내용 성격과 카드용 재료 (분야 무관). 화면 자동 선택이 읽는다.
+    content_kind: str = ""        # hook/subject/number/comparison/trend/story/claim/concept/conclusion
+    key_number: str = ""          # 숫자 카드에 크게 보일 값 (예: "3배", "40%"). 대본에 있는 숫자만
+    compare_a: str = ""           # 비교 카드 왼쪽
+    compare_b: str = ""           # 비교 카드 오른쪽
 
 
 class PlannedScript(Script):
     scenes: list[PlannedScene] = Field(description="완성 대본을 이야기 흐름에 따라 나눈 4~8개 장면")
+
+
+class VisualDecision(BaseModel):
+    """2D: 장면 화면 자동 선택 결과. 무엇을, 어디서, 왜 골랐는지 남긴다."""
+    scene_id: str
+    requested_visual_type: str = ""      # 장면 계획이 원한 화면 종류
+    resolved_visual_type: str            # 실제로 쓴 화면 (upload_image/upload_video/ai_image/number_card/...)
+    asset_path: str = ""
+    asset_source: str = ""               # user_upload / ai_generated / internal_generated
+    rights_status: str = "allowed"       # allowed / blocked
+    rights_reason: str = ""
+    selection_reason: str = ""
+    fallback_used: bool = False
+    show_title: bool = True              # 카드에 강조문구가 이미 크면 상단 키워드를 겹쳐 띄우지 않는다
 
 
 class BlueprintScene(BaseModel):
@@ -62,6 +81,8 @@ class BlueprintScene(BaseModel):
     motion: Literal["zoom_in", "zoom_out", "pan_left", "pan_right", "static"] = "zoom_in"
     emphasis_text: str = ""
     transition: Literal["cut", "fade"] = "fade"
+    content_kind: str = ""                     # 2D: 장면 내용 성격
+    visual_decision: "VisualDecision | None" = None   # 2D: 실제로 고른 화면과 그 이유
     # 2C: TTS 실측 뒤 채워진다. 옛 설계도에는 없으므로 None 이 기본이다.
     actual_tts_duration: float | None = None   # 이 장면 음성 파일의 실제 길이
     timeline_start: float | None = None        # 최종 영상에서 장면이 시작하는 시각
@@ -108,7 +129,7 @@ class AutoPlan(BaseModel):
     angle: str = Field(description="이 소재를 어떤 각도로 풀지 한 문장")
     hook_type: str = Field(description="이 소재에 가장 잘 맞는 훅 유형과 그 이유")
     structure: str = Field(description="추천하는 장면 전개 순서")
-    scene_count: int = Field(description="적정 장면 수 (6~10)")
+    scene_count: int = Field(description="적정 장면 수 (4~8)")
     visual_mode: Literal["images", "broll"] = Field(description="images=생성/수집 이미지 슬라이드쇼, broll=실제 영상 짜깁기")
     reason: str = Field(description="위 구성을 고른 이유")
 

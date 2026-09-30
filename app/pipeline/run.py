@@ -18,8 +18,8 @@ from . import clips as clipmod
 from . import comments as commentmod, reference as refmod, research, script as scriptmod, script_split, youtube
 from .assets import kind_of
 from .images import get_images
-from .images.base import make_fallback_card, resize_cover
-from .media import concat_audio, trim_edge_silence, extract_frames, has_audio, probe_duration, require_ffmpeg
+from . import visuals as visualsmod
+from .media import concat_audio, trim_edge_silence, has_audio, probe_duration, require_ffmpeg
 from .models import ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
 from . import timeline as timelinemod
 from .sources import SourceRegistry, guard_timeline
@@ -178,76 +178,30 @@ async def _synthesize_scenes(cfg: dict[str, Any], script: Script, job_dir: Path,
     return narration, scenes
 
 
-async def _prepare_visuals(cfg: dict[str, Any], script: Script, visuals: list[SceneVisual],
-                          job_dir: Path, progress: ProgressFn) -> list[Path]:
-    """장면별 비주얼을 실제 이미지 파일로 만든다.
+async def _usable_uploads(job_dir: Path, registry: SourceRegistry, reference_path: Path | None,
+                         progress: ProgressFn) -> list:
+    """장면 화면 후보가 될 수 있는 업로드: 소스 대장에서 영상 사용 가능으로 확인된 것만."""
+    uploads = await assetmod.load_assets(job_dir / "uploads", log=lambda m: progress("images", 80, m))
+    if reference_path:
+        uploads = [a for a in uploads if Path(a.path) != reference_path]
+    return [a for a in uploads if (registry.by_path(a.path) and registry.by_path(a.path).usable_in_video)]
 
-    upload/sourced 는 있는 파일을 1080x1920 으로 맞추고, generated 만 AI 로 생성한다.
-    어떤 단계가 실패해도 대체 카드로 내려가 영상은 반드시 완성된다.
+
+async def _preview_visuals(script: Script, job_dir: Path, cfg: dict[str, Any], registry: SourceRegistry,
+                           reference_path: Path | None, progress: ProgressFn) -> list[dict[str, Any]]:
+    """검토 화면용 장면 화면 미리보기 (2D). 카드·지정 업로드만 그리고 AI 생성·대장 등록은 하지 않는다.
+
+    렌더 때 다시 정하므로, 미리보기가 실패해도 제작은 계속한다.
     """
-    w, h = int(cfg["images"]["width"]), int(cfg["images"]["height"])
-    retries = int(cfg["images"].get("retries", 2))
-    style = (cfg.get("preset") or {}).get("image_style", "")
-    img_dir = job_dir / "scenes"
-    img_dir.mkdir(exist_ok=True)
-
-    need_gen = [v for v in visuals if v.kind == "generated"]
-    provider = get_images(cfg) if need_gen else None
-    if need_gen and provider is None:
-        progress("images", 0, f"AI 생성 꺼짐 - 빈 장면 {len(need_gen)}개는 대체 카드로 만듭니다")
-    sem = asyncio.Semaphore(getattr(provider, "concurrency", 3) if provider else 3)
-    total = len(visuals)
-    done = 0
-
-    def bump(msg: str) -> None:
-        nonlocal done
-        done += 1
-        progress("images", int(10 + 85 * done / total), f"{msg} {done}/{total}")
-
-    async def one(v: SceneVisual) -> Path:
-        i = v.scene_index
-        scene = script.scenes[i]
-        out = img_dir / f"scene_{i:02d}.jpg"
-
-        # 1) 이미 파일이 있는 경우 (첨부 / 기사 이미지)
-        if v.kind in ("upload", "sourced") and v.path:
-            src = Path(v.path)
-            try:
-                if kind_of(src) == "video":
-                    frames = await extract_frames(src, img_dir / "_src", count=1, max_width=w)
-                    if not frames:
-                        raise RuntimeError("영상에서 프레임을 뽑지 못했습니다")
-                    src = frames[0]
-                await asyncio.to_thread(shutil.copyfile, src, out)
-                await asyncio.to_thread(resize_cover, out, w, h)
-                bump(v.note or "비주얼")
-                return out
-            except Exception as e:  # noqa: BLE001
-                progress("images", 0, f"장면 {i + 1} {v.note} 사용 실패 → AI 생성으로 대체 ({e})")
-                v.kind, v.credit = "generated", ""
-
-        # 2) AI 생성
-        prompt = scene.image_prompt
-        full_prompt = f"{style}, {prompt}" if style and style.lower() not in prompt.lower() else prompt
-        async with sem:
-            for attempt in range(retries + 1):
-                try:
-                    if provider is None:
-                        raise RuntimeError("이미지 provider 없음")
-                    await provider.generate(full_prompt, out, w, h)
-                    bump("이미지 생성")
-                    return out
-                except Exception as e:  # noqa: BLE001
-                    if attempt == retries:
-                        progress("images", 0, f"장면 {i + 1} 이미지 실패 → 대체 카드 사용 ({e})")
-                        v.kind, v.note = "card", "대체 카드"
-                        make_fallback_card("", out, w, h, seed=prompt)  # 키워드는 자막 Title 로 표시됨
-                        bump("대체 카드")
-                        return out
-                    await asyncio.sleep(2 * (attempt + 1))
-        return out
-
-    return list(await asyncio.gather(*(one(v) for v in visuals)))
+    try:
+        uploads = await _usable_uploads(job_dir, registry, reference_path, lambda *a: None)
+        pinned = visualsmod.preview_uploads(uploads, len(script.scenes))
+        plan = visualsmod.plan_visuals(script.scenes, pinned, registry, ai_available=get_images(cfg) is not None)
+        plan = await visualsmod.materialize(plan, script.scenes, job_dir, cfg, None, preview=True)
+        return [d.model_dump() for d in plan]
+    except Exception as e:  # noqa: BLE001
+        progress("script", 90, f"화면 미리보기를 만들지 못했습니다 (렌더 때 다시 정합니다): {e}")
+        return []
 
 
 async def run_pipeline(
@@ -428,6 +382,13 @@ async def run_pipeline(
         progress("script", 10, f"대본 작성 중 ({llm['provider']} / {llm['model']}{style_note})")
         script = await scriptmod.write_script(llm, preset, topic, docs, int(vcfg["target_seconds"]),
                                               extra_context, instructions, style, plan)
+        # 2D: 자동 대본에도 장면 역할·내용 성격·짧은 강조문구를 붙인다 (나레이션은 그대로)
+        progress("script", 70, "장면별 화면 계획 세우는 중")
+        script, plan_method = await script_split.annotate_script(llm, script, preset=preset,
+                                                                 instructions=instructions)
+        result["plan_method"] = plan_method
+        if plan_method == "rules":
+            progress("script", 75, "AI 장면 분석이 어려워 내용 규칙으로 화면을 계획했습니다.")
     (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 80, f"대본 {len(script.scenes)}장면, {len(script.full_narration())}자")
     # Show actual candidate sources/comments before the user approves the edit.
@@ -475,8 +436,11 @@ async def run_pipeline(
                                      width=int(vcfg["width"]), height=int(vcfg["height"]),
                                      fps=int(vcfg["fps"]))
     blueprintmod.save(job_dir, draft)
+    visual_preview = await _preview_visuals(script, job_dir, cfg, registry, reference_path, progress)
+    result["visual_plan"] = visual_preview
     if review:
         script, choices = await review(script, {
+            "visual_plan": visual_preview,
             "topic": topic,
             "source_candidates": result.get("source_candidates", []),
             "comment_candidates": comment_candidates,
@@ -584,43 +548,41 @@ async def run_pipeline(
             progress("images", 75, f"짜깁기 실패 - 이미지 모드로 전환합니다 ({e})")
             visual_mode, broll_picks, broll_sources = "images", [], []
 
-    # ---------- 5. 비주얼 (첨부 → 기사 이미지 → AI 생성 → 카드) ----------
-    progress("images", 78, "장면별 비주얼 정하는 중")
-    uploads = await assetmod.load_assets(job_dir / "uploads",
-                                         log=lambda m: progress("images", 80, m))
-    if reference_path:
-        uploads = [a for a in uploads if Path(a.path) != reference_path]
-    uploads = [a for a in uploads if (registry.by_path(a.path) and registry.by_path(a.path).usable_in_video)]
-    sourced = []  # 기사 이미지는 권리 증빙이 없으므로 영상 소재에서 제외
+    # ---------- 5. 장면별 화면 자동 선택 (2D) ----------
+    # 권리 확인 업로드 → 내 영상 구간 → AI 이미지(켜져 있을 때) → 내용 성격별 카드 → 안전 카드
+    progress("images", 78, "장면별 화면 자동 선택 중")
+    uploads = await _usable_uploads(job_dir, registry, reference_path, progress)
     if uploads:
         await assetmod.describe_assets(uploads, log=lambda m: progress("images", 82, m))
-    visuals = await assetmod.resolve_visuals(llm, script.scenes, uploads, sourced,
-                                             log=lambda m: progress("images", 84, m))
-
-    # 짜깁기로 채워진 장면은 이미지를 만들 필요가 없다
-    covered = {p.scene_index for p in broll_picks if p}
-    for v in visuals:
-        if v.scene_index in covered:
-            pick = broll_picks[v.scene_index]
-            v.kind, v.path = "broll", ""
-            v.credit = brollmod.credit_for(pick, broll_sources)
-            v.note = f"소스 {pick.source_index + 1} {pick.start:.0f}~{pick.end:.0f}초"
-
-    need_image = [v for v in visuals if v.kind != "broll"]
-    images_by_scene: dict[int, Path] = {}
-    if need_image:
-        progress("images", 86, f"이미지 준비 {len(need_image)}장 ({cfg['images']['provider']})")
-        made = await _prepare_visuals(cfg, script, need_image, job_dir, progress)
-        images_by_scene = {v.scene_index: p for v, p in zip(need_image, made)}
-        for v, path in zip(need_image, made):
-            parent = registry.by_path(v.path) if v.kind == "upload" and v.path else None
-            registry.add(kind="image", origin="derived" if parent else "generated", path=str(path),
-                         title=f"장면 {v.scene_index + 1}",
-                         rights=parent.model_dump() if parent else None, parent_id=parent.id if parent else "",
-                         used_for=f"scene_{v.scene_index:02d}")
+    by_scene = await assetmod.plan_assets(llm, uploads, script.scenes, log=lambda m: progress("images", 84, m))
+    broll_cover = {p.scene_index: broll_sources[p.source_index].path for p in broll_picks if p}
+    decisions = visualsmod.plan_visuals(script.scenes, by_scene, registry,
+                                        ai_available=get_images(cfg) is not None, broll=broll_cover)
+    decisions = await visualsmod.materialize(decisions, script.scenes, job_dir, cfg, registry, progress)
+    images_by_scene = {i: Path(d.asset_path) for i, d in enumerate(decisions)
+                       if d.resolved_visual_type != "upload_video"}
+    visuals: list[SceneVisual] = []
+    for i, d in enumerate(decisions):
+        credit = ""
+        if d.resolved_visual_type == "upload_video":
+            credit = brollmod.credit_for(broll_picks[i], broll_sources)
+        elif d.asset_source == "user_upload":
+            item = registry.by_path(d.asset_path)
+            credit = item.credit if item else ""
+        kind = {"user_upload": "upload", "ai_generated": "generated"}.get(d.asset_source, "card")
+        visuals.append(SceneVisual(scene_index=i, kind="broll" if d.resolved_visual_type == "upload_video" else kind,
+                                   path=d.asset_path, credit=credit, note=d.resolved_visual_type))
+    # 설계도·manifest 에 무엇을 왜 골랐는지 남긴다 (2C 시간은 그대로)
+    for scene, d in zip(blueprint.scenes, decisions):
+        scene.visual_decision = d
+    blueprintmod.save(job_dir, blueprint)
+    visualsmod.save_manifest(job_dir, decisions)
+    result["blueprint"] = blueprint.model_dump()
+    result["visual_plan"] = [d.model_dump() for d in decisions]
     result["images"] = [str(p) for p in images_by_scene.values()]
     result["visuals"] = [v.model_dump() for v in visuals]
-    progress("images", 100, "비주얼 완료")
+    kinds = ", ".join(f"{i + 1}:{d.resolved_visual_type}" for i, d in enumerate(decisions))
+    progress("images", 100, f"장면 화면 결정 완료 ({kinds})")
     if until == "images":
         return result
 
@@ -639,8 +601,10 @@ async def run_pipeline(
                       "has_audio": await has_audio(src), "source_url": sv.url}
         else:
             visual = {"kind": "image", "path": images_by_scene[i]}
-        # 기사·첨부 이미지를 쓴 장면에는 해당 구간 동안 출처를 표시한다
-        tl_scenes.append({"duration": dur, "title": sc.on_screen_text, "credit": v.credit, "visual": visual})
+        # 첨부 자료를 쓴 장면에는 해당 구간 동안 출처를 표시한다.
+        # 카드는 강조문구를 이미 크게 그리므로 상단 키워드를 겹쳐 띄우지 않는다.
+        title = sc.on_screen_text if decisions[i].show_title else ""
+        tl_scenes.append({"duration": dur, "title": title, "credit": v.credit, "visual": visual})
     # 고른 댓글: 스타일의 댓글 자리가 있으면 그 흐름대로, 없으면 둘째 장면부터 한 장면에 하나씩 3.5초
     tl_comments = []
     total_dur = sum(durations)

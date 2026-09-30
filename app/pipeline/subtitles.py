@@ -24,6 +24,32 @@ def _esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")")
 
 
+def wrap_title(text: str, per_line: int, max_lines: int = 2) -> list[str]:
+    """상단 키워드를 줄 단위로 나눈다. 넘치면 마지막 줄을 말줄임으로 끝낸다 (화면 밖으로 나가지 않게)."""
+    words = " ".join(text.split()).split(" ")
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        while len(w) > per_line:          # 띄어쓰기 없는 긴 단어는 글자 단위로 자른다
+            if cur:
+                lines.append(cur)
+                cur = ""
+            lines.append(w[:per_line])
+            w = w[per_line:]
+        trial = f"{cur} {w}".strip()
+        if len(trial) <= per_line:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1][: per_line - 1].rstrip() + "…"
+    return lines
+
+
 def group_lines(words: list[Word], max_chars: int = 14, max_words: int = 4, max_gap: float = 0.8) -> list[list[Word]]:
     lines: list[list[Word]] = []
     cur: list[Word] = []
@@ -86,10 +112,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events: list[str] = []
 
+    # 상단 키워드는 자동 줄바꿈이 꺼져 있어(WrapStyle 2) 직접 나눈다. 화면 폭에 들어가는 글자 수로 최대 2줄.
+    per_line = max(4, int((width - 120) / (title_size * 1.0)))
     for t_start, t_end, text in titles or []:
         if text.strip():
             events.append(
-                f"Dialogue: 0,{_ts(t_start)},{_ts(t_end)},Title,,0,0,0,,{{\\fad(200,200)}}{_esc(text.strip())}"
+                f"Dialogue: 0,{_ts(t_start)},{_ts(t_end)},Title,,0,0,0,,{{\\fad(200,200)}}"
+                + "\\N".join(_esc(line) for line in wrap_title(text, per_line))
             )
 
     # 출처 크레딧 - 화면 하단에 작고 흐리게

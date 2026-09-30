@@ -90,7 +90,10 @@ class SplitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(method, "fallback")
         self.assertEqual(script.full_narration(), SHORT)
         self.assertEqual(len(script.scenes), 4)
-        self.assertEqual(script.scenes[0].visual_type, "text_card")
+        # 2D: 대체 분할도 내용 성격으로 화면을 계획하고, 강조문구는 문장 전체가 아닌 짧은 구다
+        self.assertEqual(script.scenes[0].content_kind, "hook")
+        self.assertEqual(script.scenes[-1].content_kind, "conclusion")
+        self.assertTrue(all(len(s.on_screen_text) <= script_split.EMPHASIS_MAX for s in script.scenes))
 
     async def test_api_exception_uses_fallback(self):
         with patch.object(script_split, "ask_structured", new=AsyncMock(side_effect=RuntimeError("API unavailable"))):

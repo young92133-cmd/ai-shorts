@@ -109,7 +109,9 @@ async def _ask_claude_code(model: str, system: str, user: str, schema: type[T], 
     opts = ClaudeAgentOptions(
         model=model,
         system_prompt=system,
-        max_turns=1,
+        # 구조화 출력(json_schema)은 내부적으로 한 번 더 주고받는 경우가 있어 1회로는
+        # "Reached maximum number of turns (1)" 로 실패할 수 있다. 도구는 모두 막혀 있으므로 3회까지 허용.
+        max_turns=3,
         allowed_tools=[],
         disallowed_tools=["Bash", "Read", "Write", "Edit", "WebSearch", "WebFetch", "Glob", "Grep", "Agent"],
         permission_mode="bypassPermissions",

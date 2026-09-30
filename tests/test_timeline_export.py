@@ -304,6 +304,7 @@ class CommentLayoutTests(unittest.IsolatedAsyncioTestCase):
             cands = [{"id": "a", "text": "A", "likes": 1, "url": "u1"}, {"id": "b", "text": "B", "likes": 9, "url": "u2"}]
             with (patch.object(run, "require_ffmpeg"),
                   patch.object(run.research, "research_topic", new=AsyncMock(return_value=[])),
+                  patch.object(run.script_split, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 호출 없음"))),
                   patch.object(run.scriptmod, "write_script", new=AsyncMock(return_value=script)),
                   patch.object(run.brollmod, "gather_sources",
                                new=AsyncMock(return_value=[SourceVideo(url="https://youtu.be/x", duration=60)])),
