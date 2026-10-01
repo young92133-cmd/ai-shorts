@@ -1,6 +1,74 @@
-# AI Shorts Studio
+# AI 콘텐츠팩토리
 
 주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4 를 자동으로 만드는 개인용 도구.
+
+## 채팅으로 사용하는 방법 (V1)
+
+Claude Code 또는 Codex에서 이 프로젝트 폴더를 열고 아래처럼 말하면 됩니다.
+Claude Code는 `CLAUDE.md`, Codex는 `AGENTS.md`에 따라 같은 제작 엔진을 실행합니다.
+브라우저를 직접 조작할 필요는 없습니다. 웹 화면은 결과 확인·세부 편집용입니다.
+
+| 하고 싶은 일 | 이렇게 말하세요 |
+|---|---|
+| 한 편 완성 | "하늘이 파란 이유로 45초 쇼츠 만들어줘. 중간 확인 없이 완성해." |
+| 대본 먼저 확인 | "USB-C 충전 속도가 다른 이유로 만들어줘. 대본 먼저 보여줘." |
+| 확인한 대본 이어서 제작 | "좋아. 그 대본 그대로 계속 만들어." |
+| 링크로 제작 | "이 유튜브 링크로 45초 쇼츠 만들어줘." / "이 기사 링크로 만들어줘." |
+| 참고 파일 분석 | "이 영상 파일을 참고해서 쇼츠 만들어줘." |
+| 직접 쓴 대본 | "이 대본으로 쇼츠 만들어줘." (최소 4문장) |
+| 상태·장면 확인 | "현재 작업 상태 알려줘." / "장면별로 보여줘." |
+| 다시 렌더 | "이 작업 다시 렌더해줘." |
+| 화제 탐색 | "오늘 화제 소재 5개 찾아줘." |
+| 후보 선택 | "방금 찾은 것 중 2번과 4번으로 각각 쇼츠 만들어줘." |
+| 여러 편 | "이 주제로 쇼츠 3개 만들어줘." (한 편씩 순차 제작) |
+| 기본 형식 | "정보형으로" / "스토리·사연형으로" / "일반 이슈형으로" |
+
+완성 파일은 `output/<작업번호>/final.mp4`이고 기본 해상도는 **1080×1920**입니다.
+`대본 먼저`라고 하면 대본을 저장하고 멈춥니다. `계속 만들어`는 저장 대본을 사용하며 조사·대본을 다시 하지 않습니다.
+여러 편은 순서대로 만들고, 실패한 편이 있어도 성공한 다른 영상은 남습니다.
+목표 45초는 대본 목표치이며 실제 길이는 TTS 실측에 따라 달라집니다. 직접 대본의 내용을 길이에 맞춰 임의로 늘리거나 줄이지 않습니다.
+
+**AI 연결:** 기본은 Claude **구독 로그인**입니다. Claude 데스크톱 앱 로그인과 CLI 로그인은 다를 수 있습니다.
+처음에는 아래 명령으로 브라우저 인증을 마치고, 터미널이 코드를 요구하면 그 터미널에 붙여넣으세요.
+
+```powershell
+.\.venv\Scripts\python.exe -m app.pipeline.llm login
+.\.venv\Scripts\python.exe -m app.pipeline.llm status
+```
+
+`auto`는 Claude부터 쓰고, 한도·인증·일시적 서비스 오류 때만 다른 AI 사용 허용을 확인합니다.
+**OpenAI는 키 설정과 별도의 유료 사용 허용이 모두 필요합니다.** 키만 등록해도 자동으로 과금되지는 않습니다.
+허용된 요청에 `--allow-openai`를 쓰거나 사용자가 `config.yaml`의 `llm.allow_paid_openai`를 `true`로 바꿀 수 있습니다.
+`ANTHROPIC_API_KEY`가 있어도 Factory의 Claude 구독 경로에서는 사용하지 않습니다.
+실제 공급자는 `project_state.json`에 기록하며, `none`이면 성공한 AI 호출 없이 규칙 기반으로 처리된 것입니다.
+
+**입력 제한:** 참고 영상은 200MB 이하입니다. 음성 분석은 로컬 `faster-whisper`를 쓰고 처음에는 모델을 내려받습니다.
+기본 전사는 CPU에서 실행하므로 CUDA 설치는 필요하지 않습니다. 원본 음성의 언어를 자동 감지합니다.
+YouTube의 자막·오디오 수집, 로그인 필요한 웹페이지, 네트워크/Claude 구독 한도에 따라 실패할 수 있으며 상태와 원인을 저장합니다.
+외부 영상·기사·댓글은 내용 참고용입니다. 실제 화면은 내부 카드와 권리를 확인한 첨부만 사용합니다.
+
+**V1 기능·실사용 검증을 완료했습니다.** 기존 95개를 포함한 자동 테스트 132개와 Claude 구독 실제 영상 10편,
+직접 대본 영상 2편을 확인했습니다. 지원 입력 6종과 두 편 순차 검토→이어 만들기도 실제 통과했습니다.
+자세한 검증 상태는 [HANDOFF.md](HANDOFF.md) 맨 위를 확인하세요. 기존 엔진 기능을 재사용하며,
+고급 자막·모션·BGM/효과음 추천·레퍼런스 복제·AI 영상·고급 스타일팩은 V2로 미룹니다.
+여러 URL 통합·자동 게시·자동 팩트체크는 V1에 없습니다. 뉴스의 날짜·주장·숫자는 게시 전에 출처를 확인하세요.
+
+### 직접 실행할 때
+
+```powershell
+.\.venv\Scripts\python.exe -m app.factory make --topic "하늘이 파란 이유" --seconds 45 --format information
+.\.venv\Scripts\python.exe -m app.factory make --topic "USB-C 충전" --review
+.\.venv\Scripts\python.exe -m app.factory resume 작업번호
+.\.venv\Scripts\python.exe -m app.factory make --url "https://..."
+.\.venv\Scripts\python.exe -m app.factory make --reference-video "C:\영상\참고.mp4"
+.\.venv\Scripts\python.exe -m app.factory trends --limit 5
+.\.venv\Scripts\python.exe -m app.factory batch --select 2 4 --candidates 후보ID
+.\.venv\Scripts\python.exe -m app.factory batch --topic "주제" --count 3
+.\.venv\Scripts\python.exe -m app.factory batch-status 묶음ID
+.\.venv\Scripts\python.exe -m app.factory batch-resume 묶음ID
+```
+
+아래는 기존 웹 화면과 개별 파이프라인의 추가 사용법입니다. Factory 기본 경로는 무료 Edge TTS와 내부 카드이며 이미지 API는 꺼져 있습니다.
 
 ```
 입력 → 리서치(뉴스/자막) → Claude/GPT 대본 → 소스 권리 확인 → TTS 나레이션 → 허용된 영상·이미지 또는 카드 → 자막 합성 → final.mp4 + 제목/설명/태그
@@ -13,7 +81,7 @@
 | Python 3.11+ | 필수 | 설치됨 |
 | ffmpeg | 필수 | `winget install Gyan.FFmpeg` (설치됨) |
 | 대본 AI (아래 중 하나) | 필수 | **Claude 구독 로그인** (API 키 불필요) 또는 **OpenAI 키** |
-| `GEMINI_API_KEY` | **이미지(기본값)** | https://aistudio.google.com/apikey — Nano Banana 2 |
+| `GEMINI_API_KEY` | 기존 웹 이미지 기능(선택) | Factory V1에서는 이미지 API를 켜지 않음 |
 | `FAL_KEY` | 이미지(저렴, 장당 ~4원) | https://fal.ai |
 | `HF_TOKEN` | 이미지(무료·한도) | https://huggingface.co/settings/tokens → Read 토큰 |
 | `NAVER_CLIENT_ID/SECRET` | 선택 | 네이버 뉴스 검색. 없으면 DuckDuckGo 만 사용 |
@@ -26,8 +94,10 @@
 | provider | 준비 | 비용 |
 |---|---|---|
 | `claude` (기본) | 아래 **Claude 로그인** 1회 | 구독에 포함 (Pro/Max 사용량 한도 공유) |
-| `openai` | 화면의 **GPT 연결 · OpenAI API 키 등록**에서 키 저장 (또는 `.env`에 `OPENAI_API_KEY`) | API 사용량에 따라 별도 요금 |
-| `anthropic` | `.env` 에 `ANTHROPIC_API_KEY` | API 종량제 |
+| `openai` | OpenAI 키 + `llm.allow_paid_openai: true` 또는 Factory의 명시적 `--allow-openai` | API 사용량에 따라 별도 요금 |
+| `auto` | Claude부터 사용, 전환 시 OpenAI 허용+키 필요 | 기본은 구독, 허용된 전환만 API 종량제 |
+
+기존 개별 파이프라인의 `anthropic` API 모드는 Factory 지원 모드에 포함하지 않습니다. 별도 `allow_paid_anthropic` 허용 없이는 호출하지 않습니다.
 
 **Claude 로그인 (한 번만)** — Claude Code CLI 로 브라우저 로그인하면 이 프로그램이 그 로그인을 그대로 씁니다. 데스크톱 앱에 번들된 `claude.exe` 를 자동으로 찾고, 없으면 `irm https://claude.ai/install.ps1 | iex` 로 설치하세요.
 

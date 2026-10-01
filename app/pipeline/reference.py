@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from ..config import env
-from .llm import ask_structured
+from .llm import ask_structured, auxiliary_allowed, record_auxiliary
 from .media import extract_frames, has_audio, probe_duration, run_ffmpeg
 from .models import ResearchDoc, Word
 from .vision import describe_all
@@ -38,6 +38,8 @@ async def _transcribe_audio(audio: Path, use_openai: bool) -> list[Word]:
     key = env("OPENAI_API_KEY")
     if not use_openai:
         return await transcribe(audio)
+    if not auxiliary_allowed("openai"):
+        raise RuntimeError("OpenAI 음성 인식 API 사용이 허용되지 않았습니다.")
     if not key:
         raise RuntimeError("GPT 음성 인식에 OpenAI API 키가 필요합니다.")
     async with httpx.AsyncClient(timeout=300) as client:
@@ -50,6 +52,7 @@ async def _transcribe_audio(audio: Path, use_openai: bool) -> list[Word]:
         if response.status_code >= 400:
             raise RuntimeError(f"OpenAI 음성 인식 오류 {response.status_code}: {response.text[:200]}")
     data = response.json()
+    record_auxiliary("openai", "whisper-1")
     words = [Word(text=str(w.get("word", "")).strip(), start=float(w["start"]), end=float(w["end"]))
              for w in data.get("words", []) if w.get("word") and "start" in w and "end" in w]
     if words:
@@ -66,8 +69,8 @@ async def analyze_uploaded_video(llm: dict, video: Path, workdir: Path,
     if duration <= 0:
         raise RuntimeError("업로드 영상을 읽지 못했습니다.")
     frames = await extract_frames(video, workdir / "frames", count=min(8, max(3, int(duration // 12))), max_width=640)
-    frame_provider = "gemini" if env("GEMINI_API_KEY") else (
-        "openai" if llm.get("provider") == "openai" and env("OPENAI_API_KEY") else "")
+    frame_provider = "gemini" if auxiliary_allowed("gemini") and env("GEMINI_API_KEY") else (
+        "openai" if llm.get("provider") == "openai" and auxiliary_allowed("openai") and env("OPENAI_API_KEY") else "")
     descriptions = await describe_all(frames, log=log, provider=frame_provider,
                                      model=llm.get("model", ""), prompt=FRAME_PROMPT) if frames and frame_provider else []
     visuals = [f"[{i + 1}/{len(frames)}] {d.description}"

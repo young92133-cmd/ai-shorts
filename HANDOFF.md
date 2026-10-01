@@ -1,5 +1,40 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-01 — V1 기능·실사용 검증 완료 (현재 상태)
+
+**V1 완료 조건을 검증했다. V2 영상 품질 개발은 별도 요청 전에는 시작하지 않는다.** 아래 9월 기록의 작업 순서를 이 절이 대체한다.
+
+- **Git 출발점·체크포인트:** `feature/agent-content-factory` / `c6cd645`. 작업 시작 전 clean, 추적 파일 키·토큰 패턴 없음, `.env`·영상·output 추적 없음 확인 후 요청대로 일반 `git push origin feature/agent-content-factory` 실행 → `Everything up-to-date`. force/amend/다른 브랜치 변경 없음. V1 완료 변경은 이 문서가 포함된 **로컬 체크포인트 커밋**으로 기록한다. 새 변경의 push는 하지 않는다. Git 작성자 설정이 비어 있어 `c6cd645`의 작성자 정보를 이번 커밋에만 사용한다.
+- **환경:** Python 3.12.10, ffmpeg·ffprobe 9.0.2 실제 실행 정상. PATH에 없더라도 기존 `require_ffmpeg()`가 WinGet 설치를 찾는다. `faster-whisper` 1.2.1, PyAV 18.1.0, small 전사 모델 준비 완료. PyAV 19의 제거된 인자로 실제 오류가 나서 `av<19`를 requirements에 반영했다. CUDA 라이브러리가 없어 자동 GPU 선택도 실패했으므로 CPU int8을 기본으로 바꾸고 원본 언어를 자동 감지한다. 실제 한국어 전사 34단어 확인.
+- **인증:** 사용자의 CLI 인증 요청으로 로그인 절차를 실행했고 `Login successful`, `loggedIn:true`, `authMethod:claude.ai`, `apiProvider:firstParty`를 확인했다. 앱 번들 CLI는 현재 `%APPDATA%/Claude/claude-code/2.1.284/claude.exe`. `python -m app.pipeline.llm login`도 `--claudeai`로 구독 인증을 선택한다. **키·인증 코드를 출력하거나 유료 API로 우회하지 않는다.**
+- **현재 구현:** Factory의 `claude/openai/auto` 선택, 유료 OpenAI 허용+키 가드, 구독 호출에 Anthropic API 키/토큰 제거, 전환 가능한 오류 제한, 프로젝트 `ai_calls/ai_provider_used/ai_providers_used` 기록. auto는 성공한 전환 공급자를 한 제작 동안 유지한다. 응답·스키마·거부 때문에 공급자를 전환하지 않는다.
+- **입력·명령:** `make --reference-video`(200MB, 원본은 참고용만), `--format information|story|issue`, `--allow-openai`, `batch --topic ... --count N` 또는 `--select ... --candidates ID`, `batch-status`, `batch-resume`. 후보 목록은 `output/_factory/trends_*.json`, 순차 결과는 `batch_*.json`이다. 한 편 실패해도 다른 성공 영상은 보존한다. 엔진은 재작성하지 않았다.
+- **무료 기본값:** Factory는 이미지 API를 끄고 기본 TTS는 Edge다. 환경 키만으로 Gemini/OpenAI 비전·전사를 호출하지 않는다. OpenAI TTS도 명시적 OpenAI 허용을 요구한다. 기존 엔진의 카드·기본 줌/전환·자막을 재사용한다.
+- **상태 보존:** make/resume 결과 검증 오류도 failed로 저장한다. `resume` id 생략 시 최신의 이어 만들 수 있는 작업을 고른다. 참고 영상은 resume 때 재분석하지 않고 실제 화면에서도 제외한다. 이전 `ai_provider_used:null`은 성공한 AI 호출이 없었던 결과이며, 새 상태는 `none`으로 명시한다.
+- **자동 테스트:** 기존 95개 + 신규 37개 = **132개 통과**. 로그 `output/v1_unit_tests.log`. 처음 발견한 기존 참고 영상 테스트 실패는 Factory 비용 가드를 유지하면서 기존 env 목 경계를 복원해 해결했다. 기존 테스트를 삭제하거나 약화하지 않았다. `pip check`도 충돌 없음.
+- **실제 제작:** `output/20261001_213706_969f/final.mp4` — 창작 사연 직접 대본, **17.9초 / 1080×1920 / 4장면 / 자막 12줄**. 실제 무료 Edge TTS+FFmpeg 사용. `scripts/verify_factory_v1.py --verify 20261001_213706_969f`에서 전체 디코딩·자막·타임라인·완료 상태·권리 가드 통과. 확인용 `v1_scene_sheet.jpg` 및 `v1_check_frames/` 생성. Claude 분할은 인증 실패해서 기존 문장 경계 대체를 사용했으므로 **AI 성공 영상으로 세지 않는다.**
+- **실제 검토→resume:** `output/20261001_215700_5bf6/final.mp4` — 하늘·노을 설명 직접 대본, **36.4초 / 1080×1920 / 7장면 / 자막 25줄**. 검토 대기 때 MP4 없음 확인, status/inspect 저장, resume 전후 `script.json` SHA-256 동일. 실제 TTS·렌더·전체 디코딩·공급자 기록(`none`)·권리 가드 통과. 장면 시트 직접 확인. 자동 대본 생성 검증으로 세지 않는다.
+- **기타 실제 확인:** 사연 영상의 `rerender` 성공. Google 화제 조회 `trends --limit 5`와 번호·후보 id 저장 성공. 초기 YouTube 참고 URL 1개는 접근 실패했으나, 공개 자막 수집이 가능한 `https://www.youtube.com/watch?v=ZUZqIWVgw2k`로 실제 URL 제작을 통과했다. 외부 원본 영상은 최종 화면에 쓰지 않았다.
+- **실패 보존:** `output/20261001_213049_779e/`는 새 정보형 주제의 대본 생성 전 인증 실패, `failed_at:research_complete`, `next_action:make`. 실패 폴더를 지우지 않는다.
+- **최소 5편 실제 AI 검증:** A 정보형 `20261001_223329_2c25`(39.81초), B 창작 사연 `20261001_223524_9bb0`(38.76초), C USB-C `20261001_223702_97cf`(35.83초), D YouTube `20261001_224158_2399`(36.87초), E 화제 군함 `20261001_223845_0dfc`(37.57초) 모두 통과. 모두 1080×1920, TTS·자막·전체 디코딩·타임라인·완료 상태·실제 공급자 `claude`·권리 가드 정상. A 새 주제 review→resume에서 대본 SHA-256 동일. 장면 시트 직접 확인. 보고서 `output/v1_report_20261001_223329_1b88.json`, `output/v1_report_20261001_224158_d1a2.json`.
+- **추가 입력 실제 검증:** F 자동 소재 `20261001_224506_e485`(38.59초), G NASA GPS 웹 URL `20261001_224717_c9d6`(37.43초), H 직접 만든 USB-C 영상의 참고 업로드 `20261001_224906_545a`(36.58초)도 동일 검증 통과. H는 CPU 로컬 전사와 Claude 요약을 사용했고 참고 원본은 화면에서 제외했다. 보고서 `output/v1_report_20261001_224506_5011.json`. 총 **Claude 실제 제작 10편 + 직접 대본 2편**을 만들었다.
+- **실제 두 편 순차 검증:** 후보 목록 `trends_20261001_223845_106f`의 2번 군함·4번 김예지를 `batch --review`로 생성. `batch_20261001_225231_3abf`에서 대기 2편·완료 0편·MP4 없음 확인 → `batch-resume` 순차 완료 2편·실패 0편. 두 대본 SHA-256 동일, 각 MP4 전체 검사 통과. 결과 `20261001_225231_9178`(39.13초), `20261001_225420_11ff`(40.73초). 기록 `output/v1_batch_validation.json`, 각 폴더의 `v1_verification.json`. 순차 실패 보존은 외부 호출 없는 회귀 테스트로 검증했다.
+- **검증 범위·제한:** 위 영상 모두 1080×1920·무료 Edge TTS·내부 카드·기본 자막/전환, 실제 공급자는 Claude 구독이다. 장면 시트와 전환 프레임을 확인했다. OpenAI 실호출은 유료 사용 미승인으로 하지 않았고 공급자 선택·허용 가드·전환 조건은 목 테스트다. 날짜·뉴스 주장·숫자의 자동 팩트체크는 V1에 없으므로 게시 전 출처 확인이 필요하다. 여러 URL 통합·자동 게시·고급 스타일은 미구현이다.
+- **다음 작업:** 사용자가 요청한 V1 유지보수 또는 실제 제작만 진행한다. V2와 새 변경 push는 별도 요청 전에는 시작하지 않는다.
+
+### 재현 명령
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q
+.\.venv\Scripts\python.exe scripts/verify_factory_v1.py --cases A B C D E --youtube-url "실제 참고 영상 URL"
+.\.venv\Scripts\python.exe scripts/verify_factory_v1.py --verify 작업번호
+.\.venv\Scripts\python.exe -m app.factory batch --select 2 4 --candidates 후보ID --review
+.\.venv\Scripts\python.exe -m app.factory batch-resume 묶음ID
+```
+
+실제 제작은 이번 사용자 요청에서 허용됐다. 유료 API·자동 게시·새 변경 push는 미승인이다.
+이하 내용은 9월 인계 이력이다.
+
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >

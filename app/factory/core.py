@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from ..config import load_config, load_presets, merge_options
 from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
-from ..pipeline import run as runmod
+from ..pipeline import run as runmod, llm as llmmod
 from ..pipeline.assets import kind_of
 from ..pipeline.media import probe_video, require_ffmpeg
 from ..pipeline.models import PlannedScript, VisualDecision
@@ -38,6 +38,11 @@ from . import state as st
 Log = Callable[[str], None]
 PID_RE = re.compile(r"^[A-Za-z0-9_-]{3,80}$")
 CARD_CHOICES = tuple(k for k in cards.CARD_KINDS if k != "safe_card")
+FORMATS = {
+    "information": {"name": "정보형", "instructions": "정보/상식을 쉽게 설명하고 근거 없는 숫자나 단정을 보태지 마세요."},
+    "story": {"name": "스토리/사연형", "instructions": "상황→작은 변화→결말의 이야기로 구성하세요. 창작 사연은 창작이라고 명시하고 실제 사건처럼 꾸미지 마세요."},
+    "issue": {"name": "일반 이슈형", "instructions": "이슈의 배경→핵심→생활에 미치는 영향을 정리하세요. 불확실한 정보는 단정하지 마세요."},
+}
 
 
 class FactoryError(Exception):
@@ -113,7 +118,36 @@ def _run_cfg(request: dict[str, Any]) -> dict[str, Any]:
                  "target_seconds": request.get("seconds")}
     if request.get("subtitles") is not None:   # 안 정했으면 프리셋 기본값을 따른다
         overrides["subtitles"] = bool(request["subtitles"])
-    return merge_options(cfg, presets[preset], overrides)
+    out = merge_options(cfg, presets[preset], overrides)
+    if out["llm"]["provider"] not in ("claude", "openai", "auto"):
+        raise FactoryError("invalid", "Factory AI 모드는 claude / openai / auto 중 하나여야 합니다.")
+    if request.get("allow_openai") is not None:
+        out["llm"]["allow_paid_openai"] = request["allow_openai"] is True
+    if out["llm"]["provider"] == "openai":
+        if not llmmod.paid_allowed("openai", out["llm"]):
+            raise FactoryError("paid_not_allowed", "OpenAI API 사용을 먼저 명시적으로 허용해 주세요 (--allow-openai 또는 config.yaml).")
+        if not llmmod.env("OPENAI_API_KEY"):
+            raise FactoryError("missing_key", "OpenAI API 키가 설정되지 않았습니다. 비밀값을 채팅에 붙이지 말고 사용자 설정에 저장해 주세요.")
+    # V1은 기존 카드 렌더러와 무료 음성을 기본으로 한다. 프리셋/환경 키가 과금을 켜지 않는다.
+    out["images"]["provider"] = "none"
+    if not request.get("tts"):
+        out["tts"]["provider"] = "edge"
+        out["tts"]["voice"] = request.get("voice") or (presets[preset].get("voice") or {}).get("edge") or out["tts"]["voices"]["edge"]
+    if out["tts"]["provider"] == "openai" and not llmmod.paid_allowed("openai", out["llm"]):
+        raise FactoryError("paid_not_allowed", "OpenAI 음성 API도 --allow-openai 또는 설정상 명시적 허용이 필요합니다.")
+    return out
+
+
+def _ai_session(job_dir: Path, state: dict, cfg: dict):
+    def record(event: dict) -> None:
+        state.setdefault("ai_calls", []).append({**event, "at": st.now()})
+        if event["status"] == "success":
+            state["ai_provider_used"] = event["provider"]
+            providers = state.setdefault("ai_providers_used", [])
+            if event["provider"] not in providers:
+                providers.append(event["provider"])
+        st.save(job_dir, state)
+    return llmmod.provider_session(cfg["llm"], record)
 
 
 def _progress(job_dir: Path, state: dict[str, Any], log: Log):
@@ -136,6 +170,8 @@ def _summary(job_dir: Path, state: dict[str, Any], **extra: Any) -> dict[str, An
     out = {"status": status, "project_id": state["project_id"], "project_dir": str(job_dir),
            "message": state.get("error") if status == "failed" else st.MESSAGE.get(status, ""),
            "next_action": st.next_action(state, job_dir)}
+    out["ai_provider_used"] = state.get("ai_provider_used")
+    out["ai_providers_used"] = state.get("ai_providers_used", [])
     if status == "failed":
         out["failed_at"] = state.get("failed_at", "")
     out.update(extra)
@@ -154,9 +190,13 @@ def _script_view(job_dir: Path) -> dict[str, Any]:
 async def _finish(job_dir: Path, state: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     """렌더 완료 처리: 결과 확인 → 상태·출력 경로 저장 → 웹 UI 목록에도 보이게 job.json 기록."""
     final = Path(result["video"])
+    if not final.is_file() or not final.stat().st_size:
+        raise RuntimeError("렌더 결과 영상 파일이 없거나 비어 있습니다.")
     info = await probe_video(final)
     stream = (info.get("streams") or [{}])[0]
     duration = round(float((info.get("format") or {}).get("duration") or 0), 2)
+    if not stream.get("width") or not stream.get("height") or duration <= 0:
+        raise RuntimeError("렌더 결과의 해상도와 길이를 확인할 수 없습니다.")
     outputs = {name: str(job_dir / f) for name, f in (
         ("final_video", "final.mp4"), ("thumbnail", "thumb.jpg"), ("meta", "meta.txt"), ("script", "script.json"),
         ("blueprint", bpmod.FILE), ("timeline", tlmod.FILE), ("visuals", visualsmod.MANIFEST),
@@ -190,7 +230,7 @@ def _write_web_job(job_dir: Path, state: dict[str, Any], result: dict[str, Any])
 
 def _fail(job_dir: Path, state: dict[str, Any], e: Exception) -> dict[str, Any]:
     at = state.get("status", "")
-    state = st.advance(job_dir, state, "failed", error=f"{type(e).__name__}: {e}", failed_at=at)
+    state = st.advance(job_dir, state, "failed", error=f"{type(e).__name__}: {llmmod.safe_error(e)}", failed_at=at)
     return _summary(job_dir, state)
 
 
@@ -200,47 +240,72 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                preset: str = "daily", style: str | None = None, seconds: int | None = None, review: bool = False,
                instructions: str = "", llm: str | None = None, model: str | None = None, tts: str | None = None,
                voice: str | None = None, subtitles: bool | None = None, assets: list[str] | None = None,
-               asset_rights: dict[str, Any] | None = None, log: Log = print) -> dict[str, Any]:
+               asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
+               hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
+               log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다."""
-    modes = [bool(topic), bool(url), bool(auto), bool(script_text)]
+    modes = [bool(topic), bool(url), bool(auto), bool(script_text), bool(reference_video)]
     if sum(modes) != 1:
-        raise FactoryError("invalid", "topic / url / auto / script 중 하나만 지정해 주세요.")
-    mode = "topic" if topic else "url" if url else "auto" if auto else "script"
-    text = topic or url or script_text or ""
+        raise FactoryError("invalid", "topic / url / auto / script / reference-video 중 하나만 지정해 주세요.")
+    if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, int) or not 10 <= seconds <= 180):
+        raise FactoryError("invalid", "목표 길이는 10~180초 사이 정수여야 합니다.")
+    if content_format and content_format not in FORMATS:
+        raise FactoryError("invalid", "형식은 information / story / issue 중 하나여야 합니다.")
+    if content_format:
+        instructions = f"{FORMATS[content_format]['instructions']}\n{instructions}".strip()
+    mode = "topic" if topic else "url" if url else "auto" if auto else "upload" if reference_video else "script"
+    text = topic or url or script_text or hint or ""
+    ref = Path(reference_video).resolve() if reference_video else None
+    if ref and (not ref.is_file() or kind_of(ref) != "video" or ref.stat().st_size > 200 * 1024 * 1024):
+        raise FactoryError("invalid", "참고 영상은 200MB 이하의 읽을 수 있는 영상 파일이어야 합니다.")
+    names = [Path(p).name for p in assets or []] + ([ref.name] if ref else [])
+    if len({n.casefold() for n in names}) != len(names):
+        raise FactoryError("invalid", "첨부 파일과 참고 영상의 파일명이 겹칩니다. 이름을 다르게 해 주세요.")
     style_data = find_style(style)
     request = {"mode": mode, "input": text, "preset": preset, "style": style_data["id"] if style_data else None,
                "seconds": seconds, "review": review, "instructions": instructions, "llm": llm, "model": model,
-               "tts": tts, "voice": voice, "subtitles": subtitles}
+               "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
+               "format": content_format, "reference_name": ref.name if ref else ""}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
     job_dir = output_root() / project_id
     state = st.save(job_dir, st.new(project_id, request))
     rights: dict[str, Any] = {}
-    for path in assets or []:
-        src = Path(path)
-        if not src.is_file() or not kind_of(src):
-            return _fail(job_dir, state, FactoryError("invalid", f"첨부 파일을 쓸 수 없습니다: {path}"))
-        (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, job_dir / "uploads" / src.name)
-        rights[src.name] = asset_rights or {}
-    state = st.save(job_dir, {**state, "asset_rights": rights})
     try:
-        result = await runmod.run_pipeline(
-            job_dir, mode, text, run_cfg, progress=_progress(job_dir, state, log), review=None,
-            until="script" if review else "done", instructions=instructions, style=style_data,
-            upload_rights=rights)
+        for path in assets or []:
+            src = Path(path)
+            if not src.is_file() or not kind_of(src):
+                raise FactoryError("invalid", f"첨부 파일을 쓸 수 없습니다: {path}")
+            (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, job_dir / "uploads" / src.name)
+            rights[src.name] = asset_rights or {}
+        if ref:
+            (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ref, job_dir / "uploads" / ref.name)
+            # 참고 파일은 권리 확인된 화면 자료와 분리한다. 분석용으로만 쓴다.
+            rights[ref.name] = {"license": "reference_only"}
+        state = st.save(job_dir, {**state, "asset_rights": rights})
+        with _ai_session(job_dir, state, run_cfg):
+            result = await runmod.run_pipeline(
+                job_dir, mode, text, run_cfg, progress=_progress(job_dir, state, log), review=None,
+                until="script" if review else "done", instructions=instructions, style=style_data,
+                upload_rights=rights, reference_name=request["reference_name"])
+        state["topic"] = result.get("topic", "")
+        if review:
+            state = st.advance(job_dir, state, "waiting_for_script_approval", topic=state["topic"])
+            return _summary(job_dir, state, **_script_view(job_dir))
+        return await _finish(job_dir, state, result)
     except Exception as e:  # noqa: BLE001 - 실패도 상태 파일에 남기고 JSON 으로 알린다
         return _fail(job_dir, state, e)
-    state["topic"] = result.get("topic", "")
-    if review:
-        state = st.advance(job_dir, state, "waiting_for_script_approval", topic=state["topic"])
-        return _summary(job_dir, state, **_script_view(job_dir))
-    return await _finish(job_dir, state, result)
 
 
 async def resume(project_id: str | None = None, log: Log = print) -> dict[str, Any]:
     """승인된(또는 멈춘) 대본으로 이어서 장면·TTS·화면·자막·렌더를 한다. 조사·대본은 다시 하지 않는다."""
+    if not project_id:
+        pending = [p for p in _projects() if st.next_action(st.load(p), p) == "resume"]
+        if pending:
+            project_id = pending[0].name
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     status = state.get("status")
@@ -257,20 +322,22 @@ async def resume(project_id: str | None = None, log: Log = print) -> dict[str, A
     state = st.save(job_dir, {**state, "status": "script_approved", "error": "", "failed_at": "",
                               "history": [*state.get("history", []), {"status": "script_approved", "at": st.now()}]})
     try:
-        result = await runmod.run_pipeline(
-            job_dir, "resume", "", run_cfg, progress=_progress(job_dir, state, log), review=None,
-            instructions=req.get("instructions", ""), style=find_style(req.get("style")),
-            upload_rights=state.get("asset_rights") or {}, script_in=script)
+        with _ai_session(job_dir, state, run_cfg):
+            result = await runmod.run_pipeline(
+                job_dir, "resume", "", run_cfg, progress=_progress(job_dir, state, log), review=None,
+                instructions=req.get("instructions", ""), style=find_style(req.get("style")),
+                upload_rights=state.get("asset_rights") or {}, script_in=script,
+                reference_name=req.get("reference_name", ""))
+        return await _finish(job_dir, state, result)
     except Exception as e:  # noqa: BLE001
         return _fail(job_dir, state, e)
-    return await _finish(job_dir, state, result)
 
 
 def status(project_id: str | None = None) -> dict[str, Any]:
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     out = _summary(job_dir, state, topic=state.get("topic") or state["request"].get("input", "")[:60],
-                   request=state["request"], history=state.get("history", [])[-8:])
+                   request=state["request"], history=state.get("history", [])[-8:], ai_calls=state.get("ai_calls", []))
     if state.get("status") == "render_complete":
         out.update(final_video=state["outputs"].get("final_video", ""), **state.get("video", {}))
     if not project_id:
@@ -420,7 +487,7 @@ async def rerender(project_id: str | None = None, log: Log = print, **extra: Any
     try:
         res = await runmod.rerender(job_dir, cfg, progress=lambda stage, pct, msg: log(f"[{stage} {pct:3d}%] {msg}"))
     except Exception as e:  # noqa: BLE001 - 실패해도 기존 final.mp4 는 남는다
-        return _summary(job_dir, state, rerender="failed", error=f"{type(e).__name__}: {e}",
+        return _summary(job_dir, state, rerender="failed", error=f"{type(e).__name__}: {llmmod.safe_error(e)}",
                         message="다시 렌더에 실패했습니다. 기존 영상은 그대로 있습니다.")
     result = {"video": res["video"], "topic": state.get("topic", ""), "timeline": tlmod.FILE}
     return {**await _finish(job_dir, state, result), "rerendered": True, **extra}
@@ -429,6 +496,7 @@ async def rerender(project_id: str | None = None, log: Log = print, **extra: Any
 def styles() -> dict[str, Any]:
     cfg = _cfg()
     return {"status": "ok",
+            "formats": [{"id": k, "name": v["name"]} for k, v in FORMATS.items()],
             "presets": [{"id": k, "name": v.get("name", k), "description": v.get("description", "")}
                         for k, v in load_presets(cfg).items()],
             "styles": [{"id": s["id"], "name": s.get("name", ""), "hook": str(s.get("hook_pattern", ""))[:80]}
@@ -437,9 +505,16 @@ def styles() -> dict[str, Any]:
 
 
 async def trends(limit: int = 10, log: Log = print) -> dict[str, Any]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise FactoryError("invalid", "후보 수는 1~50 사이 정수여야 합니다.")
     kws = await research.hot_keywords(log=log)
-    return {"status": "ok", "keywords": kws[:limit],
-            "message": "마음에 드는 키워드로 make --topic 을 실행하거나, make --auto 로 AI 가 고르게 할 수 있습니다."}
+    kws = list(dict.fromkeys(k.strip() for k in kws if k.strip()))[:limit]
+    if not kws:
+        raise FactoryError("not_found", "화제 소재를 가져오지 못했습니다. 나중에 다시 찾거나 주제를 직접 입력해 주세요.")
+    from .batch import save_candidates
+    saved = save_candidates(output_root(), kws)
+    return {"status": "ok", "keywords": kws, **saved,
+            "message": "번호를 골라 batch --select 2 4로 순차 제작할 수 있습니다. 후보 id도 함께 지정하면 다른 검색과 섞이지 않습니다."}
 
 
 async def export(project_id: str | None = None, *, pack: bool = False, capcut_draft: bool = False,

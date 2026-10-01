@@ -65,7 +65,8 @@ def save(job_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
 
 def new(project_id: str, request: dict[str, Any]) -> dict[str, Any]:
     return {"project_id": project_id, "status": "created", "request": request, "created": now(), "updated": now(),
-            "error": "", "failed_at": "", "history": [{"status": "created", "at": now()}], "outputs": {}}
+            "error": "", "failed_at": "", "history": [{"status": "created", "at": now()}], "outputs": {},
+            "ai_provider_used": "none", "ai_providers_used": [], "ai_calls": []}
 
 
 def advance(job_dir: Path, state: dict[str, Any], status: str, **extra: Any) -> dict[str, Any]:

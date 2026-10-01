@@ -20,7 +20,7 @@ import json
 import sys
 from typing import Any
 
-from . import core
+from . import core, batch
 
 
 def _log(msg: str) -> None:
@@ -38,12 +38,16 @@ def _parser() -> argparse.ArgumentParser:
     src.add_argument("--auto", action="store_true", help="요즘 화제 소재를 AI 가 골라서")
     src.add_argument("--script", dest="script_text", help="완성 대본 직접 입력 (보조 기능)")
     src.add_argument("--script-file", help="완성 대본 텍스트 파일")
+    src.add_argument("--reference-video", help="참고 영상 파일 (분석 전용, 200MB 이하)")
+    mk.add_argument("--hint", default="", help="참고 영상의 주제 힌트 (사실 근거로 취급하지 않음)")
     mk.add_argument("--seconds", type=int, help="목표 길이(초)")
     mk.add_argument("--preset", default="daily", help="분야 기본값 (styles 명령으로 목록 확인)")
     mk.add_argument("--style", help="참고 스타일 id 또는 이름")
     mk.add_argument("--review", "--stop-at-script", action="store_true", help="대본까지만 만들고 승인 대기")
     mk.add_argument("--instructions", default="", help="추가 요청 (말투, 강조할 점 등)")
-    mk.add_argument("--llm", help="claude | openai | anthropic")
+    mk.add_argument("--llm", choices=("claude", "openai", "auto"))
+    mk.add_argument("--allow-openai", action="store_true", default=None, help="이번 제작에서 유료 OpenAI API 사용을 명시적으로 허용")
+    mk.add_argument("--format", dest="content_format", choices=tuple(core.FORMATS), help="information | story | issue")
     mk.add_argument("--model")
     mk.add_argument("--tts", help="edge | openai | elevenlabs | typecast")
     mk.add_argument("--voice")
@@ -81,6 +85,25 @@ def _parser() -> argparse.ArgumentParser:
     tr = sub.add_parser("trends", help="요즘 화제 키워드")
     tr.add_argument("--limit", type=int, default=10)
 
+    bt = sub.add_parser("batch", help="여러 편을 한 편씩 순차 제작")
+    inputs = bt.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--topic", dest="topics", action="append", help="주제 (여러 번 지정 가능)")
+    inputs.add_argument("--select", nargs="+", type=int, help="trends 후보 번호 (예: --select 2 4)")
+    bt.add_argument("--candidates", dest="candidates_id", help="trends가 반환한 후보 id, 생략하면 최근 목록")
+    bt.add_argument("--count", type=int, default=1, help="주제마다 만들 편수 (전체 최대 10편)")
+    bt.add_argument("--seconds", type=int)
+    bt.add_argument("--preset", default="daily")
+    bt.add_argument("--style")
+    bt.add_argument("--format", dest="content_format", choices=tuple(core.FORMATS))
+    bt.add_argument("--review", action="store_true")
+    bt.add_argument("--instructions", default="")
+    bt.add_argument("--llm", choices=("claude", "openai", "auto"))
+    bt.add_argument("--allow-openai", action="store_true", default=None)
+    bt.add_argument("--model")
+    for name in ("batch-status", "batch-resume"):
+        bs = sub.add_parser(name, help="순차 제작 상태 조회" if name == "batch-status" else "순차 제작의 검토 대본 이어서 완성")
+        bs.add_argument("batch_id", nargs="?")
+
     ex = sub.add_parser("export", help="완성 파일 목록 / 편집용 내보내기")
     ex.add_argument("project_id", nargs="?")
     ex.add_argument("--pack", action="store_true", help="편집 재료 zip")
@@ -98,7 +121,17 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             topic=a.topic, url=a.url, auto=a.auto, script_text=script_text, preset=a.preset, style=a.style,
             seconds=a.seconds, review=a.review, instructions=a.instructions, llm=a.llm, model=a.model, tts=a.tts,
             voice=a.voice, subtitles=False if a.no_subtitles else None, assets=a.asset,
-            asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), log=_log)
+            asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
+            hint=a.hint, content_format=a.content_format, allow_openai=a.allow_openai, log=_log)
+    if a.cmd == "batch":
+        return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
+                                seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
+                                review=a.review, instructions=a.instructions, llm=a.llm, model=a.model,
+                                allow_openai=a.allow_openai, log=_log)
+    if a.cmd == "batch-status":
+        return batch.status(a.batch_id)
+    if a.cmd == "batch-resume":
+        return await batch.resume(a.batch_id, log=_log)
     if a.cmd == "resume":
         return await core.resume(a.project_id, log=_log)
     if a.cmd == "status":
@@ -128,11 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         out = asyncio.run(_dispatch(args))
-        code = 1 if out.get("status") == "failed" or out.get("rerender") == "failed" else 0
+        code = 1 if out.get("status") in ("failed", "partial_failure") or out.get("rerender") == "failed" else 0
     except core.FactoryError as e:
         out, code = e.as_dict(), 2
     except Exception as e:  # noqa: BLE001 - 예상 못 한 오류도 JSON 으로 알린다
-        out, code = {"status": "error", "error": "unexpected", "message": f"{type(e).__name__}: {e}"}, 1
+        out, code = {"status": "error", "error": "unexpected", "message": f"{type(e).__name__}: {core.llmmod.safe_error(e)}"}, 1
     print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
     return code
 

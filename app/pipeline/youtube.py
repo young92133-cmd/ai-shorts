@@ -137,8 +137,9 @@ def _whisper_sync(audio: Path, model_size: str = "small") -> list[Word]:
         from faster_whisper import WhisperModel
     except ImportError as e:
         raise RuntimeError("자막이 없는 영상입니다. `pip install faster-whisper` 후 다시 시도하세요.") from e
-    model = WhisperModel(model_size, device="auto", compute_type="int8")
-    segments, _ = model.transcribe(str(audio), language="ko", word_timestamps=True, vad_filter=True)
+    # V1 로컬 전사는 별도 CUDA/cuBLAS 설치 없이 실행되도록 CPU를 기본으로 쓴다.
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    segments, _ = model.transcribe(str(audio), language=None, word_timestamps=True, vad_filter=True)
     words: list[Word] = []
     for seg in segments:
         for w in seg.words or []:

@@ -8,8 +8,11 @@ llm:
   # anthropic: ANTHROPIC_API_KEY 로 직접 호출
   provider: claude
   model: claude-opus-5
+  claude_model: claude-opus-5  # OpenAI에서 구독/auto 모드로 바꿀 때 사용
   effort: medium              # low | medium | high
   openai_model: gpt-5-mini    # UI 에서 GPT 를 고르면 쓰는 모델
+  allow_paid_openai: false    # API 키만으로 과금하지 않는다. 명시적 허용 뒤에만 true
+  allow_paid_anthropic: false
 
 tts:
   provider: edge              # edge(무료) | openai | elevenlabs | typecast

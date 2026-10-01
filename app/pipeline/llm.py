@@ -10,6 +10,8 @@ import json
 import os
 import re
 import shutil
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -19,6 +21,80 @@ from pydantic import BaseModel, ValidationError
 from ..config import env
 
 T = TypeVar("T", bound=BaseModel)
+
+
+class ProviderError(RuntimeError):
+    """공급자 전환 여부를 판단할 수 있는 오류. 대본 품질/스키마 오류와 구분한다."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+_SESSION: ContextVar[dict | None] = ContextVar("factory_ai_session", default=None)
+
+
+def safe_error(error: Exception | str) -> str:
+    text = str(error)
+    text = re.sub(r"\b(?:sk-[\w-]+|AIza[\w-]+|gh[pousr]_[\w]+)\b", "[REDACTED]", text)
+    text = re.sub(r"(?i)(bearer\s+)[^\s\"']+", r"\1[REDACTED]", text)
+    return text[:800]
+
+
+@contextmanager
+def provider_session(policy: dict, record):
+    """Factory가 허용한 유료 경로와 실제 호출 이력을 한 프로젝트에 묶는다."""
+    token = _SESSION.set({"policy": policy, "record": record, "selected": None})
+    try:
+        yield
+    finally:
+        _SESSION.reset(token)
+
+
+def paid_allowed(provider: str, policy: dict | None = None) -> bool:
+    session = _SESSION.get()
+    effective = policy if policy is not None else (session["policy"] if session else {})
+    return effective.get(f"allow_paid_{provider}") is True
+
+
+def auxiliary_allowed(provider: str) -> bool:
+    """기존 웹 경로는 유지하되 Factory 내부의 비전/전사도 비용 정책을 따른다."""
+    return _SESSION.get() is None or paid_allowed(provider)
+
+
+def _record(provider: str, model: str, status: str, reason: str = "") -> None:
+    session = _SESSION.get()
+    if session:
+        session["record"]({"provider": provider, "model": model, "status": status, "reason": reason})
+
+
+def record_auxiliary(provider: str, model: str) -> None:
+    _record(provider, model, "success")
+
+
+def error_kind(error: Exception) -> str:
+    if isinstance(error, ProviderError):
+        return error.code
+    if isinstance(error, (ValueError, ValidationError)):
+        return "response_error"
+    if isinstance(error, (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError)):
+        return "temporary"
+    if isinstance(error, httpx.HTTPStatusError):
+        code = error.response.status_code
+        if code == 401:
+            return "authentication"
+        if code == 429:
+            return "usage_limit"
+        if code in (500, 502, 503, 504):
+            return "temporary"
+    message = (str(error) + " " + str(getattr(error, "stderr", "") or "")).lower()
+    if any(s in message for s in ("rate_limit", "rate limit", "usage limit", "hit your limit", "quota exceeded", "사용량 한도")):
+        return "usage_limit"
+    if any(s in message for s in ("authentication", "not logged in", "login required", "로그인이 필요", "로그인되지", "claude.exe 를 찾을 수")):
+        return "authentication"
+    if any(s in message for s in ("service unavailable", "overloaded", "overload_error", "server error", "temporarily unavailable")):
+        return "temporary"
+    return "response_error"
 
 
 # ---------- 공통 ----------
@@ -59,7 +135,7 @@ def _validate(schema: type[T], data: Any) -> T:
     try:
         return schema.model_validate(data)
     except ValidationError as e:
-        raise RuntimeError(f"LLM 응답이 형식에 맞지 않습니다: {e.errors()[:3]}") from e
+        raise ProviderError("response_error", "LLM 응답이 형식에 맞지 않습니다.") from e
 
 
 # ---------- Claude (구독 로그인) ----------
@@ -106,6 +182,8 @@ async def _ask_claude_code(model: str, system: str, user: str, schema: type[T], 
 
     # 이 프로그램이 Claude Code 세션 안에서 실행될 때 상속되는 변수는 비워서 독립 프로세스로 돈다.
     clean_env = {k: "" for k in os.environ if k.startswith("CLAUDE_CODE_") or k == "CLAUDECODE"}
+    # 구독 경로에서 환경에 있는 API 키/토큰으로 종량제를 쓰지 않는다.
+    clean_env.update(ANTHROPIC_API_KEY="", ANTHROPIC_AUTH_TOKEN="", ANTHROPIC_BASE_URL="")
     opts = ClaudeAgentOptions(
         model=model,
         system_prompt=system,
@@ -153,7 +231,9 @@ async def _ask_openai(model: str, system: str, user: str, schema: type[T], effor
         r = await c.post("https://api.openai.com/v1/chat/completions",
                          headers={"Authorization": f"Bearer {key}"}, json=body)
         if r.status_code >= 400:
-            raise RuntimeError(f"OpenAI 오류 {r.status_code}: {r.text[:300]}")
+            code = ("authentication" if r.status_code == 401 else "usage_limit" if r.status_code == 429
+                    else "temporary" if r.status_code in (500, 502, 503, 504) else "response_error")
+            raise ProviderError(code, f"OpenAI 오류 {r.status_code}")
     choice = r.json()["choices"][0]
     if choice.get("finish_reason") == "content_filter" or choice["message"].get("refusal"):
         raise RuntimeError("OpenAI 가 이 요청을 거부했습니다. 주제를 바꿔 보세요.")
@@ -186,11 +266,41 @@ PROVIDERS = {"claude": _ask_claude_code, "openai": _ask_openai, "anthropic": _as
 
 async def ask_structured(llm: dict[str, Any], system: str, user: str, schema: type[T]) -> T:
     """llm = config 의 llm 섹션 ({provider, model, effort}). pydantic 모델로 검증된 응답을 돌려준다."""
-    provider = llm.get("provider", "claude")
-    fn = PROVIDERS.get(provider)
-    if not fn:
-        raise ValueError(f"알 수 없는 LLM provider: {provider}")
-    return await fn(llm["model"], system, user, schema, llm.get("effort", "medium"))
+    mode = llm.get("provider", "claude")
+    if mode not in (*PROVIDERS, "auto"):
+        raise ValueError(f"알 수 없는 LLM provider: {mode}")
+    session = _SESSION.get()
+    policy = session["policy"] if session else llm
+    first = session.get("selected") if mode == "auto" and session else None
+    provider = first or ("claude" if mode == "auto" else mode)
+
+    async def call(name: str) -> T:
+        model = (llm.get("openai_model", "gpt-5-mini") if name == "openai" and mode == "auto"
+                 else llm.get("model", ""))
+        try:
+            if name in ("openai", "anthropic"):
+                if not paid_allowed(name, policy):
+                    raise ProviderError("paid_not_allowed", f"{name} 유료 API 사용이 허용되지 않았습니다. 명시적 허용 설정이 필요합니다.")
+                if not env("OPENAI_API_KEY" if name == "openai" else "ANTHROPIC_API_KEY"):
+                    raise ProviderError("missing_key", f"{name} API 키가 설정되지 않았습니다.")
+            result = await PROVIDERS[name](model, system, user, schema, llm.get("effort", "medium"))
+        except Exception as exc:
+            _record(name, model, "failed", error_kind(exc))
+            raise
+        _record(name, model, "success")
+        if session and mode == "auto":
+            session["selected"] = name
+        return result
+
+    try:
+        return await call(provider)
+    except Exception as exc:
+        if mode != "auto" or provider != "claude" or error_kind(exc) not in ("usage_limit", "authentication", "temporary"):
+            raise
+        # API 키가 있다는 이유만으로 전환하지 않는다. 허용+키를 모두 확인한다.
+        if not paid_allowed("openai", policy) or not env("OPENAI_API_KEY"):
+            raise ProviderError(error_kind(exc), f"Claude 호출 실패 ({error_kind(exc)}). OpenAI 자동 전환은 허용 설정과 키가 필요합니다.") from exc
+        return await call("openai")
 
 
 if __name__ == "__main__":
@@ -208,7 +318,11 @@ if __name__ == "__main__":
             sys.exit("claude.exe 를 찾을 수 없습니다. `irm https://claude.ai/install.ps1 | iex` 로 설치하세요.")
         print("claude.exe:", cli)
         clean = {**os.environ, **{k: "" for k in os.environ if k.startswith("CLAUDE_CODE_") or k == "CLAUDECODE"}}
-        sys.exit(subprocess.call([cli, "auth", cmd], env=clean))
+        clean.update(ANTHROPIC_API_KEY="", ANTHROPIC_AUTH_TOKEN="", ANTHROPIC_BASE_URL="")
+        command = [cli, "auth", cmd]
+        if cmd == "login":
+            command.append("--claudeai")
+        sys.exit(subprocess.call(command, env=clean))
     if cmd == "test":
         from ..config import load_config
 
