@@ -1,6 +1,33 @@
 # HANDOFF — 개발 인수인계 문서
 
-## 2026-10-01 — V1 기능·실사용 검증 완료 (현재 상태)
+## 2026-10-01 — 다른 PC 이동용 체크포인트 (현재 인계 기준)
+
+**이번 저장은 이동용 WIP 체크포인트이며 V1 release나 최종 완료 승인을 의미하지 않는다. 다음 개발·기능 추가는 사용자의 새 요청을 기다린다.** 이 절의 이동·백업 지침이 아래 이전 작업 기록보다 우선한다.
+
+- **실제 출발 상태:** `feature/agent-content-factory`, 로컬 `b5772eb`(`feat: complete V1 content factory workflows and validation`), 원격 추적 기준 `c6cd645`보다 1커밋 앞섬. 미커밋 변경·미추적 파일·충돌 없음. 사용자가 예상한 미커밋 V1 변경은 이미 이 기존 로컬 커밋에 들어 있었다. 기존 커밋은 amend하거나 되돌리지 않는다.
+- **체크포인트:** `wip: checkpoint content factory v1 for pc transfer`라는 새 커밋에 이 인계 안내와 `.gitignore` 보강을 저장한다. 사용자의 이번 명시적 요청으로 현재 브랜치의 기존 미전송 커밋까지 GitHub에 일반 push한다. force push·release·tag는 만들지 않는다. 실제 push 성공과 로컬/원격 해시 일치는 실행 후 최종 답변으로 확인한다.
+- **재검증:** 전체 `unittest discover -s tests -q` **132개 통과**(24.322초). 요청의 기준 131개보다 1개 많다. 로그는 Git 제외 `output/pc_transfer_unit_tests.log`. 이번에는 실제 영상 제작·AI 호출·V1 기능 수정은 하지 않았다. 아래 실제 제작/완료 기록은 이전 작업에서 남긴 기록이며 이번 체크포인트의 새 완료 판정은 아니다.
+- **보존 범위:** `app/`, `tests/`, `scripts/`, `CLAUDE.md`, `AGENTS.md`, `README.md`, `IMPLEMENTATION_PLAN.md`, `HANDOFF.md`, `requirements.txt`, `.env.example`, `config.yaml`, `presets/`, `styles/`, 실행 CMD와 기존 개발 문서를 포함한다. 추적 대상 86개 파일에 대한 키·토큰·개인 키 및 비밀값 할당 패턴 검사에서 발견 파일 없음. 추적 대상에 인증 파일·output·가상환경·10MB 초과 파일 없음.
+- **assets 분류:** 실제 파일은 `assets/fonts/README.md`, `assets/bgm/README.md` 2개뿐이며 모두 추적 중이다. 미추적 고정 테스트 자산(A)이나 일회성 생성 결과물(B)은 없었다. 필요한 안내 문서를 보존하고 assets 전체를 ignore하지 않는다.
+- **로컬에만 보존:** `.env`와 개인 인증 정보, Claude/OpenAI 로그인 정보, `.venv/`, Python·도구 캐시, 임시 파일, `output/` 전체(테스트 MP4·렌더 중간파일·대본/작업 상태·실사용 보고서), 원본 참고 영상. 삭제하거나 초기화하지 않는다. GitHub에서 clone하면 이전 영상과 진행 중인 제작 작업 목록은 복원되지 않는다. 해당 산출물까지 옮기려면 별도로 복사해야 한다.
+
+### 새 Windows PC에서 받기
+
+Git, Python **3.12**(현재 검증 환경 3.12.10), FFmpeg/FFprobe, Claude Code CLI 또는 CLI가 번들된 Claude 앱을 준비한다. 기본 Windows 한글 폰트는 맑은 고딕이며 다른 OS에서는 `config.yaml`의 폰트를 설치된 폰트로 맞춘다.
+
+```powershell
+git clone --branch feature/agent-content-factory --single-branch https://github.com/young92133-cmd/ai-shorts.git
+cd ai-shorts
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m app.pipeline.llm login
+.\.venv\Scripts\python.exe -m app.pipeline.llm status
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -q
+```
+
+새 PC에서는 Claude 구독 브라우저 인증을 다시 한다. 기본 Claude 구독+Edge TTS 경로에는 API 키가 필요하지 않다. 선택 기능의 키가 필요할 때만 `.env.example`을 `.env`로 복사하여 새 PC에서 직접 설정하며 Git에 넣지 않는다. 로컬 Whisper 참고 영상 분석은 첫 실행 때 모델을 내려받고 CPU로 실행하므로 CUDA는 필수가 아니다. 의존성은 `requirements.txt`의 PyAV `<19` 조건을 유지한다. 받은 뒤 이 인계 문서와 현재 상태를 먼저 확인하고 사용자가 요청한 다음 작업만 시작한다.
+
+## 2026-10-01 — V1 기능·실사용 검증 완료 (이전 작업 기록)
 
 **V1 완료 조건을 검증했다. V2 영상 품질 개발은 별도 요청 전에는 시작하지 않는다.** 아래 9월 기록의 작업 순서를 이 절이 대체한다.
 
