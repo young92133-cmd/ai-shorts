@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from ..config import env
-from .llm import _extract_json, _strict_schema, ask_structured
+from .llm import _extract_json, _strict_schema, ask_structured, auxiliary_allowed, record_auxiliary
 from .models import Asset, AssetDescription, AssetPlan, Scene
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -34,10 +34,12 @@ DESCRIBE_PROMPT = (
 
 
 def vision_available(provider: str = "gemini") -> bool:
-    return bool(env("OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"))
+    return auxiliary_allowed(provider) and bool(env("OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"))
 
 
 async def _describe_openai(path: Path, prompt: str, model: str) -> AssetDescription | None:
+    if not auxiliary_allowed("openai"):
+        return None
     key = env("OPENAI_API_KEY")
     if not key:
         return None
@@ -58,7 +60,9 @@ async def _describe_openai(path: Path, prompt: str, model: str) -> AssetDescript
             response = await client.post("https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}"}, json=body)
         response.raise_for_status()
-        return AssetDescription.model_validate(_extract_json(response.json()["choices"][0]["message"]["content"]))
+        result = AssetDescription.model_validate(_extract_json(response.json()["choices"][0]["message"]["content"]))
+        record_auxiliary("openai", body["model"])
+        return result
     except Exception:  # noqa: BLE001
         return None
 
@@ -68,6 +72,8 @@ async def describe_image(path: Path, prompt: str = DESCRIBE_PROMPT,
     """이미지 1장을 설명하게 한다. 실패하면 None (호출자가 건너뛴다)."""
     if provider == "openai":
         return await _describe_openai(path, prompt, model)
+    if not auxiliary_allowed("gemini"):
+        return None
     key = env("GEMINI_API_KEY")
     if not key or not path.exists():
         return None

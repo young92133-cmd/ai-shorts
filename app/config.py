@@ -92,6 +92,8 @@ def merge_options(cfg: dict[str, Any], preset: dict[str, Any], overrides: dict[s
         out["llm"]["model"] = overrides["llm_model"]
     elif overrides.get("llm_provider") == "openai":
         out["llm"]["model"] = out["llm"].get("openai_model", "gpt-5-mini")
+    elif overrides.get("llm_provider") in ("claude", "auto") and out["llm"].get("provider") != cfg["llm"].get("provider"):
+        out["llm"]["model"] = out["llm"].get("claude_model", "claude-opus-5")
     if overrides.get("tts_provider"):
         out["tts"]["provider"] = overrides["tts_provider"]
     # 이미지 provider 우선순위: config 기본값 < 프리셋 < UI 선택

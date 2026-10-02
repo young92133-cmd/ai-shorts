@@ -1,8 +1,33 @@
 ﻿.venv/
 .env
+.env.*
+!.env.example
+venv/
 output/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.hypothesis/
+tmp/
+temp/
+*.tmp
+*.log
+
+# 로컬 로그인·개인 인증 정보 (설정 템플릿과 소스는 보존)
+.claude/
+.codex/auth.json
+.aws/
+.credentials/
+/credentials.json
+/auth.json
+/tokens.json
+.netrc
+*.pem
+*.key
 # 참고 영상 분석용 (원본 1GB·추출 프레임은 저장소에 올리지 않는다)
 reference/frames/
 reference.mp4

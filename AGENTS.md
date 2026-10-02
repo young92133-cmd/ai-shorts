@@ -4,6 +4,10 @@
 **이 채팅이 메인 화면**이다. Codex와 Claude Code는 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
 
+**현재 범위(2026-10-01): V1 기능과 실사용 검증.** 영상 품질 고도화(2E 모션·고급 자막, BGM/효과음 추천, 레퍼런스 복제, Shot 세분화, AI 영상, 스타일팩)는 V2로 미룬다. 최신 완료 상태·실제 산출물은 `HANDOFF.md` 맨 위를 읽는다. V2는 사용자의 별도 요청 전에는 시작하지 않는다.
+
+2026-10-01 V1 검증 기록: 기존 95개 포함 자동 테스트 132개, Claude 실제 제작 10편·직접 대본 2편, 입력 6종과 두 편 순차 검토/resume 통과. 유료 OpenAI 실호출은 하지 않았다. 새 변경의 GitHub push는 별도 요청 전에는 하지 않는다.
+
 ```
 Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline (제작 엔진) ←─ Web UI (보조)
 ```
@@ -19,6 +23,9 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 참고해 새 대본으로 제작 (원본 영상·글은 화면에 안 씀) |
 | `make --auto` | 요즘 화제 소재를 AI가 골라 제작 |
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
+| `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (원본은 화면에 쓰지 않음) |
+| `make ... --format information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 |
+| `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
 | `make ... --style "이름"` / `--preset daily` | 스타일·분야 기본값 지정 (`styles`로 목록 확인) |
 | `make ... --asset 파일 --note "근거" --confirm-rights` | 내가 권리를 가진 사진·영상을 장면 화면 후보로 |
@@ -30,6 +37,11 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `set-visual [id] --scene 3 --file 사진 --note "근거" --confirm-rights` | 장면 화면을 권리 확인된 사진으로 |
 | `rerender [id]` | 저장된 재료로 영상만 다시 렌더 (조사·대본·음성 다시 안 함) |
 | `styles` / `trends` | 스타일·프리셋 목록 / 화제 키워드 |
+| `trends --limit 5` | 번호와 `candidates_id`가 있는 후보 5개를 파일로 보존 |
+| `batch --select 2 4 --candidates ID` | 해당 후보 목록의 2·4번을 순서대로 제작 |
+| `batch --topic "주제" --count 3` | 같은 주제에서 다른 관점으로 3편 순차 제작 |
+| `batch --topic "첫 주제" --topic "둘째" [--review]` | 여러 주제 순차 제작 (검토 옵션이면 편마다 대본 저장 후 멈춤) |
+| `batch-status [ID]` / `batch-resume [ID]` | 순차 제작 조회 / 저장 대본을 한 편씩 이어서 완성 |
 | `export [id] [--pack] [--capcut]` | 완성 파일 목록 / 편집 재료 zip / CapCut 프로젝트 |
 
 장면 번호는 사용자에게 보이는 대로 1부터 센다. 카드 종류: hook_card, statement_card, focus_card, quote_card, number_card, trend_card, compare_card, summary_card.
@@ -52,6 +64,12 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "장면별로 보여줘", "왜 이 화면 골랐어?" | `inspect --part visuals` |
 | "파일 어디 있어?", "캡컷으로 보내줘" | `export` / `export --capcut` |
 | "무슨 스타일 있어?" | `styles` |
+| "오늘 화제 소재 5개 찾아줘" | `trends --limit 5` → 반환된 번호·후보 id를 대화에 남긴다 |
+| "그중 2번, 4번으로 각각 만들어줘" | `batch --select 2 4 --candidates <대화에서 선택한 목록 id>` |
+| "이 주제로 쇼츠 3개 만들어줘" | `batch --topic "…" --count 3` |
+| "이 참고 영상 파일로 만들어줘" | `make --reference-video "파일"` |
+| "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
+| "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |
 
 ## 기본 흐름과 멈추는 때
 
@@ -65,6 +83,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
   - 업로드·게시
   - 기존 결과 삭제
 - 한 번에 한 편만 만든다. 영상 한 편은 보통 3~6분 걸린다. 명령 실행에는 넉넉한 제한 시간(10분)을 준다.
+- 여러 편은 **명시적 요청이 있을 때만**, 한 편씩 순차로 만든다(한 번에 최대 10편). 한 편 실패해도 성공한 영상은 보존한다. 후보 번호는 사용자가 보고 고른 `candidates_id`에 연결한다. 다른 검색의 최근 목록으로 바꾸지 않는다.
+- `resume`에서 id를 생략하면 가장 최근의 이어 만들 수 있는 대기 프로젝트를 선택한다. 대화에서 id가 알려져 있으면 항상 지정한다. 직접 대본도 Factory에서는 `--review`를 지정했을 때만 멈춘다(기존 웹 UI의 강제 검토는 별도).
 
 ## 자료 권리 규칙 (꼭 지킨다)
 
@@ -86,6 +106,11 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
   - 음성: Edge TTS
   - 화면: 앱 카드와 업로드 자료
 - API 키가 필요한 유료 기능은 사용자가 원할 때만 켠다.
+- Factory LLM 모드는 `claude`, `openai`, `auto`다. `claude`는 `ANTHROPIC_API_KEY`·API 토큰을 SDK 환경에서 비워 **구독 로그인**만 쓴다. Anthropic API로 자동 전환하지 않는다.
+- OpenAI는 **사용자 명시적 허용 + 키 설정**이 모두 있어야 한다. 허용된 요청에만 `--allow-openai`를 붙이거나, 사용자가 허용한 경우 `config.yaml`의 `llm.allow_paid_openai: true`를 쓴다. 키가 있다는 이유만으로 허용하지 않는다. 허용을 임의로 추가하지 않는다.
+- `auto`는 Claude부터 시도한다. 사용량 한도·인증·명확한 일시적 서비스 오류에서만 위 OpenAI 조건을 확인하고 전환한다. JSON/스키마·거부·대본 품질 때문에 전환하지 않는다. 한 프로젝트에서 전환한 뒤에는 같은 성공 공급자를 사용한다.
+- Factory는 이미지 API를 끄고 기본 TTS를 Edge로 정한다. 환경의 Gemini/OpenAI 키만으로 비전·음성 인식 요금을 발생시키지 않는다. 참고 영상은 기본 로컬 Whisper CPU int8로 분석한다(`faster-whisper`, 첫 모델 다운로드 필요). CUDA는 필요하지 않고 원본 언어를 자동 감지한다. `requirements.txt`의 PyAV 호환 조건을 유지한다.
+- `project_state.json`의 `ai_calls`, `ai_provider_used`, `ai_providers_used`가 실제 결과다. `none`은 성공한 AI 호출이 없다는 뜻이다. 대본 수동 입력의 규칙 기반 분할을 AI 성공으로 보고하지 않는다.
 - API 키, `.env`, 토큰, 비밀번호는 읽어서 출력하거나 커밋하거나 채팅에 쓰지 않는다.
 
 ## 결과 위치
@@ -112,7 +137,9 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - **제작 엔진(`app/pipeline`)을 새로 만들거나 갈아엎지 않는다.** 기능은 엔진에 작게 추가하고, 채팅용 동작은 `app/factory`에 둔다.
 - 웹 UI와 factory는 같은 엔진을 쓴다. 엔진은 UI(`app/main.py`, `app/jobs.py`)를 import하지 않는다.
 - 개발 중에는 유료 API·실제 샘플 제작을 하지 않는다. 테스트는 가짜(mock)로 돈다. 실제 제작은 사용자가 요청할 때만 한다.
+- 2026-10-01 V1 요청은 서로 다른 실제 영상 최소 5편 검증을 허용한다. 유료 API는 여전히 미승인이다. 모든 실사용·회귀 테스트가 통과한 뒤에만 V1 완료 로컬 커밋을 만든다. 새 변경의 push는 하지 않는다(시작 시 `c6cd645` 백업 push만 승인됨).
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (기존 95개와 V1 공급자·입력·순차 제작 테스트 모두 포함).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.

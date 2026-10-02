@@ -14,4 +14,6 @@ ddgs>=9.0
 trafilatura>=1.12
 # 업로드 영상 음성 인식 (Claude만 사용하는 경우 로컬 실행, 최초 모델 다운로드 필요)
 faster-whisper>=1.0
+# faster-whisper 1.2.1은 PyAV 19에서 제거된 metadata_errors 인자를 사용한다.
+av>=11,<19
 claude-agent-sdk>=0.2   # Claude 구독 로그인으로 대본 생성 (API 키 불필요)
