@@ -3,14 +3,38 @@
 > 이 문서만 읽고 바로 작업을 이어갈 수 있도록 쓴 **개발자/AI용** 문서입니다.
 > 사용자용 사용법은 [`README.md`](README.md)에 있습니다. 중복되는 내용은 그쪽을 참고하세요.
 >
-> **최종 갱신: 2026-09-30 — A0 채팅 중심 콘텐츠팩토리 작업 인계.** 가장 위 A0 절이 현재 상태다. 그 아래 2D·2C·2B·2A·1단계·과거 기록은 당시 이력으로 읽는다.
+> **최종 갱신: 2026-10-01 — GitHub 체크포인트 준비 및 AI 공급자 구조 분석.** 아래 2026-10-01 절이 현재 상태다. 그 아래 A0·2D·2C·2B·2A·1단계 기록은 당시 이력으로 읽는다.
 
-## 2026-09-30 — A0 에이전트 콘텐츠팩토리 (현재 상태)
+## 2026-10-01 — 현재 상태와 다음 작업 (최신)
+
+### 프로젝트·완료 기능·Git
+
+- 한국어 9:16 쇼츠를 주제/유튜브·기사 URL/완성 대본/화제 키워드에서 조사·대본·장면 설계·TTS·권리 확인 화면·자막·FFmpeg MP4까지 만드는 개인용 콘텐츠팩토리다. Claude Code와 Codex 채팅이 기본 조종 화면, 웹 UI는 결과 확인·수정용 보조 화면이다. `app/factory`는 JSON 명령층, `app/pipeline`은 공통 제작 엔진이며 웹 UI도 이 엔진을 사용한다.
+- 소스 대장, 2A~2D, Factory `make`/`resume`/`status`/`inspect`/`rerender`/`styles`/`trends`/`export`/`edit-scene`/`set-visual`이 구현됐다. 저장 대본 재개는 재조사·재작성을 하지 않는다. Factory 완료 시 `job.json`을 만들어 웹 목록에 연결한다. 실제 A·C·D·E와 저장 대본 검토→재개→42.61초 1080×1920 MP4는 아래 A0 기록대로 확인했다.
+- 브랜치 `feature/agent-content-factory`, 원격 `origin` = `https://github.com/young92133-cmd/ai-shorts.git`. 직전 커밋 `c6cd645`는 이미 같은 이름의 GitHub 브랜치에 push돼 있었고, 점검 시작 때 추적 파일 변경·삭제·staged 파일은 없었다. 이번 체크포인트는 **HANDOFF.md와 아래 신규 소재 7개 파일**만 포함한다. 커밋·push 후 실제 커밋 ID와 작업 폴더 상태를 다시 확인한다. 이전 브랜치·커밋을 수정하거나 force push하지 않는다.
+- 이번에 새로 확인한 `assets/cat-box-45s/`: `narration.txt`(5문장 한국어 대본), `storyboard.md`(5장면 시간표·출처 URL·ImageGen 제작 주장), `scene_01_delivery.png`(택배 상자), `scene_02_peek.png`(상자에서 고개 내민 고양이), `scene_03_shelter.png`(은신처), `scene_04_sleep.png`(휴식), `scene_05_outro.png`(02의 동일 이미지 재사용). PNG는 각각 941×1672이며 총 5개 파일 중 마지막은 02와 바이트 단위로 같다. **소재 초안**이고 현재 Factory의 소스 대장이나 특정 프로젝트에 연결하거나 MP4로 렌더한 증거는 없다. 생성 경위는 `storyboard.md`의 기록에 근거하며, 대본의 연구 주장과 사용 권리·출처는 게시 전에 별도 확인해야 한다.
+- 이 체크포인트에서 기존 프로그램 코드는 수정하지 않았다. `HANDOFF.md`는 현재 Git·소재·공급자 분석을 추가했고, 기존 설계·검증 이력은 아래에 보존했다.
+
+### AI 공급자 분석과 우선순위 변경 (설계만, 미구현)
+
+- `config.yaml` 기본 `llm.provider: claude`, `model: claude-opus-5`. `app/pipeline/llm.py:ask_structured`가 Claude Code 로그인(`claude`), OpenAI API(`openai`), Anthropic API(`anthropic`)를 공통 Pydantic 구조화 결과로 호출한다. Factory `make --llm openai --model ...`와 웹 수동 선택은 있으나 **`auto`와 오류별 공급자 전환은 없다**. OpenAI API 실호출은 아직 검증하지 않았다. Codex 채팅으로 조종해도 내부 대본 AI가 Codex/ChatGPT 구독으로 자동 변경되지 않는다.
+- 자료 검색 자체는 네이버 뉴스(키가 있으면)·DuckDuckGo·본문 추출이고, 자동 화제 선택 `pick_trend`, 구성 `make_plan`, 대본 `write_script`, 장면 설계 `annotate_script`/`split_finished_script`, 업로드 영상 요약은 위 공통 LLM을 쓴다. 구성·장면 단계는 일부 규칙 대체 경로가 있지만 **대본 생성 실패는 전체 제작을 중단**한다. 업로드 영상의 화면 분석·음성 전사와 이미지/TTS 공급자는 별도 API 경로이므로 자동 전환 설계 때 비용 정책을 각각 확인한다.
+- **현재 막힘:** 앞선 `make --topic ... --review` 새 대본 실기기 검증은 Claude 사용량 한도로 대본 작성 전에 실패했다. `provider=auto`가 없어서 다른 공급자로 이어가지 못한다. **비용 위험:** `app/config.py`가 `.env` 및 로컬 `settings.env`를 환경에 읽고, Claude Agent SDK 호출은 `ANTHROPIC_API_KEY`를 명시적으로 제거하지 않는다. 키가 설정되면 Claude Code가 구독 대신 API 인증을 우선할 수 있다. 실제 키 존재 여부는 이 문서 작성 중 읽거나 출력하지 않았으므로 확정하지 않는다. 이미지·대본의 사실검증 기능도 아직 완성되지 않았다.
+- **다음 순서:** ① `claude` 구독 경로에 API 키가 상속되지 않도록 인증·과금 경계를 고정하고 사용자 설정 없이는 유료 API가 호출되지 않게 한다. ② 기존 `ask_structured` 중심으로 `auto|claude|openai` 선택·공급자별 모델·명시적 우선순위·오류 분류를 추가한다. `auto`는 인증/한도/명확한 일시 장애에만 한 번 전환하고 내용 불만족·형식 오류로 유료 재호출하지 않는다. ③ Factory·웹 설정, 사용 공급자/전환 이유 기록, 무료·유료 안내를 맞춘다. ④ 모의 호출 및 기존 전체 테스트, 명시적 승인 아래 필요한 실호출 검증을 마친다. ⑤ 새 주제 `--review` → `resume` 실기기 재검증. 그 뒤 2E→2G와 주장별 출처·팩트체크를 진행한다. 이 우선순위는 이전 A0 절의 ‘2E가 다음’ 기록보다 우선한다.
+
+### 실행·테스트·보호 규칙
+
+- 프로젝트 루트에서 `.venv\Scripts\python.exe -m app.factory make --topic "고양이가 상자를 좋아하는 이유" --seconds 45 --review` → `status <project_id>`/`inspect <project_id> --part script` → 승인 후 `resume <project_id>`. 직접 쓴 대본은 `make --script-file <파일> --review`. 완성 영상은 `output/<project_id>/final.mp4`; 전체 옵션은 `python -m app.factory --help`. Windows 웹 실행은 `AI Shorts 실행.cmd` → `http://127.0.0.1:8765/`.
+- 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q`. **2026-10-01 전체 95개 통과.** 이번 실행은 기존 모의 테스트이며 새 소재의 MP4 렌더나 OpenAI API 실호출 검증은 아니다.
+- 외부 준비: Python 가상환경과 `requirements.txt`, FFmpeg/FFprobe, 기본 Claude Code 로그인, Edge TTS, 자료 검색 인터넷. 선택: `OPENAI_API_KEY`(유료 GPT), `ANTHROPIC_API_KEY`(유료 Claude API), `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`, `YOUTUBE_API_KEY`, 이미지·유료 TTS 키. 기본 `images.provider: none`은 내부 카드와 권리 확인된 파일을 쓴다. `.env` 또는 `%LOCALAPPDATA%/AIShorts/settings.env`의 **값은 출력·커밋하지 않는다**. Claude/ChatGPT/Codex 구독과 별도 API 과금을 혼동하지 말 것.
+- 절대 보존: `output/`의 기존 결과, 이번 `assets/cat-box-45s/` 원본, 소스 대장·렌더 권리 가드, 2C 타임라인·2D 화면 선택기, 원격 히스토리. 사용자 승인 없이 유료 API·게시·다수 제작을 시작하거나 권리 미확인 외부 영상/기사/댓글을 화면에 사용하지 않는다. 프로그램 코드·기존 정상 기능을 대규모로 재작성하지 않는다.
+
+## 2026-09-30 — A0 에이전트 콘텐츠팩토리 (당시 기록)
 
 ### 목적·Git·작업 원칙
 
 - 개인용 한국어 9:16 쇼츠 제작기다. 주제/URL/완성 대본/핫이슈 → 조사·대본·장면 → TTS → 권리 확인 화면 → 자막 → FFmpeg MP4가 기존 `app/pipeline`에 있다. 이번 A0의 목표는 **Claude Code/Codex 채팅 자체를 메인 인터페이스**로 삼고, 웹 UI를 결과 확인·세부 수정용 보조 화면으로 쓰는 것이다.
-- 현재 브랜치는 `feature/agent-content-factory`, 기반 커밋 `ec86915`(2D 완료·`origin/feature/auto-video-mvp`에 push됨). 이 브랜치는 원격에 없고 시작 시 미커밋 변경이 있었다. 기존 `app/pipeline/run.py` 변경 및 `CLAUDE.md`, `app/factory/` 4개 파일, `tests/test_factory.py`를 **그대로 보존해** 이어서 작업했다. `pull`/`reset`/`checkout`으로 덮어쓰지 않았다. 이번 작업에서는 `AGENTS.md`와 문서만 추가·수정해 로컬 체크포인트 커밋까지 만든다. GitHub push는 하지 않는다.
+- A0 작성 당시 이 브랜치는 원격에 없고 미커밋 변경이 있었다. 기반 커밋은 `ec86915`(2D 완료·`origin/feature/auto-video-mvp`에 push됨). 기존 `app/pipeline/run.py` 변경 및 `CLAUDE.md`, `app/factory/` 4개 파일, `tests/test_factory.py`를 보존하고 `AGENTS.md`·문서를 더해 `c6cd645`로 커밋했다. **이후 `feature/agent-content-factory` 브랜치를 GitHub에 push했다.** `pull`/`reset`/`checkout`으로 작업을 덮어쓰지 않았다.
 - 설계 방향: 엔진 중복 구현이나 대규모 리팩토링을 하지 않는다. `app/factory`는 JSON 명령층, `app/pipeline`은 기존 제작 엔진, 웹 UI는 같은 엔진의 보조 화면이다. 자연어 → CLI 매핑·권리 정책·비용 규칙은 `CLAUDE.md`와 Codex용 `AGENTS.md`에 동일하게 적었다.
 
 ### 구현 파일과 사용법
@@ -35,7 +59,7 @@
 - **C 상태 / D 대본 조회:** 검토 프로젝트의 `status`는 `waiting_for_script_approval`과 `next_action: resume`을 반환했고, `inspect --part script`는 7장면 대본을 보여줬다.
 - **B 이어서 완성:** `resume 20260930_230910_910e`는 저장 대본을 그대로 써서 다시 조사·작성하지 않고 **42.61초, 1080×1920 MP4**와 웹용 `job.json`을 만들었다. 실제 영상의 소스 권리 가드를 통과했다.
 - **E 다시 렌더:** 같은 프로젝트의 `rerender`가 `rerendered: true`와 완성 MP4를 반환했다. 전후 `script.json` SHA-256 앞 16자 `b4eb15553d93ba2a`, `narration.mp3`는 `f7587288f320412e`로 같았다. 재렌더 후 `final.mp4`도 동일 내용으로 생성됐다.
-- **남은 첫 작업:** Claude 구독 한도 초기화 후 새 주제의 `make --review` → `status`/`inspect` → `resume` 전체를 재검증한다. 실패한 프로젝트를 지우지 말고 새 `make`로 시도한다. 그다음 2E 장면별 자막·모션·전환, 2F 오디오/렌더 안정화, 2G 한 번에 제작 흐름, 주장별 팩트체크·스타일팩 순서다. 브라우저의 새 factory 결과 실제 클릭 확인과 GPT 실호출은 아직 하지 않았다.
+- **당시 남은 첫 작업:** Claude 구독 한도 초기화 후 새 주제의 `make --review` → `status`/`inspect` → `resume` 전체를 재검증한다. 실패한 프로젝트를 지우지 말고 새 `make`로 시도한다. 당시 계획은 2E 장면별 자막·모션·전환, 2F 오디오/렌더 안정화, 2G 한 번에 제작 흐름, 주장별 팩트체크·스타일팩 순서였다. **현재 우선순위는 위 2026-10-01 절의 AI 공급자·비용 안전 작업이다.** 브라우저의 새 factory 결과 실제 클릭 확인과 GPT 실호출은 아직 하지 않았다.
 - **절대 건드리지 말 것/주의:** 기존 완료 MP4·`output/` 산출물, `feature/auto-video-mvp` 원격 히스토리, 소스 대장 권리 검사, 2C 실측 타임라인과 2D 카드 선택기. 실제 출력 경로는 로컬 전용이며 Git에 추가하지 않는다. 커밋 전 민감정보 검사와 전체 95개 테스트를 다시 확인한다.
 
 ## 2026-09-30 — 2D 장면별 화면 자동 선택 완료
