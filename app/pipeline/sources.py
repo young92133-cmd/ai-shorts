@@ -10,7 +10,7 @@ from typing import Any
 from .models import SourceItem
 
 FILE = "sources.json"
-PROVEN_LICENSES = {"my_channel", "ai_generated", "pexels", "pixabay", "kogl_type0", "kogl_type1"}
+PROVEN_LICENSES = {"my_channel", "licensed_upload", "ai_generated", "pexels", "pixabay", "kogl_type0", "kogl_type1"}
 
 
 def _now() -> str:

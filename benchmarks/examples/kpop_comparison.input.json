@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "topic": "같은 안무의 멤버별 표현 차이",
+  "sources": [
+    {"id": "practice", "path": "./my_practice.mp4"}
+  ],
+  "observations": [
+    {
+      "id": "member_comparison",
+      "observation_type": "comparison",
+      "reason_to_watch": "같은 동작을 어떻게 다르게 표현하는지 두 구간을 보고 비교할 수 있다.",
+      "hook": "같은 안무, 다른 느낌",
+      "claim": "같은 안무인데 멤버마다 느낌이 완전히 다르다",
+      "evidence_clips": [
+        {
+          "source_id": "practice",
+          "start": 31,
+          "end": 37,
+          "perspective": "멤버 A",
+          "observation": "예시 메모: 멤버 A는 팔을 빠르게 펼치고 끝에서 멈춘다.",
+          "supports_claim": "같은 동작의 힘과 멈춤을 비교할 첫 기준이다.",
+          "confidence": 0.85
+        },
+        {
+          "source_id": "practice",
+          "start": 64,
+          "end": 70,
+          "perspective": "멤버 B",
+          "observation": "예시 메모: 멤버 B는 팔을 부드럽게 연결하고 다음 동작으로 넘어간다.",
+          "supports_claim": "첫 구간과 연결 방식이 달라 표현 차이를 확인할 수 있다.",
+          "confidence": 0.8
+        }
+      ],
+      "reaction_captions": ["A는 멈춤이 또렷함", "B는 연결이 부드러움"],
+      "ending_question": "어떤 표현이 더 취향인가요?",
+      "confidence": 0.85,
+      "reasoning_summary": "같은 안무의 두 구간을 독립적으로 비교한다. 이 메모는 입력 형식 예시이며 실제 영상 관찰로 교체해야 한다."
+    }
+  ]
+}

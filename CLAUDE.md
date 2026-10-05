@@ -146,3 +146,31 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
   - 비밀정보는 커밋하지 않는다.
   - push는 사용자가 요청할 때만 한다.
 - 진행 기록은 `IMPLEMENTATION_PLAN.md`(계획)와 `HANDOFF.md`(작업 인계)에 남긴다.
+
+## Benchmark 인벤토리와 자연어 규칙 (2026-10-05)
+
+현재 기준은 shorts-ai의 오프라인 Benchmark Engine이다. `docs/BENCHMARKS.md`와 `benchmark sources/profiles`를 먼저 확인한다.
+별도 shorts-ai-benchmark-v2는 별도 컨셉 작업이므로 사용자가 그쪽 구현을 요청하지 않으면 임의로 합치지 않는다.
+
+사용자가 "이 채널 벤치마킹해줘"라고 하면 최소한 source 분석을 구조화하고, 기존 profile 중복/variation/새 profile 필요성을 판단해
+`benchmarks/sources`와 `docs/BENCHMARKS.md`에 관찰 깊이/상태/다음 작업을 기록한다. 말로만 분석을 끝내지 않는다.
+새 production 코드는 분석 요청만으로 자동 변경하지 않는다. "반영/업데이트/구현" 요청이 있으면 load/선택/실제 pipeline/테스트를 검증해 연결한다.
+source와 profile은 양방향 연결하며 채널 수와 profile 수를 구분한다. 사례별 시청 이유/질문/hook/claim/근거/payoff/길이/리듬/음성/자막/반복/후속/시각 전략을 추출한다.
+관찰한 사실, 목록만 나온 스타일, 제안한 제작 변형, 실제 검증한 경로를 구분하고 미확인 성과/날짜/인물/반응을 추측하지 않는다.
+타 채널 로고/워터마크/정확한 폰트/색상/그래픽/원문 대본/장면을 복제하거나 원본을 자동 다운로드하지 않는다.
+
+자연어 요청과 실행:
+
+| 사용자 요청 | 처리 |
+|---|---|
+| "이 주제로 curiosity_update_story 적용해서 만들어줘" | 제공/검증한 과거-변화-현재 근거를 examples 양식의 JSON으로 구조화 → `benchmark plan --profile curiosity_update_story --input ...` → `benchmark render ID` |
+| "이 영상으로 kpop_observation_clip 방식으로 만들어줘" | 권리 확인 로컬 영상의 관찰/타임코드를 기존 kpop JSON으로 기록 → 같은 plan/render |
+| "physics_comparison_simulation 방식으로 제작해줘" | 직접 만든 실험 영상/조건/고정 환경을 확인 → physics 양식 → plan/render; 시뮬레이션 영상 생성은 미지원임을 알려준다 |
+| "레스기처럼 순위로 묶어줘" | 채널 복제 대신 ranked_moments, N위부터1위 근거 클립과 순위 기준을 기록 |
+| "건축 원리 설명/발언 맥락/숫자 정보/사건 시간 순서" | 각각 mechanism_explainer / quote_context_story / illustrated_fact_explainer / event_timeline_story의 근거 JSON → plan/render |
+| "계획만 먼저 보여줘" | plan/inspect 결과를 보여주고 멈춘다 |
+| "벤치마크 계속/다시 렌더" | 대화에 알려진 benchmark ID로 `benchmark render ID`; V1 resume를 사용하지 않는다 |
+
+Benchmark 입력 양식은 예시이며 실제 분석/사실이 아니다. 사용자의 사실/영상 입력으로 교체한다. URL(reference)은 provenance 문자열이고 엔진은 접속하지 않는다.
+현재 새 이야기 profile은 narration 없는 자체 카드 adapter다. 자동 조사/번역/Blender/고급 지도 생성/Global Trend Radar는 아직 없다.
+source/profile/코드/문서를 함께 갱신하고 기존 V1 전체 테스트와 Benchmark 회귀 테스트를 실행한다. 테스트/실렌더/흥행 확인을 서로 대신 보고하지 않는다.

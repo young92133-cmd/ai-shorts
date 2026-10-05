@@ -1,5 +1,34 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-05 — 전체 Benchmark Audit 및 오프라인 엔진 통합
+
+사용자가 shorts-ai 현재 브랜치의 오프라인 엔진을 기준으로 통합하도록 선택했다. 별도 shorts-ai-benchmark-v2는 조사만 했으며 파일/작업/커밋을 병합하지 않았다.
+
+- **자료/구조:** 현재 PC의 Claude 프로젝트 전체 JSONL, Codex 벤치마킹 대화 및 원 개발 대화, 문서/설정/코드/테스트/Git 이력/output 분석 메모를 조사했다. `docs/BENCHMARKS.md`에 코드 변경 전 Audit와 변경 후 인벤토리를 구분한다. 다른 PC에만 있는 기록의 존재까지 확인한 것은 아니다.
+- **source 6개:** 돌토리, 짤잉, 레스기, BKS Simulation, 건축매니아(2편), reference.mp4 제작 시스템(12종 스타일+도구 기능). 반복/중단 분석을 별도 source로 중복 집계하지 않는다. `benchmarks/sources/*.json`에 분석 날짜/관찰 깊이/구조/채택 요소/복제 제외/연결 profile을 기록한다.
+- **production profile 8개:** kpop_observation_clip, curiosity_update_story, physics_comparison_simulation, ranked_moments, mechanism_explainer, quote_context_story, illustrated_fact_explainer, event_timeline_story. K팝 기존 YAML/관찰/계획/state 로딩을 유지하고 새 profile은 `benchmarks/profiles/*.yaml`에 둔다. 채널명은 production 이름으로 쓰지 않는다.
+- **연결:** `app.factory benchmark sources/profiles/plan/inspect/render`. K팝 기존 클립 adapter 유지, 랭킹/물리 비교는 전체 근거 영상 순서 재생, 나머지는 사용자가 새로 쓴 사실/발언 요약/시간 흐름의 자체 카드로 기존 timeline/B-roll/ASS 렌더까지 전달한다. TTS/LLM/다운로드 호출 없음. `inspect`의 benchmark에는 장르 공통 12필드가 나온다. profile snapshot과 근거/권리/hash를 매 렌더 검증한다.
+- **검증:** 변경 전 기존 170개(V1 132 + 기존 Benchmark38) 통과. 이번 신규32개 포함 **전체202개 모두 통과(61.749초), 실패0/skip0**. 로그: `output/benchmark_full_tests.log`. FFmpeg/FFprobe/AI/TTS는 mock; 실제 MP4/가독성/음질/흥행은 미검증. 새로운 카드와 영상이 함께 기존 FFmpeg graph로 전달되는 회귀도 검사한다.
+- **제한:** Benchmark는 V1 make/resume/export/batch 및 웹 UI에 합치지 않은 독립 상태 경로다. 새 story는 무음 카드 변형이고 관찰한 원본 narration을 재현하지 않는다. Blender 실험 자동 생성, 사실 진위/조건 통제의 의미 검증, 외부 원본 수집, 일러스트/3D/지도/원음 인터뷰, 롱폼16:9/번역 자동화 미구현. 요즘PD는 목록만 관찰돼 production profile을 새로 만들지 않았다. Global Trend Radar/Localization/성과 feedback은 향후 단계다.
+- **Git:** 이번 요청은 테스트 성공 후 현재 브랜치의 새 commit과 일반 origin push를 허용한다. 기존 history 수정/amend/rebase/force push 없음. output/미디어/환경/인증 파일 제외. 이전 기록은 아래에 보존한다.
+
+---
+
+## 2026-10-02 — V2 Benchmark Engine 1단계 (오프라인 관찰 입력)
+
+사용자의 새 요청으로 V2 첫 기능을 구현했다. V1의 `make/information/story/issue`는 유지한다.
+이번 구현의 공개 경로는 `app.factory benchmark profiles/plan/inspect/render`이고, 구조적 프로필은
+`benchmarks/kpop_observation_clip.yaml`, 사용법과 현재 PC 실행 준비는 `benchmarks/README.md`에 있다.
+
+- **범위:** 사용자 관찰 메모 JSON의 시청 이유/claim과 evidence clips를 쌍으로 검증·선택한다. 6개 관점을 지원하고 비교·변화·공통점에는 독립된 관점의 근거 2개를 요구한다. 시간 범위·중복·확신도·전체 근거가 들어갈 길이를 검사한다. 원본 영상을 자동 이해하거나 주장 진위를 판정하는 AI 분석은 이번 경로에 없다. `semantic_verification=user_annotations_only`, confidence는 선언된 근거 확신도의 최솟값이다.
+- **파일:** `app/pipeline/benchmark.py`, `benchmark_models.py`, `app/factory/benchmark.py`, `benchmarks/` 프로필/가이드/입력·계획 예시, `tests/test_benchmark.py`를 추가했다. 기존 Factory CLI, `render.py`, `timeline.py`, `subtitles.py`, `sources.py`에 필요한 옵션만 추가했다. `licensed_upload`는 명시적으로 허가받은 로컬 입력이며 기존 권리 확인 조건을 모두 충족해야 한다.
+- **저장/렌더:** `output/benchmarks/<id>/`의 별도 상태·프로필 스냅샷·claim/evidence·거부 사유·SHA256·권리 대장. 기존 B-roll/ASS/카드 텍스트 레이아웃을 재사용한다. 1080×1920, 기본 30초/20~35초, TTS 없음, 원본 소리 선택, 자체 남색/주황색 브랜딩. 근거 화면 전체를 영역 안에 맞추고 근거 밖을 가져오지 않는다. 선택한 근거 전체를 first_evidence/interpretation에서 보여주고 여유 구간은 다시 보기로 기록한다. 매 렌더에서 권리·파일·범위를 재검사하고 임시 MP4의 해상도/길이를 검증한 뒤 최종 파일로 교체한다. 실패하면 계획과 기존 완성본을 보존한다.
+- **검증:** 개발 전 기존 132개 통과(24.398초), 새 benchmark 테스트 38개 통과, 변경 후 전체 **170개 통과(25.221초)**. `benchmark profiles` stdout JSON/종료코드와 구조적 계획 예시 생성도 실제 실행했다. FFmpeg/FFprobe/AI는 테스트에서 mock 처리했고 실제 MP4·실제 K팝 근거·음악 연결·가독성·흥행 효과는 미검증이다. 로그: `output/benchmark_v2_stage1_unittest.log`.
+- **실행 환경:** 이동된 `.venv`의 이전 Python312 경로가 없어서 Codex 번들 Python 3.12.14와 `.venv/Lib/site-packages`를 PYTHONPATH로 사용했다. `.venv`, 패키지, 기존 원본/출력 파일은 수정하지 않았다. 현재 PC 준비 명령은 가이드에 있다.
+- **경계:** 유료 API/Claude 구독 실호출/영상 자동 다운로드/실제 샘플 제작/GitHub push/기존 커밋 변경 없음. 이번 경로는 웹 UI·CapCut·V1 resume/export에 연결하지 않았다. 작업 도중 별도로 나타난 `app/benchmarks/`와 `app/pipeline/llm.py` 변경은 이 오프라인 구현에 포함시키거나 되돌리지 않고 보존했다. 이번 공개 명령은 그 별도 모듈을 import하지 않는다.
+
+이 절은 아래 PC 이동 체크포인트 이후의 새 기능 기록이다. V2 전체 완료나 실제 제작 검증 완료를 뜻하지 않는다.
+
 ## 2026-10-01 — 다른 PC 이동용 체크포인트 (현재 인계 기준)
 
 **이번 저장은 이동용 WIP 체크포인트이며 V1 release나 최종 완료 승인을 의미하지 않는다. 다음 개발·기능 추가는 사용자의 새 요청을 기다린다.** 이 절의 이동·백업 지침이 아래 이전 작업 기록보다 우선한다.

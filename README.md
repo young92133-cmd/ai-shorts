@@ -1,5 +1,20 @@
 # AI 콘텐츠팩토리
 
+## Benchmark 통합 (2026-10-05)
+
+6개 분석 source → 8개 구조적 production profile. [전체 Audit/인벤토리](docs/BENCHMARKS.md), [실행 가이드](benchmarks/README.md).
+현재 `benchmark profiles/sources/plan/inspect/render`에서 선택한다. 기존 K팝 관찰 클립을 유지하고 순위/물리 비교 영상과 사실/근황/원리/발언/사건 카드 adapter를 추가했다.
+V1 make/resume와 별도 상태로 동작한다. API/다운로드/TTS 없이 사용자 주석 근거를 검증한다. 실제 영상/Blender 생성/자동 사실 확인/Global Trend Radar는 이번 범위가 아니다.
+
+## V2 첫 기능: Benchmark Engine 1단계
+
+`benchmark profiles/plan/inspect/render` 명령으로 K팝 관찰 메모의 시청 이유·claim과 근거 클립을
+함께 검증·선택하고 기존 B-roll/자막 렌더로 제작합니다. 기본 1080×1920·30초(20~35초), TTS 없음,
+원본 오디오 선택, 자체 브랜딩입니다. 로컬의 사용 권한이 확인된 영상만 받으며 유료 API·외부 영상 다운로드는 없습니다.
+1단계는 사용자가 작성한 관찰 메모와 타임코드를 분석합니다. 영상 자동 이해/자동 사실 판정은 포함하지 않습니다.
+V1의 `information/story/issue`와 작업 목록은 별도로 유지합니다.
+입력 예시·새 프로필 추가·명령·현재 PC의 Python 우회 실행은 [benchmarks/README.md](benchmarks/README.md)를 참조하세요.
+
 주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4 를 자동으로 만드는 개인용 도구.
 
 ## 채팅으로 사용하는 방법 (V1)

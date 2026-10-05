@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "lesgi",
+  "name": "레스기",
+  "analyzed_at": "2026-10-03",
+  "genre": "순위 사례",
+  "references": [
+    "https://www.youtube.com/@%EB%A0%88%EC%8A%A4%EA%B8%B0-e9v/shorts",
+    "https://www.youtube.com/shorts/Rz00Sc8WgaE",
+    "https://www.youtube.com/shorts/x5Y_wiCXQ98",
+    "https://www.youtube.com/shorts/lUQUs1QG-mU",
+    "https://www.youtube.com/shorts/uqs67OdRSh8",
+    "https://www.youtube.com/shorts/XEJYL7FMKyQ"
+  ],
+  "analysis_records": [
+    "Codex 01a101db-e24b-7570-a634-36b136db8e38"
+  ],
+  "observed_structure": [
+    "이해 쉬운 주제 → 5위부터1위 → 다음 장면 기대 → 마지막 보상"
+  ],
+  "observed_patterns": [
+    "짧은 항목명과 순위 진행",
+    "소재 반복 시리즈; 대표16/23/52초"
+  ],
+  "adopted_elements": [
+    "이해 쉬운 주제 → 5위부터1위 → 다음 장면 기대 → 마지막 보상"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "ranked_moments"
+  ],
+  "findings": []
+}

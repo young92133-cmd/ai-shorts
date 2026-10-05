@@ -20,7 +20,7 @@ import json
 import sys
 from typing import Any
 
-from . import core, batch
+from . import core, batch, benchmark
 
 
 def _log(msg: str) -> None:
@@ -108,10 +108,40 @@ def _parser() -> argparse.ArgumentParser:
     ex.add_argument("project_id", nargs="?")
     ex.add_argument("--pack", action="store_true", help="편집 재료 zip")
     ex.add_argument("--capcut", action="store_true", help="CapCut 프로젝트로 내보내기")
+
+    bm = sub.add_parser("benchmark", help="V2: 관찰 메모에서 claim/evidence 쌍 선택 (오프라인)")
+    bm_sub = bm.add_subparsers(dest="benchmark_cmd", required=True)
+    bm_sub.add_parser("profiles", help="구조적 benchmark profile 목록")
+    bm_sub.add_parser("sources", help="분석된 source와 production profile 연결 목록")
+    bp = bm_sub.add_parser("plan", help="권리 확인된 로컬 영상·관찰 JSON에서 제작 계획 저장")
+    bp.add_argument("--input", dest="input_file", required=True, help="관찰 메모 JSON 파일")
+    bp.add_argument("--profile", dest="profile_id", default="kpop_observation_clip")
+    bp.add_argument("--seconds", type=int, help="profile의 허용 길이, 기본 profile 설정")
+    bp.add_argument("--observation-type", help="profile에 정의된 variation 이름")
+    bp.add_argument("--confirm-rights", action="store_true")
+    bp.add_argument("--note", default="", help="입력 영상 모두에 대한 사용 권한 근거")
+    bp.add_argument("--license", dest="license_", default="my_channel", choices=("my_channel", "licensed_upload", "ai_generated"))
+    bp.add_argument("--mute-source", action="store_true", help="원본 소리를 제거 (TTS 없음)")
+    for command in ("inspect", "render"):
+        bc = bm_sub.add_parser(command, help="저장 계획 조회" if command == "inspect" else "기존 렌더로 제작/재렌더")
+        bc.add_argument("project_id", help="benchmark plan이 반환한 작업 id")
     return ap
 
 
 async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
+    if a.cmd == "benchmark":
+        if a.benchmark_cmd == "profiles":
+            return benchmark.profiles()
+        if a.benchmark_cmd == "sources":
+            from ..pipeline.benchmark_registry import inventory
+            return {"status": "ok", **inventory(), "ai_provider_used": "none"}
+        if a.benchmark_cmd == "plan":
+            return await benchmark.plan(a.input_file, profile_id=a.profile_id, seconds=a.seconds,
+                                        observation_type=a.observation_type, confirm_rights=a.confirm_rights,
+                                        note=a.note, license_=a.license_, preserve_audio=not a.mute_source, log=_log)
+        if a.benchmark_cmd == "inspect":
+            return benchmark.inspect(a.project_id)
+        return await benchmark.render(a.project_id, log=_log)
     if a.cmd == "make":
         script_text = a.script_text
         if a.script_file:

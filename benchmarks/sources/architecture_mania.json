@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "architecture_mania",
+  "name": "건축매니아 — 콘크리트/DDP 2편",
+  "analyzed_at": "2026-09-21",
+  "genre": "원리/문제 해결",
+  "references": [
+    "https://www.youtube.com/watch?v=yR9e3axtm4c",
+    "https://www.youtube.com/watch?v=7pZfCFkhfeY"
+  ],
+  "analysis_records": [
+    "styles/style-f8b83e20.yaml",
+    "HANDOFF.md 기존 채널2편 분석",
+    "Claude 59269e52/75235391 초기 메타데이터; a8f364ce 후속 자막 입력"
+  ],
+  "observed_structure": [
+    "통념/첫인상 → 반전 → 질문 → 원리 → 대안 한계 → 해결 → 질문의 답"
+  ],
+  "observed_patterns": [
+    "질문으로 논점 심화; 근거 있는 숫자",
+    "존댓말 해설; 257/300초,12~18논점; 변형은 개념 축소"
+  ],
+  "adopted_elements": [
+    "통념/첫인상 → 반전 → 질문 → 원리 → 대안 한계 → 해결 → 질문의 답"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "mechanism_explainer"
+  ],
+  "findings": []
+}

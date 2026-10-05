@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "id": "factory_reference",
+  "name": "reference.mp4 — THIS IS MONEY 제작 시스템",
+  "analyzed_at": "2026-09-29",
+  "genre": "시스템/복수 콘텐츠 예시",
+  "references": [
+    "REFERENCE_VIDEO_ANALYSIS.md"
+  ],
+  "analysis_records": [
+    "REFERENCE_VIDEO_ANALYSIS.md",
+    "HANDOFF.md; IMPLEMENTATION_PLAN.md"
+  ],
+  "observed_structure": [
+    "채팅 → 구조 선택 → 근거 → 제작 계획 → 화면/자막 → 검토"
+  ],
+  "observed_patterns": [
+    "원문 맥락/날짜/출처",
+    "제목/미디어/출처 구획; 구조만 자체 디자인에 적용"
+  ],
+  "adopted_elements": [
+    "채팅 → 구조 선택 → 근거 → 제작 계획 → 화면/자막 → 검토"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "curiosity_update_story",
+    "ranked_moments",
+    "mechanism_explainer",
+    "quote_context_story",
+    "illustrated_fact_explainer",
+    "event_timeline_story"
+  ],
+  "findings": [
+    {
+      "name": "건축사전st",
+      "analysis_depth": "catalog_only",
+      "structure": [
+        "기술 원리"
+      ],
+      "derived_profiles": [
+        "mechanism_explainer"
+      ],
+      "next_work": "직접 완성 영상/전체 서사 추가 분석 필요"
+    },
+    {
+      "name": "더다큐롱폼st",
+      "analysis_depth": "partial_observation",
+      "structure": [
+        "사건/시간/지도"
+      ],
+      "derived_profiles": [
+        "event_timeline_story"
+      ],
+      "next_work": "직접 완성 영상/전체 서사 추가 분석 필요"
+    },
+    {
+      "name": "랭킹st",
+      "analysis_depth": "partial_observation",
+      "structure": [
+        "서로 다른 행동 클립/순위/짧은 이름"
+      ],
+      "derived_profiles": [
+        "ranked_moments"
+      ],
+      "next_work": "직접 완성 영상/전체 서사 추가 분석 필요"
+    },
+    {
+      "name": "무비st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "작품 장면의 대사/맥락"
+      ],
+      "derived_profiles": [
+        "quote_context_story"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "비하인드스토리st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "인터뷰 발언/작품 맥락"
+      ],
+      "derived_profiles": [
+        "quote_context_story"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "스포츠st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "경기 상황/사건/결과"
+      ],
+      "derived_profiles": [
+        "event_timeline_story"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "연예인쇼핑st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "소개 제품/실제 평가의 맥락"
+      ],
+      "derived_profiles": [
+        "quote_context_story"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "요즘PDst",
+      "analysis_depth": "catalog_only",
+      "structure": [
+        "해외 행동/대화 → 한국어 설명/번역 자막"
+      ],
+      "derived_profiles": [],
+      "next_work": "직접 완성 영상/전체 서사 추가 분석 필요"
+    },
+    {
+      "name": "이게맞나st",
+      "analysis_depth": "catalog_only",
+      "structure": [
+        "근황/짧은 보고체/빠른 자료"
+      ],
+      "derived_profiles": [
+        "curiosity_update_story"
+      ],
+      "next_work": "직접 완성 영상/전체 서사 추가 분석 필요"
+    },
+    {
+      "name": "이라스토야st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "일러스트/생활 정보/캡션"
+      ],
+      "derived_profiles": [
+        "illustrated_fact_explainer"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "정치채널st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "공식 발언의 출처/날짜/맥락"
+      ],
+      "derived_profiles": [
+        "quote_context_story"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "커뮤니티형st",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "숫자/기준/비교 카드"
+      ],
+      "derived_profiles": [
+        "illustrated_fact_explainer"
+      ],
+      "next_work": null
+    },
+    {
+      "name": "롱투숏/모션그래픽",
+      "analysis_depth": "direct_observation",
+      "structure": [
+        "도구 기능; 장르 profile로 중복 생성하지 않는다."
+      ],
+      "derived_profiles": [],
+      "next_work": "소유 영상 구간 선택/지도/도형 생성은 별도 개발"
+    }
+  ]
+}

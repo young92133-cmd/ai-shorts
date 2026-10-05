@@ -63,7 +63,7 @@ def build_timeline(
     *,
     width: int, height: int, fps: int,
     mode: str,
-    narration: Path,
+    narration: Path | None,
     bgm: Path | None,
     bgm_volume: float,
     source_volume: float,
@@ -234,7 +234,9 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
     st = tl["subtitles"]["style"]
     ass = build_ass([], job_dir / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),
                     size=int(st.get("size", 64)), highlight=st.get("highlight", "#FFD400"),
-                    outline=st.get("outline", "#000000"), **ass_inputs(tl))
+                    outline=st.get("outline", "#000000"),
+                    **({"margin_v": int(h * 0.18), "line_wrap_chars": 16}
+                       if tl["mode"] == "observation" else {}), **ass_inputs(tl))
 
     overlays = []
     for c in tl.get("comments", []):
@@ -243,11 +245,11 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
             if p.is_file():
                 overlays.append({**c, "path": p})
 
-    narration = resolve(tl["narration"], job_dir)
+    narration = resolve(tl["narration"], job_dir) if tl.get("narration") else None
     bgm = resolve(tl["bgm"], job_dir) if tl.get("bgm") else None
     common = dict(ass_path=ass, bgm=bgm, width=w, height=h, fps=fps,
                   bgm_volume=float(tl["bgm_volume"]), fonts_dir=fonts_dir, overlays=overlays)
-    if tl["mode"] == "broll":
+    if tl["mode"] in ("broll", "observation"):
         clips = []
         for s in tl["scenes"]:
             v = s["visual"]
@@ -256,7 +258,8 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
                 clip.update(start=v["src_start"], has_audio=v["has_audio"])
             clips.append(clip)
         return await render_broll(clips, narration, out_path,
-                                  source_volume=float(tl["source_volume"]), **common)
+                                  source_volume=float(tl["source_volume"]),
+                                  **({"frame_layout": "observation"} if tl["mode"] == "observation" else {}), **common)
     images = [resolve(s["visual"]["path"], job_dir) for s in tl["scenes"]]
     durations = [float(s["duration"]) for s in tl["scenes"]]
     return await render_slideshow(images, durations, narration, out_path,

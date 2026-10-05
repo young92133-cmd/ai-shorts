@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "topic": "입력 양식 예시 — 실제 검증값으로 교체",
+  "sources": [
+    {
+      "id": "notes",
+      "reference": "例示/예시: 실제 제작 전에 사용자가 사실/출처/날짜를 검증하고 새로 작성해야 함"
+    }
+  ],
+  "observations": [
+    {
+      "id": "annotated_example",
+      "observation_type": "change",
+      "reason_to_watch": "근거로 확인할 수 있는 변화나 결과",
+      "viewer_question": "어떤 차이가 있나요?",
+      "hook": "근거로 확인하는 차이",
+      "claim": "실제 제작 전에 확인한 주장으로 교체",
+      "evidence_type": "multiple_examples",
+      "evidence": [
+        {
+          "id": "proof_1",
+          "evidence_type": "fact",
+          "role": "background",
+          "source_id": "notes",
+          "content": "실제 분석 결과가 아닌 입력 양식 예시",
+          "supports_claim": "사용자가 확인한 근거와 주장 연결을 새로 작성",
+          "caption": "확인한 근거 1",
+          "confidence": 0.8
+        },
+        {
+          "id": "proof_2",
+          "evidence_type": "fact",
+          "role": "change",
+          "source_id": "notes",
+          "content": "실제 분석 결과가 아닌 입력 양식 예시",
+          "supports_claim": "사용자가 확인한 근거와 주장 연결을 새로 작성",
+          "caption": "확인한 근거 2",
+          "confidence": 0.8
+        },
+        {
+          "id": "proof_3",
+          "evidence_type": "fact",
+          "role": "current_update",
+          "source_id": "notes",
+          "content": "실제 분석 결과가 아닌 입력 양식 예시",
+          "supports_claim": "사용자가 확인한 근거와 주장 연결을 새로 작성",
+          "caption": "확인한 근거 3",
+          "confidence": 0.8
+        }
+      ],
+      "payoff": "확인한 결과로 질문에 답하기",
+      "ending_question": "어떤 근거가 가장 분명한가요?",
+      "confidence": 0.85,
+      "reasoning_summary": "양식 예시; 실제 분석이나 사실 검증 아님"
+    }
+  ]
+}

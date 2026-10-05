@@ -85,6 +85,7 @@ def build_ass(
     credits: list[tuple[float, float, str]] | None = None,
     comments: list[tuple[float, float, str]] | None = None,
     lines: list[dict] | None = None,
+    line_wrap_chars: int | None = None,
 ) -> Path:
     """words 로 카라오케 자막을, titles=[(start,end,text)] 로 상단 키워드 카드를 만든다.
 
@@ -143,7 +144,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if lines is None:
         lines = words_to_lines(words)
     for line in lines:
-        events.append(_karaoke_event(line))
+        if line_wrap_chars and not line.get("words"):
+            # Static observation captions have no narrated word timing. Reuse
+            # the existing wrapping/escaping without changing V1 karaoke.
+            wrapped = "\\N".join(_esc(row) for row in wrap_title(line["text"], line_wrap_chars, max_lines=3))
+            events.append(f"Dialogue: 1,{_ts(line['start'])},{_ts(line['end'])},Sub,,0,0,0,,{wrapped}")
+        else:
+            events.append(_karaoke_event(line))
 
     out_path.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
     return out_path

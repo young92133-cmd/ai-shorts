@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "profile_id": "kpop_observation_clip",
+  "profile_snapshot": {
+    "schema_version": 1,
+    "id": "kpop_observation_clip",
+    "name": "K팝 관찰 클립",
+    "philosophy": [
+      "소재 선정",
+      "시청자가 볼 이유 정의",
+      "그 이유를 증명하는 장면 선택",
+      "짧은 제목과 해설",
+      "자체 디자인으로 렌더"
+    ],
+    "observation_types": {
+      "discovery": {
+        "description": "놓치기 쉬운 장면이나 포인트 발견",
+        "min_evidence": 1,
+        "distinct_perspectives": false,
+        "question_template": "이 포인트를 발견했나요?"
+      },
+      "unexpected_change": {
+        "description": "이전 또는 다른 장면과 달라진 점",
+        "min_evidence": 2,
+        "distinct_perspectives": true,
+        "question_template": "어떤 변화가 가장 눈에 띄나요?"
+      },
+      "comparison": {
+        "description": "같은 곡의 다른 무대나 다른 멤버 비교",
+        "min_evidence": 2,
+        "distinct_perspectives": true,
+        "question_template": "어떤 버전이 더 좋아요?"
+      },
+      "common_pattern": {
+        "description": "여러 장면에서 확인할 수 있는 공통점",
+        "min_evidence": 2,
+        "distinct_perspectives": true,
+        "question_template": "다른 장면에서도 이 공통점이 보이나요?"
+      },
+      "rediscovery": {
+        "description": "과거 장면을 현재 관점에서 다시 보기",
+        "min_evidence": 1,
+        "distinct_perspectives": false,
+        "question_template": "지금 다시 보니 어떤가요?"
+      },
+      "evidence_based_reaction": {
+        "description": "실제 장면으로 확인 가능한 강한 인상",
+        "min_evidence": 1,
+        "distinct_perspectives": false,
+        "question_template": "어느 부분이 가장 인상적인가요?"
+      }
+    },
+    "minimum_confidence": 0.65,
+    "default_seconds": 30,
+    "content_structure": [
+      {
+        "role": "reason_to_watch",
+        "start": 0.0,
+        "end": 2.0
+      },
+      {
+        "role": "first_evidence",
+        "start": 2.0,
+        "end": 8.0
+      },
+      {
+        "role": "comparison_or_interpretation",
+        "start": 8.0,
+        "end": 22.0
+      },
+      {
+        "role": "payoff_or_question",
+        "start": 22.0,
+        "end": 30.0
+      }
+    ],
+    "selection_rules": [
+      "claim과 시청 이유를 먼저 정의하고 그 주장에 대한 근거 구간을 한 쌍으로 선택한다.",
+      "타임코드와 구간별 관찰 내용 및 주장 지지 이유가 없는 하이라이트는 선택하지 않는다.",
+      "비교와 공통점은 서로 다른 관점의 독립된 근거가 필요하다.",
+      "확신이 부족하면 선택을 거부한다. confidence는 흥행 예측이 아니라 입력 근거의 편집상 확신이다.",
+      "프로필에는 구조적 분석만 저장한다. 타 채널 디자인과 미디어는 저장하지 않는다."
+    ]
+  },
+  "topic": "같은 안무의 멤버별 표현 차이",
+  "selection": {
+    "id": "member_comparison",
+    "observation_type": "comparison",
+    "reason_to_watch": "같은 동작을 어떻게 다르게 표현하는지 두 구간을 보고 비교할 수 있다.",
+    "hook": "같은 안무, 다른 느낌",
+    "claim": "같은 안무인데 멤버마다 느낌이 완전히 다르다",
+    "evidence_clips": [
+      {
+        "source_id": "practice",
+        "start": 31.0,
+        "end": 37.0,
+        "perspective": "멤버 A",
+        "observation": "예시 메모: 멤버 A는 팔을 빠르게 펼치고 끝에서 멈춘다.",
+        "supports_claim": "같은 동작의 힘과 멈춤을 비교할 첫 기준이다.",
+        "confidence": 0.85
+      },
+      {
+        "source_id": "practice",
+        "start": 64.0,
+        "end": 70.0,
+        "perspective": "멤버 B",
+        "observation": "예시 메모: 멤버 B는 팔을 부드럽게 연결하고 다음 동작으로 넘어간다.",
+        "supports_claim": "첫 구간과 연결 방식이 달라 표현 차이를 확인할 수 있다.",
+        "confidence": 0.8
+      }
+    ],
+    "reaction_captions": [
+      "A는 멈춤이 또렷함",
+      "B는 연결이 부드러움"
+    ],
+    "ending_question": "어떤 표현이 더 취향인가요?",
+    "confidence": 0.85,
+    "reasoning_summary": "같은 안무의 두 구간을 독립적으로 비교한다. 이 메모는 입력 형식 예시이며 실제 영상 관찰로 교체해야 한다."
+  },
+  "confidence": 0.8,
+  "reasoning_summary": "Claim-first pair selected from 1 annotated candidates; 2 independent clip(s), weakest declared confidence 0.80. User reasoning: 같은 안무의 두 구간을 독립적으로 비교한다. 이 메모는 입력 형식 예시이며 실제 영상 관찰로 교체해야 한다.",
+  "selection_method": "annotated_claim_evidence_v1",
+  "semantic_verification": "user_annotations_only",
+  "rejected_candidates": [],
+  "target_seconds": 30,
+  "preserve_audio": true
+}

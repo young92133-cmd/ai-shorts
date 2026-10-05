@@ -219,7 +219,7 @@ def _ninefix(src: str, out: str, width: int, height: int, fps: int, blur: bool) 
 
 async def render_broll(
     clips: list[dict],
-    narration: Path,
+    narration: Path | None,
     out_path: Path,
     ass_path: Path | None = None,
     bgm: Path | None = None,
@@ -231,6 +231,7 @@ async def render_broll(
     blur_background: bool = True,
     fonts_dir: Path | None = None,
     overlays: list[dict] | None = None,
+    frame_layout: str = "full",
 ) -> Path:
     """여러 소스 영상·이미지를 장면 순서대로 이어 붙이고 나레이션을 얹는다.
 
@@ -281,13 +282,25 @@ async def render_broll(
             idx = input_index(Path(c["path"]), False, dur)
             s = float(c.get("start", 0.0))
             e = s + dur
+            proof_end = e if frame_layout == "observation" else e + 1.0
             # 원본이 모자랄 수 있으니 뒤를 마지막 프레임으로 채운 뒤 정확히 자른다
             filters.append(
-                f"[{idx}:v]trim={s:.3f}:{e + 1.0:.3f},setpts=PTS-STARTPTS,"
+                f"[{idx}:v]trim={s:.3f}:{proof_end:.3f},setpts=PTS-STARTPTS,"
                 f"tpad=stop_mode=clone:stop_duration={dur:.3f},"
                 f"trim=duration={dur:.3f},setpts=PTS-STARTPTS[raw{k}]"
             )
-            filters.append(_ninefix(f"[raw{k}]", vl, width, height, fps, blur_background))
+            if frame_layout == "observation":
+                # Reserve an independent hook/brand area and contain the whole
+                # evidence frame. Cropping could remove the proof of a claim.
+                top = int(height * 0.18) // 2 * 2
+                body = int(height * 0.69) // 2 * 2
+                filters.append(
+                    f"[raw{k}]scale={width}:{body}:force_original_aspect_ratio=decrease,"
+                    f"pad={width}:{body}:(ow-iw)/2:(oh-ih)/2:color=0x172034,"
+                    f"pad={width}:{height}:0:{top}:color=0x172034,"
+                    f"setsar=1,fps={fps},format=yuv420p[{vl}]")
+            else:
+                filters.append(_ninefix(f"[raw{k}]", vl, width, height, fps, blur_background))
 
             if c.get("has_audio"):
                 filters.append(
@@ -304,29 +317,37 @@ async def render_broll(
     filters.append("".join(f"{v}{a}" for v, a in zip(vlabels, alabels))
                    + f"concat=n={len(clips)}:v=1:a=1[vcat][acat]")
 
-    narr_idx = len(index_of)
-    inputs.extend(["-i", str(narration)])
-    filters.append(f"[{narr_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo[narr]")
-    mix = "[acat][narr]"
-    n_mix = 2
+    next_input = len(index_of)
+    mix = "[acat]"
+    n_mix = 1
+    if narration is not None:
+        inputs.extend(["-i", str(narration)])
+        filters.append(f"[{next_input}:a]aformat=sample_rates=44100:channel_layouts=stereo[narr]")
+        next_input += 1
+        mix += "[narr]"
+        n_mix += 1
 
     if bgm and bgm.exists():
         inputs.extend(["-i", str(bgm)])
         filters.append(
-            f"[{narr_idx + 1}:a]aloop=loop=-1:size=2147483647,volume={bgm_volume},"
+            f"[{next_input}:a]aloop=loop=-1:size=2147483647,volume={bgm_volume},"
             f"aformat=sample_rates=44100:channel_layouts=stereo[bgm]")
         mix += "[bgm]"
-        n_mix = 3
+        n_mix += 1
+        next_input += 1
 
     total_duration = sum(float(c["duration"]) for c in clips)
     fade_duration = min(1.5, total_duration)
     fade_start = max(0.0, total_duration - fade_duration)
-    filters.append(f"{mix}amix=inputs={n_mix}:duration=first:dropout_transition=0:normalize=0,"
-                   f"afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}[aout]")
+    if narration is None and n_mix == 1:
+        filters.append("[acat]anull[aout]")  # original clip audio, no TTS or attenuation
+    else:
+        filters.append(f"{mix}amix=inputs={n_mix}:duration=first:dropout_transition=0:normalize=0,"
+                       f"afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}[aout]")
 
     last = "[vcat]"
     if overlays:
-        ov_args, ov_filters, last = _apply_overlays(overlays, narr_idx + n_mix - 1, last,
+        ov_args, ov_filters, last = _apply_overlays(overlays, next_input, last,
                                                      total_duration, width, fps)
         inputs += ov_args
         filters += ov_filters

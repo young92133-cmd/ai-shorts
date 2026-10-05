@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "zzal_ing",
+  "name": "짤잉 @zzal_ing",
+  "analyzed_at": "2026-10-02",
+  "genre": "근황/이유/후속",
+  "references": [
+    "https://www.youtube.com/@zzal_ing/shorts",
+    "https://www.youtube.com/shorts/UX0wH7JljoM",
+    "https://www.youtube.com/shorts/LMQu6Oxj6Vw",
+    "https://www.youtube.com/shorts/zeQPHIb5P-s",
+    "https://www.youtube.com/shorts/-NXfxQd7MTc"
+  ],
+  "analysis_records": [
+    "Codex 01a0fcf1-0f52-72a0-b538-860fe2d8bf57",
+    "Codex 01a0ff73-6ea3-7051-b253-6e3b23222dbb 중단 기록"
+  ],
+  "observed_structure": [
+    "궁금증 → 과거 → 변화 → 현재 → 제목의 답"
+  ],
+  "observed_patterns": [
+    "특정 인물 후속 이야기 반복",
+    "보고체 정보/반응; 제안20~30초"
+  ],
+  "adopted_elements": [
+    "궁금증 → 과거 → 변화 → 현재 → 제목의 답"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "curiosity_update_story"
+  ],
+  "findings": []
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "doltori",
+  "name": "돌토리 @doltori",
+  "analyzed_at": "2026-10-02",
+  "genre": "K팝 관찰",
+  "references": [
+    "https://www.youtube.com/@doltori/shorts",
+    "https://www.youtube.com/shorts/NqxeQLyQNp8",
+    "https://www.youtube.com/shorts/I-ErzkRgLHw",
+    "https://www.youtube.com/shorts/Lff7rikGln0",
+    "https://www.youtube.com/shorts/fKj2XODGHhc",
+    "https://www.youtube.com/shorts/J3VapiIVEiA",
+    "https://www.youtube.com/shorts/mYvwRh3Ho3w"
+  ],
+  "analysis_records": [
+    "Claude bfbe6ae0-5698-4cd1-9672-91770846b672",
+    "Codex 01a0fcf0-d82f-77f1-a99a-6a5dffb0b9d2; 01a0ff73-6eac-7851-89de-8db373e69eb2"
+  ],
+  "observed_structure": [
+    "볼 이유 → 장면 근거 → 짧은 해설 → 선택 질문"
+  ],
+  "observed_patterns": [
+    "무대/컴백/추억을 관찰 포인트로 연결",
+    "직접 narration 없음; 대표27~29초"
+  ],
+  "adopted_elements": [
+    "볼 이유 → 장면 근거 → 짧은 해설 → 선택 질문"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "kpop_observation_clip"
+  ],
+  "findings": []
+}

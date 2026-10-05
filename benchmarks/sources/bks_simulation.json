@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "bks_simulation",
+  "name": "BKS Simulation",
+  "analyzed_at": "2026-10-03",
+  "genre": "물리 비교",
+  "references": [
+    "https://www.youtube.com/@bks_simulation",
+    "https://www.youtube.com/shorts/PTX7-5QnLmw",
+    "https://www.youtube.com/shorts/aTmf1-7SbTA",
+    "https://www.youtube.com/shorts/-vNkD44Yl3Y",
+    "https://www.youtube.com/shorts/_Xma90DJ7XQ",
+    "https://www.youtube.com/shorts/2EZQHFSIsos",
+    "https://www.youtube.com/shorts/F045UDAYTsk"
+  ],
+  "analysis_records": [
+    "Codex 01a101dc-6785-75b0-9d06-7adae3b35139"
+  ],
+  "observed_structure": [
+    "질문/장치 → 단일 변수 변경 → 반복 → 결과 비교"
+  ],
+  "observed_patterns": [
+    "조건 짧게 표시; 투명 장치에서 과정 관찰",
+    "대표27/29/32초; 카메라/장치 고정 시리즈"
+  ],
+  "adopted_elements": [
+    "질문/장치 → 단일 변수 변경 → 반복 → 결과 비교"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장/장면/외부 영상 파일"
+  ],
+  "derived_profiles": [
+    "physics_comparison_simulation"
+  ],
+  "findings": []
+}

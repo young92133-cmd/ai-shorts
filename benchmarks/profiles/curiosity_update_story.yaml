@@ -1,0 +1,81 @@
+schema_version: 1
+id: curiosity_update_story
+name: 궁금증과 후속 변화
+content_type: update_story
+adapter: evidence_cards
+minimum_confidence: 0.65
+default_seconds: 30
+min_seconds: 20
+max_seconds: 60
+philosophy:
+- 소재 선정
+- 볼 이유와 질문 정의
+- 주장을 증명하는 근거 선택
+- 짧은 제목과 해설
+- 자체 디자인으로 렌더
+observation_types:
+  change:
+    description: change 구조의 확인된 근거를 연결
+    min_evidence: 3
+    question_template: 제목의 질문에 근거가 답하나요?
+  why:
+    description: why 구조의 확인된 근거를 연결
+    min_evidence: 3
+    question_template: 제목의 질문에 근거가 답하나요?
+  follow_up:
+    description: follow_up 구조의 확인된 근거를 연결
+    min_evidence: 3
+    question_template: 제목의 질문에 근거가 답하나요?
+content_structure:
+- role: hook
+  start: 0
+  end: 2
+- role: background
+  start: 2
+  end: 10.0
+- role: change
+  start: 10.0
+  end: 18.0
+- role: current_update
+  start: 18.0
+  end: 26.0
+- role: payoff
+  start: 26.0
+  end: 28.0
+- role: ending_question
+  start: 28.0
+  end: 30.0
+evidence_types:
+- fact
+- timeline
+- before_after
+- current_update
+- reaction
+evidence_roles:
+- background
+- change
+- current_update
+source_ids:
+- zzal_ing
+- factory_reference
+selection_rules:
+- 볼 이유/질문/claim을 먼저 기록하고 확인한 근거를 연결한다.
+- 주석 근거의 의미와 진위는 자동 검증하지 않는다.
+- 타 채널 디자인/대본 문장/원본을 복제하지 않는다.
+strategy:
+  scene_structure:
+  - 궁금증 → 과거 → 변화 → 현재 → 제목의 답
+  title_strategy:
+  - 구체 질문 하나를 약속하고 payoff에서 답한다.
+  narration_mode:
+  - 현재 TTS 없음; 자체 카드/짧은 해설, 권리 확인 영상의 원본 소리 선택
+  caption_density:
+  - 각 evidence당40자 이내 한 문장
+  repeatability:
+  - 소재만 바꾸고 동일 구조로 반복한다.
+  follow_up_strategy:
+  - 새 근거가 확인될 때 후속 제작한다.
+  visual_strategy:
+  - 자체 카드 또는 직접 제작/권리 확인한 사용자 영상
+  pacing:
+  - 한 장면 한 근거; 전체 근거를 자르지 않는다.
