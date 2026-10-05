@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from ..config import load_config, load_presets, merge_options
 from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
-from ..pipeline import run as runmod, llm as llmmod
+from ..pipeline import run as runmod, llm as llmmod, bench_auto
 from ..pipeline.assets import kind_of
 from ..pipeline.media import probe_video, require_ffmpeg
 from ..pipeline.models import PlannedScript, VisualDecision
@@ -174,8 +174,24 @@ def _summary(job_dir: Path, state: dict[str, Any], **extra: Any) -> dict[str, An
     out["ai_providers_used"] = state.get("ai_providers_used", [])
     if status == "failed":
         out["failed_at"] = state.get("failed_at", "")
+    if state.get("benchmark"):
+        out["benchmark"] = _bench_brief(state["benchmark"])
     out.update(extra)
     return out
+
+
+def _bench_brief(bench: dict[str, Any]) -> dict[str, Any]:
+    """응답 JSON 에 싣는 짧은 구조 선택 요약 (전체는 inspect --part benchmark)."""
+    keys = ("mode", "selected_profile", "profile_name", "top3", "viewer_question", "view_potential_score",
+            "selection_reason", "fallback_used", "warnings", "quality")
+    return {k: bench[k] for k in keys if bench.get(k) not in (None, "", [])}
+
+
+def _record_benchmark(job_dir: Path, state: dict[str, Any], result: dict[str, Any]) -> None:
+    """파이프라인이 고른 구조를 상태 파일에 남긴다. resume/rerender 는 같은 결정을 유지한다."""
+    decision = result.get("benchmark") or bench_auto.load_decision(job_dir)
+    if decision:
+        state["benchmark"] = bench_auto.state_view(decision)
 
 
 def _script_view(job_dir: Path) -> dict[str, Any]:
@@ -216,7 +232,7 @@ def _write_web_job(job_dir: Path, state: dict[str, Any], result: dict[str, Any])
     req = state["request"]
     script = json.loads((job_dir / "script.json").read_text(encoding="utf-8")) if (job_dir / "script.json").exists() else None
     keep = ("video", "thumb", "meta", "duration", "topic", "timeline", "blueprint", "visual_plan", "visuals",
-            "final_sources", "plan_method", "split_method")
+            "final_sources", "plan_method", "split_method", "benchmark")
     path = job_dir / "job.json"
     before = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     job = {"id": state["project_id"], "mode": req.get("mode", "topic"), "input": req.get("input", ""),
@@ -242,8 +258,11 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                voice: str | None = None, subtitles: bool | None = None, assets: list[str] | None = None,
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
-               log: Log = print) -> dict[str, Any]:
-    """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다."""
+               benchmark: str | None = "auto", log: Log = print) -> dict[str, Any]:
+    """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
+
+    benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
+    """
     modes = [bool(topic), bool(url), bool(auto), bool(script_text), bool(reference_video)]
     if sum(modes) != 1:
         raise FactoryError("invalid", "topic / url / auto / script / reference-video 중 하나만 지정해 주세요.")
@@ -251,6 +270,10 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
         raise FactoryError("invalid", "목표 길이는 10~180초 사이 정수여야 합니다.")
     if content_format and content_format not in FORMATS:
         raise FactoryError("invalid", "형식은 information / story / issue 중 하나여야 합니다.")
+    try:
+        benchmark = bench_auto.validate_choice(benchmark)
+    except ValueError as e:
+        raise FactoryError("invalid", str(e), benchmarks=["auto", "off", *bench_auto.profile_ids()]) from e
     if content_format:
         instructions = f"{FORMATS[content_format]['instructions']}\n{instructions}".strip()
     mode = "topic" if topic else "url" if url else "auto" if auto else "upload" if reference_video else "script"
@@ -265,7 +288,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     request = {"mode": mode, "input": text, "preset": preset, "style": style_data["id"] if style_data else None,
                "seconds": seconds, "review": review, "instructions": instructions, "llm": llm, "model": model,
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
-               "format": content_format, "reference_name": ref.name if ref else ""}
+               "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
@@ -290,8 +313,9 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
             result = await runmod.run_pipeline(
                 job_dir, mode, text, run_cfg, progress=_progress(job_dir, state, log), review=None,
                 until="script" if review else "done", instructions=instructions, style=style_data,
-                upload_rights=rights, reference_name=request["reference_name"])
+                upload_rights=rights, reference_name=request["reference_name"], benchmark=benchmark)
         state["topic"] = result.get("topic", "")
+        _record_benchmark(job_dir, state, result)
         if review:
             state = st.advance(job_dir, state, "waiting_for_script_approval", topic=state["topic"])
             return _summary(job_dir, state, **_script_view(job_dir))
@@ -328,6 +352,7 @@ async def resume(project_id: str | None = None, log: Log = print) -> dict[str, A
                 instructions=req.get("instructions", ""), style=find_style(req.get("style")),
                 upload_rights=state.get("asset_rights") or {}, script_in=script,
                 reference_name=req.get("reference_name", ""))
+        _record_benchmark(job_dir, state, result)
         return await _finish(job_dir, state, result)
     except Exception as e:  # noqa: BLE001
         return _fail(job_dir, state, e)
@@ -338,6 +363,7 @@ def status(project_id: str | None = None) -> dict[str, Any]:
     state = st.load(job_dir)
     out = _summary(job_dir, state, topic=state.get("topic") or state["request"].get("input", "")[:60],
                    request=state["request"], history=state.get("history", [])[-8:], ai_calls=state.get("ai_calls", []))
+    out.setdefault("benchmark", {"mode": "off"})   # 통합 이전 프로젝트는 구조 선택 없이 만들어졌다
     if state.get("status") == "render_complete":
         out.update(final_video=state["outputs"].get("final_video", ""), **state.get("video", {}))
     if not project_id:
@@ -364,6 +390,8 @@ def inspect(project_id: str | None = None, part: str = "all") -> dict[str, Any]:
                 "rights": s.visual_decision.rights_status, "reason": s.visual_decision.selection_reason,
                 "fallback": s.visual_decision.fallback_used, "asset": s.visual_decision.asset_path}
                if s.visual_decision and part != "scenes" else {})} for s in bp.scenes]
+    if part in ("all", "benchmark"):
+        out["benchmark"] = bench_auto.load_decision(job_dir) or state.get("benchmark") or {"mode": "off"}
     if part in ("all", "files"):
         out["files"] = {p.name: str(p) for p in sorted(job_dir.iterdir()) if p.is_file()}
     return out

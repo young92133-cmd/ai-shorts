@@ -12,6 +12,7 @@ class Scene(BaseModel):
     narration: str = Field(description="이 장면에서 읽을 한국어 나레이션 1~2문장")
     image_prompt: str = Field(description="이 장면의 배경 이미지 생성용 영어 프롬프트. 실제 인물 이름 금지")
     on_screen_text: str = Field(description="화면에 크게 띄울 핵심 키워드 (2~6단어). 없으면 빈 문자열")
+    beat_role: str = Field(default="", description="콘텐츠 구조가 주어졌을 때 이 장면이 맡는 역할 이름. 구조가 없으면 빈 문자열")
 
 
 class Script(BaseModel):

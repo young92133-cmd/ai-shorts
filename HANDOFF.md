@@ -1,5 +1,28 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-05 (오후) — Benchmark × V1 자동 통합
+
+`make --topic/--url/--auto/--reference-video` 가 기본으로 8개 benchmark profile 중 하나를 자동으로 골라 그 구조로 대본·장면을 만든다(`--benchmark auto`, 기본값).
+사용자는 profile 이름을 몰라도 된다. 웹 UI(`jobs.py`)는 `run_pipeline(benchmark="off")` 기본값이라 동작이 바뀌지 않았다.
+
+- **흐름:** 조사 → `bench_auto.analyze_brief`(AI 1회: verified_facts / inferences 분리, 시청 질문 후보 2~3개와 View Potential 5항목×20점, 8개 profile 9기준×10점, 구조별 보충 검색어)
+  → `route`(가중합 0~100, 결정적 게이트: 권리 확인 영상이 필요한 kpop/physics/ranked 는 그런 영상이 없으면 제외, 필수 근거 슬롯 부족·근거 확보도 4 미만 제외, 최고점 45 미만·AI 실패면 `illustrated_fact_explainer` fallback)
+  → `pick_candidate`(View Potential 최고 후보) → 선택 구조 보충 조사 1회(LLM 없음)
+  → `compose_prompt_block`(beat 역할·시간·글자 예산·훅/페이싱/결론/마지막 질문, 사실·추론·창작 분리, 원본 복제 금지) → 기존 `write_script` 에 주입
+  → 기존 `annotate_script` → `apply_scene_plan`(beat_role 로 장면 역할·content_kind·강조 길이) → 기존 TTS·카드·자막·렌더.
+  benchmark 가 켜지면 기존 `make_plan` 을 건너뛰어 AI 호출은 3회 그대로다.
+- **파일:** 신규 `app/pipeline/bench_auto.py`, `benchmarks/v1/integration.yaml`(profile별 beats·research_needs·narration_mode·훅/결론 전략·가중치·fallback; 기존 profile YAML은 수정하지 않음 — `benchmarks/*.yaml` 은 profile 로더가 읽으므로 하위 폴더에 둠), `tests/test_benchmark_auto.py`(26개).
+  수정: `models.Scene.beat_role`(기본 ""), `script.write_script(benchmark_block, benchmark_scenes)`, `script_split.annotate_script`(beat_role 유지), `run.run_pipeline(benchmark=...)` + `_choose_benchmark`, `factory/core.py`(`make(benchmark="auto")`, `state["benchmark"]`, `inspect --part benchmark`, 과거 프로젝트는 `{"mode":"off"}`), `__main__.py`/`batch.py`(`--benchmark`), 기존 `tests/test_factory.py` 공통 setUp 에 brief AI mock 추가.
+- **저장:** `project_state.json` 의 `benchmark`(요약) + `benchmark_decision.json`(사실·추론·후보 점수·원본 분석·보충 조사·quality). resume/rerender/batch-resume 은 다시 고르지 않는다. 직접 대본은 `not_applicable`, `--style` 지정 시 auto 는 스타일 우선.
+- **자동 테스트:** 기존 202개 + 신규 26개 = **228개 통과**(83초).
+- **실제 제작 3편 (Claude 구독 + Edge TTS, 유료 API 없음, 모두 `verify_factory_v1.py --verify` 통과·장면 시트 확인):**
+  - A Topic "최근 화제가 된 AI 기술 하나" 30초 → `20261005_164635_c740` **curiosity_update_story 84점**(2위 event_timeline 76, 3위 mechanism 72). 25.2초 / 7장면 / 자막 18줄. 질문 "AI가 마우스를 직접 잡고 그림을 칠해 준다는데…". 대본이 훅(결과)→과거→변화→현재→결론(추론은 '~로 보여요')→질문 순서. 목표 30초보다 짧음(글자 예산 190자 기준).
+  - B YouTube URL `ZUZqIWVgw2k`(웹 망원경 분광학) 35초 → `20261005_165012_0833` **mechanism_explainer 90점**(2위 illustrated 85). 32.9초 / 7장면 / 자막 20줄. source_analysis(원본 훅·구조·볼 이유) 기록, 원본 다운로드 없음. 숫자 카드·비교 카드 사용. 장면 순서가 원본 설명 순서와 비슷함(문장은 새로 씀).
+  - C Topic "1912년 타이타닉호 침몰 과정" 35초 → `20261005_165421_c7c8` **event_timeline_story 88점**(2위 illustrated 81). 32.6초 / 7장면 / 자막 21줄. 날짜·시각이 verified_facts 와 일치. 결론 장면이 훅의 질문(왜 그 시계가)에 부분적으로만 답함.
+  - 세 편 모두 서로 다른 profile 이 자동 선택됐고 quality 경고 없음, fallback 없음.
+- **사고 기록:** 구현 중 전체 테스트를 처음 돌렸을 때 기존 factory 테스트가 brief AI 를 mock 하지 않아 **실제 Claude 구독 호출이 약 9회** 발생했다(테스트용 가짜 자료, 유료 API 아님). 테스트를 중단하고 공통 setUp 에 mock 을 추가했다. 규칙을 CLAUDE.md/AGENTS.md 개발 규칙에 남겼다.
+- **알려진 한계:** 마지막 질문 장면이 ✓ '정리' 요약 카드로 나온다(질문 전용 카드 없음). 짧은 영상에서 목표 길이보다 10~20% 짧게 나올 수 있다. Clip Analyzer·자동 영상 소스 탐색은 이 절 이후 작업.
+
 ## 2026-10-05 — 전체 Benchmark Audit 및 오프라인 엔진 통합
 
 사용자가 shorts-ai 현재 브랜치의 오프라인 엔진을 기준으로 통합하도록 선택했다. 별도 shorts-ai-benchmark-v2는 조사만 했으며 파일/작업/커밋을 병합하지 않았다.

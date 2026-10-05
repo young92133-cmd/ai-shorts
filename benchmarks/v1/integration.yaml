@@ -1,0 +1,165 @@
+# Benchmark × V1 통합 정보 (2026-10-05)
+# 기존 profile YAML(benchmarks/profiles, kpop_observation_clip.yaml)은 오프라인 경로용으로 그대로 두고,
+# V1 자동 제작(make --benchmark auto)이 쓰는 대본·장면·조사 지침만 여기에 둔다.
+# beats: 나레이션이 있는 V1 영상의 장면 구성. weight 는 전체 길이 비율, scenes 는 그 역할의 장면 수,
+#        kind 는 V1 장면 내용 성격(content_kind, 화면 카드 선택에 쓰임), emphasis_max 는 화면 강조문구 글자 수.
+# research_needs: 이 구조를 쓰려면 조사 자료에서 확인돼야 하는 근거 슬롯. required 슬롯이 비면 이 방식을 쓰지 않는다.
+schema_version: 1
+fallback: illustrated_fact_explainer
+min_score: 45            # 이보다 낮으면 억지로 적용하지 않고 fallback
+weights:                 # 9개 평가 기준 가중치 (합 100). 각 기준은 0~10점으로 받아 100점 만점으로 환산
+  topic_fit: 18
+  viewer_curiosity: 14
+  evidence_availability: 18
+  visual_potential: 8
+  freshness: 8
+  comparison_potential: 8
+  payoff_strength: 12
+  repeatability: 4
+  rights_safety: 10
+min_evidence_availability: 4
+
+profiles:
+  curiosity_update_story:
+    summary: 익숙한 대상의 최근 변화·후속 소식을 과거→변화→현재로 보여 주고 처음 질문에 답한다
+    narration_mode: narrated
+    requires_licensed_video: false
+    research_needs:
+      required: [past_state, change_point, current_state]
+      optional: [reaction, date]
+    hook_strategy: 첫 문장에서 달라진 결과나 현재 모습을 먼저 보여 주고 '왜/무엇이' 바뀌었는지 질문을 던진다
+    pacing: 한 장면에 근거 하나. 과거 설명은 이해에 필요한 만큼만 짧게
+    payoff_strategy: 마지막 직전 장면에서 첫 질문에 한 문장으로 답한다
+    ending_question: 다음 변화를 궁금하게 만드는 짧은 질문 하나로 끝낸다
+    beats:
+      - {role: hook, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 변화 또는 결과부터 제시하고 질문을 던진다}
+      - {role: background, weight: 0.20, scenes: 1, kind: story, emphasis_max: 12, instruction: 이해에 필요한 과거 상황만 설명한다}
+      - {role: change, weight: 0.27, scenes: 2, kind: comparison, emphasis_max: 12, instruction: 무엇이 언제 바뀌었는지 확인된 근거로 보여 준다}
+      - {role: current_update, weight: 0.23, scenes: 1, kind: trend, emphasis_max: 12, instruction: 현재 상황과 반응을 정리한다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 처음 질문에 대한 답을 준다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 다음을 궁금하게 하는 질문으로 끝낸다}
+
+  event_timeline_story:
+    summary: 사건을 시간 순서로 따라가며 전환점과 결과를 보여 준다
+    narration_mode: narrated
+    requires_licensed_video: false
+    research_needs:
+      required: [event_start, turning_point, outcome]
+      optional: [dates, reaction]
+    hook_strategy: 결과나 가장 극적인 순간을 먼저 말하고 '어떻게 여기까지 왔나'를 묻는다
+    pacing: 시간 표시(날짜·순서)를 장면마다 분명히. 한 장면 한 사건
+    payoff_strategy: 전환점이 결과를 어떻게 만들었는지 한 문장으로 정리한다
+    ending_question: 앞으로의 전개를 묻는 질문 하나
+    beats:
+      - {role: hook, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 결과나 가장 극적인 순간을 먼저 말한다}
+      - {role: background, weight: 0.20, scenes: 1, kind: story, emphasis_max: 12, instruction: 사건이 시작된 상황과 시점을 설명한다}
+      - {role: turning_point, weight: 0.27, scenes: 2, kind: story, emphasis_max: 12, instruction: 시간 순서대로 전환점이 된 사건을 보여 준다}
+      - {role: outcome, weight: 0.23, scenes: 1, kind: trend, emphasis_max: 12, instruction: 결과와 현재 상황을 말한다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 처음 질문에 대한 답을 준다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 앞으로의 전개를 묻는다}
+
+  illustrated_fact_explainer:
+    summary: 생활 질문이나 숫자 하나를 배경→확인된 설명→기억할 답으로 풀어 주는 안전한 정보형
+    narration_mode: narrated
+    requires_licensed_video: false
+    research_needs:
+      required: [core_fact]
+      optional: [number, example, criterion]
+    hook_strategy: 생활 속 질문이나 의외의 숫자 하나로 시작한다
+    pacing: 개념은 2~3개만. 숫자는 대본에 있는 것만 크게 보여 준다
+    payoff_strategy: 기억할 답 한 문장으로 정리한다
+    ending_question: 시청자 경험을 묻는 짧은 질문 하나
+    beats:
+      - {role: hook, weight: 0.12, scenes: 1, kind: hook, emphasis_max: 10, instruction: 생활 질문이나 의외의 숫자로 시작한다}
+      - {role: context, weight: 0.30, scenes: 2, kind: concept, emphasis_max: 12, instruction: 이해에 필요한 기준과 배경을 설명한다}
+      - {role: explanation, weight: 0.38, scenes: 2, kind: number, emphasis_max: 12, instruction: 확인된 사실로 이유를 설명한다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 기억할 답을 한 문장으로 준다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 시청자 경험을 묻는다}
+
+  mechanism_explainer:
+    summary: 통념이나 첫인상을 뒤집고 작동 원리와 해결책을 차례로 설명한다
+    narration_mode: narrated
+    requires_licensed_video: false
+    research_needs:
+      required: [common_belief, mechanism]
+      optional: [solution, limitation, example]
+    hook_strategy: 흔한 통념이나 첫인상을 말한 뒤 '사실은 다르다'는 반전 질문을 던진다
+    pacing: 원리는 단계별로 한 장면씩. 전문용어는 한 번만 쉬운 말로 풀이
+    payoff_strategy: 처음 통념이 왜 틀렸는지 원리로 답한다
+    ending_question: 비슷한 원리가 쓰이는 다른 예를 묻는 질문
+    beats:
+      - {role: hook, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 통념이나 첫인상을 말하고 반전 질문을 던진다}
+      - {role: question_context, weight: 0.20, scenes: 1, kind: claim, emphasis_max: 12, instruction: 왜 그 질문이 생기는지 맥락을 준다}
+      - {role: mechanism, weight: 0.30, scenes: 2, kind: concept, emphasis_max: 12, instruction: 작동 원리를 단계별로 설명한다}
+      - {role: solution, weight: 0.20, scenes: 1, kind: concept, emphasis_max: 12, instruction: 해결책이나 대안과 그 한계를 말한다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 처음 질문에 원리로 답한다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 비슷한 다른 예를 묻는다}
+
+  quote_context_story:
+    summary: 화제가 된 발언을 맥락과 함께 확인하고 그 의미를 정리한다
+    narration_mode: narrated
+    requires_licensed_video: false
+    research_needs:
+      required: [quote, speaker_context]
+      optional: [reaction, date]
+    hook_strategy: 화제가 된 발언의 핵심을 짧게 인용하고 '무슨 뜻이었나'를 묻는다
+    pacing: 인용은 확인된 표현만 짧게. 해석은 추론임을 밝힌다
+    payoff_strategy: 맥락을 알고 나면 발언이 어떻게 읽히는지 정리한다
+    ending_question: 시청자의 해석을 묻는 질문
+    beats:
+      - {role: hook, weight: 0.12, scenes: 1, kind: hook, emphasis_max: 10, instruction: 발언의 핵심을 짧게 인용하고 질문한다}
+      - {role: context, weight: 0.30, scenes: 2, kind: story, emphasis_max: 12, instruction: 언제 누구에게 어떤 상황에서 나온 말인지 설명한다}
+      - {role: statement, weight: 0.38, scenes: 2, kind: story, emphasis_max: 12, instruction: 발언의 의미와 반응을 확인된 범위에서 정리한다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 처음 질문에 답한다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 시청자의 해석을 묻는다}
+
+  physics_comparison_simulation:
+    summary: 같은 환경에서 변수 하나만 바꾼 조건들의 결과를 비교한다 (직접 만든 실험 영상 필요)
+    narration_mode: optional
+    requires_licensed_video: true
+    research_needs:
+      required: [variable, conditions, result]
+      optional: [fixed_environment]
+    hook_strategy: 실험 질문 하나를 던지고 결과를 예상하게 한다
+    pacing: 조건 A → B → C를 같은 형식으로 반복해 차이가 보이게
+    payoff_strategy: 조건별 결과 차이를 한 문장으로 비교한다
+    ending_question: 다음에 바꿔 볼 변수를 묻는다
+    beats:
+      - {role: hook, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 실험 질문을 던진다}
+      - {role: trials, weight: 0.70, scenes: 3, kind: comparison, emphasis_max: 12, instruction: 조건 A, B, C를 같은 형식으로 차례로 보여 준다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 조건별 결과 차이를 비교한다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 다음에 바꿔 볼 변수를 묻는다}
+
+  ranked_moments:
+    summary: 정의한 기준으로 사례를 N위부터 1위까지 보여 준다 (권리 확인된 사례 영상 필요)
+    narration_mode: optional
+    requires_licensed_video: true
+    research_needs:
+      required: [ranking_criterion, ranked_items]
+      optional: [example]
+    hook_strategy: 순위 기준과 사례 수를 바로 말한다. 객관 순위인 척하지 않는다
+    pacing: 하위 순위부터 1위까지 한 장면 한 사례
+    payoff_strategy: 1위를 마지막에 보여 주고 이유를 한 문장으로
+    ending_question: 시청자의 순위를 묻는다
+    beats:
+      - {role: hook, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 순위 기준과 사례 수를 말한다}
+      - {role: ranked_examples, weight: 0.70, scenes: 3, kind: subject, emphasis_max: 12, instruction: 낮은 순위부터 한 장면에 한 사례씩 보여 준다}
+      - {role: payoff, weight: 0.12, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 1위와 그 이유를 말한다}
+      - {role: ending_question, weight: 0.08, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 시청자의 순위를 묻는다}
+
+  kpop_observation_clip:
+    summary: 권리 확인된 무대·영상 장면에서 놓치기 쉬운 포인트나 변화를 근거 클립으로 보여 준다
+    narration_mode: optional
+    requires_licensed_video: true
+    research_needs:
+      required: [observed_moment, evidence_clip]
+      optional: [comparison_target]
+    hook_strategy: 볼 이유(발견·변화)를 첫 문장에서 말한다
+    pacing: 근거 장면 → 비교/해석 → 반응. 근거 화면을 자르지 않는다
+    payoff_strategy: 처음 말한 포인트가 근거로 확인됐는지 정리한다
+    ending_question: 시청자가 본 다른 포인트를 묻는다
+    beats:
+      - {role: reason_to_watch, weight: 0.10, scenes: 1, kind: hook, emphasis_max: 10, instruction: 볼 이유를 말한다}
+      - {role: first_evidence, weight: 0.25, scenes: 1, kind: subject, emphasis_max: 12, instruction: 첫 근거 장면을 보여 준다}
+      - {role: comparison_or_interpretation, weight: 0.40, scenes: 2, kind: comparison, emphasis_max: 12, instruction: 비교하거나 관찰한 점을 해석한다}
+      - {role: payoff_or_question, weight: 0.25, scenes: 1, kind: conclusion, emphasis_max: 12, instruction: 반응과 질문으로 마무리한다}

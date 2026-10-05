@@ -1,5 +1,18 @@
 # 개발 계획 — 참고 영상의 좋은 기능을 내 AI 쇼츠 제작기에 맞게 적용
 
+## 2026-10-05 (오후) — Benchmark × V1 자동 통합
+
+| 단계 | 결과 |
+|---|---|
+| PHASE 1 Auto Router | 8개 profile 9기준 점수·게이트·Top3·fallback·state 저장 (`bench_auto.route`) |
+| PHASE 2 Prompt Composer | beat 역할·시간·글자 예산·훅/결론 전략을 `write_script` 에 주입 |
+| PHASE 3 Research | 사실/추론/창작 분리 brief, 구조별 보충 조사, YouTube·기사 source_analysis |
+| PHASE 4 Scene Planner | `beat_role` → 장면 역할·content_kind·강조 길이, 기존 TTS/자막/렌더 재사용 |
+| PHASE 5 View Potential | 기획 후보 2~3개 5항목 점수, 최고 후보 자동 선택 |
+| PHASE 6 실제 검증 | A curiosity_update_story / B mechanism_explainer(YouTube) / C event_timeline_story 실제 MP4 통과, 228개 테스트 통과 |
+
+다음: Source Resolver(자료 자동 탐색·권리 판정) + Clip Analyzer. 상세는 HANDOFF 최신 절.
+
 ## 2026-10-05 — 전체 Benchmark 통합
 
 변경 전 전체 Audit, 6개 source 레지스트리, 8개 profile/3개 오프라인 adapter, common output, 양방향 관계 검증, CLI 선택과 V1 회귀를 추가했다. 현재 범위/제약/다음 단계는 docs/BENCHMARKS.md 및 HANDOFF 최신 절에 있다. Global Trend Radar, Localization, feedback loop는 이번에 구현하지 않는다.

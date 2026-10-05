@@ -27,11 +27,12 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make ... --format information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
+| `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
 | `make ... --style "이름"` / `--preset daily` | 스타일·분야 기본값 지정 (`styles`로 목록 확인) |
 | `make ... --asset 파일 --note "근거" --confirm-rights` | 내가 권리를 가진 사진·영상을 장면 화면 후보로 |
 | `resume [id]` | 멈춘/실패한 프로젝트를 저장된 대본으로 이어서 MP4까지 (조사·대본 다시 안 함) |
 | `status [id]` | 진행 상태 (id 생략 = 가장 최근 프로젝트 + 최근 목록) |
-| `inspect [id] --part script\|scenes\|visuals\|files\|all` | 대본·장면 시간·화면 선택 이유·파일 |
+| `inspect [id] --part script\|scenes\|visuals\|benchmark\|files\|all` | 대본·장면 시간·화면 선택 이유·구조 선택 기록·파일 |
 | `edit-scene [id] --scene 3 --narration "…" --emphasis "…"` | 렌더 전 장면 문장/강조문구 수정 |
 | `set-visual [id] --scene 3 --card number_card` | 렌더 후 장면 화면을 카드로 바꾸고 다시 렌더 |
 | `set-visual [id] --scene 3 --file 사진 --note "근거" --confirm-rights` | 장면 화면을 권리 확인된 사진으로 |
@@ -137,9 +138,10 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - **제작 엔진(`app/pipeline`)을 새로 만들거나 갈아엎지 않는다.** 기능은 엔진에 작게 추가하고, 채팅용 동작은 `app/factory`에 둔다.
 - 웹 UI와 factory는 같은 엔진을 쓴다. 엔진은 UI(`app/main.py`, `app/jobs.py`)를 import하지 않는다.
 - 개발 중에는 유료 API·실제 샘플 제작을 하지 않는다. 테스트는 가짜(mock)로 돈다. 실제 제작은 사용자가 요청할 때만 한다.
+- `make` 를 부르는 테스트는 `run.bench_auto.ask_structured` 도 반드시 가짜로 막는다(`tests/test_factory.py` FactoryTestCase 참고). 막지 않으면 기본 benchmark auto 가 실제 Claude 를 호출한다.
 - 2026-10-01 V1 요청은 서로 다른 실제 영상 최소 5편 검증을 허용한다. 유료 API는 여전히 미승인이다. 모든 실사용·회귀 테스트가 통과한 뒤에만 V1 완료 로컬 커밋을 만든다. 새 변경의 push는 하지 않는다(시작 시 `c6cd645` 백업 push만 승인됨).
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (기존 95개와 V1 공급자·입력·순차 제작 테스트 모두 포함).
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 통합 `tests/test_benchmark_auto.py` 포함 228개).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.
@@ -147,7 +149,32 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
   - push는 사용자가 요청할 때만 한다.
 - 진행 기록은 `IMPLEMENTATION_PLAN.md`(계획)와 `HANDOFF.md`(작업 인계)에 남긴다.
 
-## Benchmark 인벤토리와 자연어 규칙 (2026-10-05)
+## Benchmark × V1 자동 통합 (2026-10-05, 기본값)
+
+`make`(topic·url·auto·reference-video)는 **기본으로 `--benchmark auto`** 다. 사용자는 profile 이름을 몰라도 된다.
+"○○ 주제로 쇼츠 만들어줘", "이 유튜브 참고해서 만들어줘: URL" → 그냥 `make --topic …` / `make --url …` 를 실행한다.
+
+내부 흐름: 조사 → **Content Brief(AI 1회)**: verified_facts / inference 분리, 시청 질문 후보 2~3개(View Potential 5항목×20점), 8개 profile 9기준 점수
+→ **Auto Router**(가중합 0~100 + 게이트: 권리 확인 영상이 필요한 kpop_observation_clip·physics_comparison_simulation·ranked_moments 는 그런 영상이 없으면 제외, 필수 근거 슬롯 부족 시 제외, 기준 45점 미만이면 `illustrated_fact_explainer` fallback)
+→ 선택 profile 에 맞는 보충 조사 1회 → **구조 주입 대본**(장면별 beat_role·시간·글자 예산·훅/결론/마지막 질문, 사실·추론·창작 분리) → 기존 장면 설계 + `apply_scene_plan`(장면 역할·카드 성격·강조 길이) → 기존 Edge TTS·자막·카드·렌더.
+기존 구성 분석(`make_plan`)은 benchmark 가 켜지면 건너뛰므로 AI 호출 수는 그대로 3회(brief·대본·장면)다.
+
+- 점수는 **현재 자료로 어떤 구조가 경쟁력 있는지 고르는 내부 판단값**이다. 사용자에게 조회수·성공 확률이라고 말하지 않는다.
+- 결과: `project_state.json` 의 `benchmark`(mode, selected_profile, candidate_scores, top3, viewer_question, reason_to_watch, claim, view_potential_score, selection_reason, fallback_used, narration_mode, scene_roles, quality) + 전체 기록 `benchmark_decision.json`(사실·추론·후보·원본 분석). `inspect --part benchmark` 로 본다.
+- `resume`·`rerender`·`batch-resume` 은 저장된 결정을 그대로 쓰고 다시 고르지 않는다. 완성 대본(`--script`)은 `not_applicable`, 스타일 지정(`--style`)은 auto 일 때 스타일을 따른다.
+- 사용자에게 결과를 알릴 때: 고른 구조 이름, 시청 질문, 선택 이유, 상위 3개 점수, fallback 여부와 quality 경고를 쉬운 말로 전한다.
+- 유튜브·기사 URL 은 분석 참고용이다(`source_analysis`). 원본 문장·장면 순서를 복제하지 않고, 타인 영상을 내려받아 화면에 쓰지 않는다.
+- 이번 단계에 없음: Clip Analyzer(권리 확인 내 영상의 하이라이트 자동 선택), 자동 게시, 채널 크롤링, Global Trend Radar, 조회수 예측, 성과 학습.
+
+| 사용자 말 | 실행 |
+|---|---|
+| "이 주제로 쇼츠 만들어줘" | `make --topic "…"` (benchmark auto 기본) |
+| "이 유튜브 참고해서 쇼츠 만들어줘: URL" | `make --url "URL"` |
+| "비교형/사건 순서형으로 만들어줘" 처럼 구조를 명시 | `make --topic "…" --benchmark <profile id>` (예: event_timeline_story) |
+| "예전 방식(구조 선택 없이)으로 만들어줘" | `make --topic "…" --benchmark off` |
+| "왜 이 구성으로 만들었어?" | `inspect <id> --part benchmark` |
+
+## Benchmark 인벤토리와 오프라인 경로 (2026-10-05)
 
 현재 기준은 shorts-ai의 오프라인 Benchmark Engine이다. `docs/BENCHMARKS.md`와 `benchmark sources/profiles`를 먼저 확인한다.
 별도 shorts-ai-benchmark-v2는 별도 컨셉 작업이므로 사용자가 그쪽 구현을 요청하지 않으면 임의로 합치지 않는다.
@@ -163,7 +190,7 @@ source와 profile은 양방향 연결하며 채널 수와 profile 수를 구분�
 
 | 사용자 요청 | 처리 |
 |---|---|
-| "이 주제로 curiosity_update_story 적용해서 만들어줘" | 제공/검증한 과거-변화-현재 근거를 examples 양식의 JSON으로 구조화 → `benchmark plan --profile curiosity_update_story --input ...` → `benchmark render ID` |
+| "이 주제로 curiosity_update_story 적용해서 만들어줘" | 기본: `make --topic "…" --benchmark curiosity_update_story` (조사·나레이션 포함). 사용자가 근거 JSON을 직접 준 경우에만 오프라인 `benchmark plan --profile … --input …` → `benchmark render ID` |
 | "이 영상으로 kpop_observation_clip 방식으로 만들어줘" | 권리 확인 로컬 영상의 관찰/타임코드를 기존 kpop JSON으로 기록 → 같은 plan/render |
 | "physics_comparison_simulation 방식으로 제작해줘" | 직접 만든 실험 영상/조건/고정 환경을 확인 → physics 양식 → plan/render; 시뮬레이션 영상 생성은 미지원임을 알려준다 |
 | "레스기처럼 순위로 묶어줘" | 채널 복제 대신 ranked_moments, N위부터1위 근거 클립과 순위 기준을 기록 |
@@ -172,5 +199,5 @@ source와 profile은 양방향 연결하며 채널 수와 profile 수를 구분�
 | "벤치마크 계속/다시 렌더" | 대화에 알려진 benchmark ID로 `benchmark render ID`; V1 resume를 사용하지 않는다 |
 
 Benchmark 입력 양식은 예시이며 실제 분석/사실이 아니다. 사용자의 사실/영상 입력으로 교체한다. URL(reference)은 provenance 문자열이고 엔진은 접속하지 않는다.
-현재 새 이야기 profile은 narration 없는 자체 카드 adapter다. 자동 조사/번역/Blender/고급 지도 생성/Global Trend Radar는 아직 없다.
+오프라인 `benchmark plan/render` 경로의 이야기 profile은 narration 없는 자체 카드 adapter다(위 V1 자동 통합은 나레이션 포함). 번역/Blender/고급 지도 생성/Global Trend Radar는 아직 없다.
 source/profile/코드/문서를 함께 갱신하고 기존 V1 전체 테스트와 Benchmark 회귀 테스트를 실행한다. 테스트/실렌더/흥행 확인을 서로 대신 보고하지 않는다.

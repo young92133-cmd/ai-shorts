@@ -332,6 +332,7 @@ async def annotate_script(llm: dict, script, *, preset: dict | None = None,
         note = _checked(s.narration, notes[i], i, count)
         planned.append(PlannedScene(
             narration=s.narration, image_prompt=s.image_prompt, subtitle=s.narration,
+            beat_role=getattr(s, "beat_role", ""),
             on_screen_text=note["emphasis_text"], scene_type=str(note.get("scene_type", "")).strip(),
             visual_type=note.get("visual_type", "generated_image"),
             visual_description=str(note.get("visual_description", "")).strip() or s.image_prompt,

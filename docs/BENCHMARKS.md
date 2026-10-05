@@ -84,6 +84,23 @@ profile.strategy는 title/narration/visual/pacing/scene_structure/repeatability/
 이번에 mix UI/서로 다른 profile의 자동 조합을 제공하지 않는다. source schema에는 선택적 source_country/source_language/target_market/
 trend_date/trend_signal/localization_notes가 있다. Radar/Localization/성과 feedback 수집은 아직 없다.
 
+## V1 자동 통합 (2026-10-05 오후)
+
+`make` 가 기본으로 이 8개 profile 을 자동 평가·선택한다(`--benchmark auto|off|<id>`). 통합 정보는 `benchmarks/v1/integration.yaml`
+(beats·research_needs·narration_mode·hook/payoff 전략·9기준 가중치·fallback=illustrated_fact_explainer), 로직은 `app/pipeline/bench_auto.py`.
+아래 오프라인 `benchmark plan/render` 경로는 사람이 근거 JSON 을 직접 넣는 별도 경로로 그대로 유지한다.
+
+| profile | V1 자동 경로 | 나레이션 | 비고 |
+|---|---|---|---|
+| curiosity_update_story | 사용 (실제 검증 A) | 있음 | 과거·변화 시점·현재 슬롯 필요 |
+| event_timeline_story | 사용 (실제 검증 C) | 있음 | 시작·전환점·결과 슬롯 필요 |
+| mechanism_explainer | 사용 (실제 검증 B, YouTube URL) | 있음 | 통념·원리 슬롯 필요 |
+| illustrated_fact_explainer | 사용, fallback | 있음 | 핵심 사실 1개면 가능 |
+| quote_context_story | 사용 (실제 영상 미검증) | 있음 | 발언·맥락 슬롯 필요 |
+| kpop_observation_clip / physics_comparison_simulation / ranked_moments | 권리 확인 영상이 없으면 자동 제외 | optional | 영상 근거 구조. Clip Analyzer 이후 확장 |
+
+점수는 현재 자료로 어떤 구조가 경쟁력 있는지 고르는 내부 값이며 조회수 예측이 아니다.
+
 ## 사용법
 
 ```powershell

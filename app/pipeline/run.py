@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 
 from ..config import load_config, load_presets, merge_options
 from . import article as articlemod
+from . import bench_auto
 from . import assets as assetmod
 from . import blueprint as blueprintmod
 from . import broll as brollmod
@@ -19,6 +20,7 @@ from . import comments as commentmod, reference as refmod, research, script as s
 from .assets import kind_of
 from .images import get_images
 from . import visuals as visualsmod
+from .llm import safe_error
 from .media import concat_audio, trim_edge_silence, has_audio, probe_duration, require_ffmpeg
 from .models import PlannedScript, ResearchDoc, SceneAudio, SceneVisual, Script, SourcedImage, Word
 from . import timeline as timelinemod
@@ -204,6 +206,71 @@ async def _preview_visuals(script: Script, job_dir: Path, cfg: dict[str, Any], r
         return []
 
 
+def _has_licensed_video(registry: SourceRegistry) -> bool:
+    """영상 화면에 써도 되는(권리 확인된) 사용자 영상이 있는가. 분석 전용 참고 영상은 제외."""
+    return any(i.kind == "video" and i.usable_in_video and i.used_for != "reference"
+               for i in registry.items.values())
+
+
+async def _choose_benchmark(benchmark: str, *, mode: str, llm: dict[str, Any], topic: str, docs: list[ResearchDoc],
+                            seconds: int, source_info: str, instructions: str, style: dict[str, Any] | None,
+                            registry: SourceRegistry, job_dir: Path, progress: ProgressFn,
+                            ) -> tuple[dict[str, Any] | None, str, int | None]:
+    """조사 뒤 · 대본 앞: 시청 질문과 8개 구조 점수 → 구조 선택 → 대본 프롬프트 블록.
+
+    반환: (결정 기록, 대본 프롬프트 블록, 장면 수). 결정은 benchmark_decision.json 에도 저장한다.
+    보충 조사로 찾은 자료는 docs 에 그대로 더한다.
+    """
+    if benchmark == "off":
+        return None, "", None
+    if style and benchmark == "auto":
+        decision = {"mode": "not_applicable", "requested": benchmark,
+                    "selection_reason": "저장된 스타일 지침을 지정해 스타일 구성을 따릅니다"}
+        bench_auto.save_decision(job_dir, decision)
+        return decision, "", None
+    integ = bench_auto.load_integration()
+    forced = None if benchmark == "auto" else bench_auto.validate_choice(benchmark, integ)
+    has_video = _has_licensed_video(registry)
+    progress("script", 3, "시청자가 볼 이유와 어울리는 콘텐츠 구조를 분석하는 중")
+    input_kind = {"url": "reference_url", "upload": "uploaded_reference_video"}.get(mode, mode)
+    cbrief = None
+    try:
+        cbrief = await bench_auto.analyze_brief(llm, topic, docs, integ, input_kind=input_kind,
+                                                source_info=source_info, has_licensed_video=has_video,
+                                                instructions=instructions)
+    except Exception as e:  # noqa: BLE001 - 구조 분석이 실패해도 안전한 정보형 구조로 계속한다
+        progress("script", 4, f"구조 분석 실패 - 안전한 정보형 구조로 진행합니다 ({safe_error(e)})")
+    decision = bench_auto.route(cbrief, integ, forced=forced, has_licensed_video=has_video)
+    index, candidate, scored = bench_auto.pick_candidate(cbrief)
+    decision.update(bench_auto.brief_summary(cbrief, index, scored))
+    profile_id = decision["selected_profile"]
+    roles = bench_auto.scene_roles(integ["profiles"][profile_id], seconds)
+    decision["scene_roles"] = roles
+    query = bench_auto.followup_query(cbrief, profile_id)
+    if query:
+        progress("script", 6, f"{profile_id} 구조에 필요한 근거 보충 조사: {query}")
+        try:
+            known = {d.url for d in docs}
+            extra = [d for d in await research.research_topic(query, max_docs=3, log=lambda m: progress("script", 6, m))
+                     if d.url not in known]
+        except Exception as e:  # noqa: BLE001
+            extra = []
+            progress("script", 6, f"보충 조사 실패 ({e})")
+        for doc in extra:
+            if doc.url:
+                registry.add(kind="article", origin="url", url=doc.url, title=doc.title, used_for="script_research")
+        docs.extend(extra)
+        decision["research_followup"] = {"query": query, "added_docs": [d.url for d in extra]}
+    block = bench_auto.compose_prompt_block(profile_id, integ, decision, cbrief, candidate, seconds)
+    if decision.get("research_followup", {}).get("added_docs"):
+        block += "- 보충 조사 자료(위 사실 목록 뒤에 추가된 자료)는 본문에서 확인되는 내용만 쓰세요.\n"
+    bench_auto.save_decision(job_dir, decision)
+    score = decision["candidate_scores"].get(profile_id)
+    progress("script", 8, f"구조 선택: {decision['profile_name']} ({profile_id}, {score}점, {decision['mode']})"
+                          + (f" · 질문: {decision['viewer_question']}" if decision.get("viewer_question") else ""))
+    return decision, block, len(roles)
+
+
 async def run_pipeline(
     job_dir: Path,
     mode: str,
@@ -219,11 +286,13 @@ async def run_pipeline(
     reference_name: str = "",
     upload_rights: dict[str, dict[str, Any]] | None = None,
     script_in: Script | None = None,
+    benchmark: str = "off",
 ) -> dict[str, Any]:
     """mode: topic | url | auto | upload | script | resume(승인된 script_in 으로 이어서). 결과 dict 에 산출물 경로를 담아 돌려준다.
 
     style 이 주어지면 그 지침을 따르고, 없으면 소재를 분석해 구성을 자동으로 정한다.
     visual_mode: images | broll | clip. 비우면 프리셋 기본값 → 자동 분석 결과 순.
+    benchmark: off(기존 V1 그대로) | auto(8개 구조 자동 선택) | profile id(강제 지정).
     """
     require_ffmpeg()
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -257,6 +326,7 @@ async def run_pipeline(
     reference_path: Path | None = None
     reference_lines: list[str] = []
     reference_query = ""
+    source_info = ""   # benchmark 분석용 참고 원본 정보 (제목·채널·요약)
 
     # 유튜브가 아닌 링크(기사·커뮤니티 글)가 섞여 있으면 기사 모드
     if mode == "script":
@@ -281,6 +351,7 @@ async def run_pipeline(
         docs = [doc]
         reference_lines = youtube.words_to_lines(words)
         result["reference"] = brief.model_dump()
+        source_info = f"업로드 참고 영상 요약: {brief.summary}"
         extra_context = "업로드 영상에서 확인된 내용만 출발점으로 쓰고, 새 자료와 대조해 새로운 관점의 대본을 쓰세요."
         progress("research", 70, "관련 자료 찾는 중")
         found = await research.research_topic(reference_query, log=lambda m: progress("research", 80, m))
@@ -295,6 +366,7 @@ async def run_pipeline(
             raise RuntimeError("링크에서 본문을 읽지 못했습니다. 주소를 확인해 주세요.")
         topic = docs[0].title
         result["source"] = {"urls": article_urls, "titles": [d.title for d in docs]}
+        source_info = "참고 기사: " + " / ".join(d.title for d in docs)
         result["sourced_images"] = [s.model_dump() for s in sourced]
         extra_context = ("아래 기사들의 내용을 바탕으로 쇼츠 대본을 쓰세요. "
                          "기사 문장을 그대로 읽지 말고 쇼츠 호흡으로 재구성하세요.")
@@ -332,6 +404,8 @@ async def run_pipeline(
 
         topic = info["title"]
         docs = [ResearchDoc(title=info["title"], url=info["webpage_url"], text=youtube.words_to_text(words)[:12000])]
+        source_info = (f"참고 유튜브 제목: {info['title']}\n채널: {info['channel']}\n"
+                       f"설명: {info['description'][:500]}")
         extra_context = (f"원본 영상 채널: {info['channel']}\n원본 설명: {info['description'][:800]}\n"
                          "위 영상의 핵심 내용을 새로운 관점으로 재구성한 쇼츠 대본을 쓰세요. 영상 내용을 그대로 읽지 마세요.")
 
@@ -363,9 +437,28 @@ async def run_pipeline(
     if until == "research":
         return result
 
+    # ---------- 1-B. Benchmark 구조 자동 선택 ----------
+    bench_decision: dict[str, Any] | None = None
+    bench_block, bench_scenes = "", None
+    if mode == "resume":
+        bench_decision = bench_auto.load_decision(job_dir)   # 다시 고르지 않는다
+    elif mode == "script":
+        if benchmark != "off":
+            bench_decision = {"mode": "not_applicable", "requested": benchmark,
+                              "selection_reason": "완성 대본 입력은 문장을 바꾸지 않으므로 구조를 적용하지 않습니다"}
+            bench_auto.save_decision(job_dir, bench_decision)
+    else:
+        bench_decision, bench_block, bench_scenes = await _choose_benchmark(
+            benchmark, mode=mode, llm=llm, topic=topic, docs=docs, seconds=int(vcfg["target_seconds"]),
+            source_info=source_info, instructions=instructions, style=style, registry=registry,
+            job_dir=job_dir, progress=progress)
+    if bench_decision:
+        result["benchmark"] = bench_decision
+        result["docs"] = [{"title": d.title, "url": d.url} for d in docs]
+
     # ---------- 2. 제작 방향 (자동 모드) ----------
     plan = None
-    if not style and mode not in ("script", "resume"):
+    if not style and mode not in ("script", "resume") and not bench_block:
         progress("script", 5, "소재 분석해서 구성 정하는 중")
         try:
             plan = await scriptmod.make_plan(llm, preset, topic, docs, int(vcfg["target_seconds"]), instructions)
@@ -394,7 +487,8 @@ async def run_pipeline(
     else:
         progress("script", 10, f"대본 작성 중 ({llm['provider']} / {llm['model']}{style_note})")
         script = await scriptmod.write_script(llm, preset, topic, docs, int(vcfg["target_seconds"]),
-                                              extra_context, instructions, style, plan)
+                                              extra_context, instructions, style, plan,
+                                              benchmark_block=bench_block, benchmark_scenes=bench_scenes)
         # 2D: 자동 대본에도 장면 역할·내용 성격·짧은 강조문구를 붙인다 (나레이션은 그대로)
         progress("script", 70, "장면별 화면 계획 세우는 중")
         script, plan_method = await script_split.annotate_script(llm, script, preset=preset,
@@ -402,6 +496,13 @@ async def run_pipeline(
         result["plan_method"] = plan_method
         if plan_method == "rules":
             progress("script", 75, "AI 장면 분석이 어려워 내용 규칙으로 화면을 계획했습니다.")
+        if bench_block:
+            # 장면 역할·내용 성격·강조문구 길이를 선택된 구조에 맞춘다 (나레이션은 그대로)
+            script = bench_auto.apply_scene_plan(script, bench_decision["selected_profile"],
+                                                 bench_auto.load_integration(), int(vcfg["target_seconds"]))
+            bench_decision["scene_roles"] = [s.beat_role for s in script.scenes]
+            bench_decision["quality"] = bench_auto.quality_check(bench_decision, script)
+            bench_auto.save_decision(job_dir, bench_decision)
     (job_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 80, f"대본 {len(script.scenes)}장면, {len(script.full_narration())}자")
     # Show actual candidate sources/comments before the user approves the edit.
@@ -514,6 +615,10 @@ async def run_pipeline(
         progress("tts", 95, f"장면 {s.index + 1}: 예상 {s.estimated_duration:.2f}초 → 실제 음성 "
                             f"{s.actual_tts_duration:.2f}초 ({s.timeline_start:.2f}~{s.timeline_end:.2f})")
     progress("tts", 100, f"나레이션 {total:.1f}초 · 영상 길이 {blueprint.actual_duration:.1f}초로 확정")
+    if bench_decision and bench_decision.get("selected_profile"):
+        bench_decision["quality"] = bench_auto.quality_check(bench_decision, script, blueprint.actual_duration)
+        bench_auto.save_decision(job_dir, bench_decision)
+        result["benchmark"] = bench_decision
     if until == "tts":
         return result
 

@@ -78,6 +78,11 @@ async def make(*, topics: list[str] | None = None, select: list[int] | None = No
         raise core.FactoryError("invalid", "편수는 1~10 사이 정수여야 합니다.")
     if bool(topics) == bool(select):
         raise core.FactoryError("invalid", "주제 목록 또는 화제 후보 번호 중 하나를 지정해 주세요.")
+    if "benchmark" in options:
+        try:
+            options["benchmark"] = core.bench_auto.validate_choice(options["benchmark"])
+        except ValueError as e:
+            raise core.FactoryError("invalid", str(e)) from e
     if select:
         if len(set(select)) != len(select):
             raise core.FactoryError("invalid", "후보 번호가 중복됐습니다.")

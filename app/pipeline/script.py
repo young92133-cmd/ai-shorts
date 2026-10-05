@@ -93,15 +93,22 @@ def _instructions_block(instructions: str) -> str:
 
 async def write_script(llm: dict[str, Any], preset: dict[str, Any], topic: str, docs: list[ResearchDoc], target_seconds: int,
                        extra_context: str = "", instructions: str = "", style: dict[str, Any] | None = None,
-                       plan: AutoPlan | None = None) -> Script:
+                       plan: AutoPlan | None = None, benchmark_block: str = "",
+                       benchmark_scenes: int | None = None) -> Script:
+    """benchmark_block: 선택된 콘텐츠 구조(bench_auto.compose_prompt_block). 있으면 장면 수도 그 구조를 따른다."""
     target_chars = int(target_seconds * CHARS_PER_SEC)
     lo, hi = int(target_chars * 0.9), target_chars
-    n_scenes = min(8, max(4, plan.scene_count)) if plan else 6
-    scene_count = f"{n_scenes}개 내외 (4~8개)" if plan else "4~8개"
+    if benchmark_block and benchmark_scenes:
+        n_scenes = benchmark_scenes
+        scene_count = f"정확히 {n_scenes}개 (콘텐츠 구조의 장면 역할 순서대로)"
+    else:
+        n_scenes = min(8, max(4, plan.scene_count)) if plan else 6
+        scene_count = f"{n_scenes}개 내외 (4~8개)" if plan else "4~8개"
     user = (
         f"{_preset_block(preset)}\n"
         f"{_style_block(style)}"
         f"{_autoplan_block(plan)}"
+        f"{benchmark_block}"
         f"{_instructions_block(instructions)}\n"
         f"[주제] {topic}\n"
         f"[분량] 나레이션 전체 합계 {lo}~{hi}자 (공백 포함). {hi}자를 절대 넘기지 말 것.\n"
