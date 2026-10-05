@@ -179,6 +179,13 @@ class SourceItem(BaseModel):
     license_note: str = ""
     used_for: list[str] = Field(default_factory=list)
     retrieved_at: str = ""
+    # Source Resolver (2026-10-05): 어디서 왔고, 어떻게 쓰였고, 왜 쓸 수 있는지
+    source_type: str = ""          # youtube / article / openverse / wikimedia_commons / nasa / pexels / pixabay / upload / generated
+    usage: str = ""                # visual / reference_only / research
+    rights_status: str = ""        # usable / reference_only / unknown
+    rights_basis: str = ""         # 판정 근거 한 문장
+    scene_ids: list[int] = Field(default_factory=list)       # 화면에 쓴 장면 번호 (1부터)
+    clip_ranges: list[str] = Field(default_factory=list)     # 영상에서 쓴 구간 "mm:ss.s-mm:ss.s"
 
 
 class BrollPick(BaseModel):

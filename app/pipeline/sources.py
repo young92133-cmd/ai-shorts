@@ -10,7 +10,10 @@ from typing import Any
 from .models import SourceItem
 
 FILE = "sources.json"
-PROVEN_LICENSES = {"my_channel", "licensed_upload", "ai_generated", "pexels", "pixabay", "kogl_type0", "kogl_type1"}
+PROVEN_LICENSES = {"my_channel", "licensed_upload", "ai_generated", "pexels", "pixabay", "kogl_type0", "kogl_type1",
+                   # Source Resolver 가 라이선스 메타데이터로 자동 판정한 공개 자료 (상업 이용·변형 허용)
+                   "cc0", "public_domain", "cc_by", "nasa_media"}
+ATTRIBUTION_LICENSES = {"pexels", "pixabay", "kogl_type0", "kogl_type1", "cc_by"}
 
 
 def _now() -> str:
@@ -30,7 +33,7 @@ def _usable(item: SourceItem) -> bool:
     if not (item.rights_confirmed and item.commercial_allowed and item.adaptation_allowed
             and item.third_party_rights_checked and item.license_checked_at):
         return False
-    if item.license in {"pexels", "pixabay", "kogl_type0", "kogl_type1"}:
+    if item.license in ATTRIBUTION_LICENSES:
         return item.license_url.startswith(("https://", "http://")) and bool(item.credit)
     return bool(item.license_url.startswith(("https://", "http://")) or item.license_note.strip())
 
@@ -53,7 +56,8 @@ class SourceRegistry:
         temp.replace(self.path)
 
     def add(self, *, kind: str, origin: str, path: str = "", url: str = "", title: str = "",
-            rights: dict[str, Any] | None = None, used_for: str = "", parent_id: str = "") -> SourceItem:
+            rights: dict[str, Any] | None = None, used_for: str = "", parent_id: str = "",
+            source_type: str = "", usage: str = "", rights_status: str = "", rights_basis: str = "") -> SourceItem:
         rights = rights or {}
         key = _key(path, url)
         old = self.items.get(key)
@@ -69,11 +73,40 @@ class SourceRegistry:
             credit=str(rights.get("credit") or ""), license_note=str(rights.get("license_note") or ""),
             used_for=list(dict.fromkeys([*(old.used_for if old else []), *([used_for] if used_for else [])])),
             retrieved_at=old.retrieved_at if old else _now(),
+            source_type=source_type or str(rights.get("source_type") or (old.source_type if old else "")),
+            usage=usage or (old.usage if old else ""),
+            rights_basis=rights_basis or str(rights.get("rights_basis") or (old.rights_basis if old else "")),
+            scene_ids=old.scene_ids if old else [], clip_ranges=old.clip_ranges if old else [],
         )
         item.usable_in_video = _usable(item)
+        # 권리 상태는 계산 결과를 우선한다. 호출 쪽이 usable 이라고 해도 근거가 부족하면 낮춘다.
+        status = rights_status or str(rights.get("rights_status") or "")
+        if item.usable_in_video:
+            item.rights_status = "usable"
+        elif status in ("reference_only", "unknown"):
+            item.rights_status = status
+        else:
+            item.rights_status = "reference_only" if origin == "url" else "unknown"
+        if not item.usage:
+            item.usage = ("research" if used_for in ("script_research",) else
+                          "reference_only" if not item.usable_in_video else "")
         self.items[key] = item
         self.save()
         return item
+
+    def mark_used(self, path: str | Path, scene_number: int, clip_range: str = "") -> None:
+        """화면에 실제로 쓴 소스에 장면 번호(1부터)와 영상 구간을 남긴다. 가공본이면 원본에도 남긴다."""
+        item = self.by_path(path)
+        seen: set[str] = set()
+        while item and item.id not in seen:
+            seen.add(item.id)
+            item.usage = "visual"
+            if scene_number not in item.scene_ids:
+                item.scene_ids.append(scene_number)
+            if clip_range and clip_range not in item.clip_ranges:
+                item.clip_ranges.append(clip_range)
+            item = self.items.get(item.parent_id) if item.parent_id else None
+        self.save()
 
     def by_path(self, path: str | Path) -> SourceItem | None:
         return self.items.get(_key(str(path)))

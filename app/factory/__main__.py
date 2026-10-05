@@ -56,6 +56,7 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--license", default="my_channel", help="첨부 파일 권리: my_channel | ai_generated | pexels | pixabay | kogl_type0 | kogl_type1")
     mk.add_argument("--note", default="", help="권리 근거 (예: 내가 직접 찍은 사진)")
     mk.add_argument("--confirm-rights", action="store_true", help="첨부 파일을 영상에 써도 된다는 것을 확인함")
+    mk.add_argument("--visuals", default="auto", choices=("auto", "cards"), help="화면 자료: auto(기본, 권리 확인 가능한 공개 영상·사진 자동 탐색) | cards(자체 카드만)")
     mk.add_argument("--benchmark", default="auto", help="콘텐츠 구조: auto(기본, 8개 중 자동 선택) | off(기존 구성) | profile id 강제 지정")
 
     for name, help_ in (("resume", "멈춘 대본으로 이어서 MP4 까지"), ("status", "진행 상태"),
@@ -101,6 +102,7 @@ def _parser() -> argparse.ArgumentParser:
     bt.add_argument("--llm", choices=("claude", "openai", "auto"))
     bt.add_argument("--allow-openai", action="store_true", default=None)
     bt.add_argument("--model")
+    bt.add_argument("--visuals", default="auto", choices=("auto", "cards"), help="화면 자료: auto(기본, 권리 확인 가능한 공개 영상·사진 자동 탐색) | cards(자체 카드만)")
     bt.add_argument("--benchmark", default="auto", help="콘텐츠 구조: auto(기본, 8개 중 자동 선택) | off(기존 구성) | profile id 강제 지정")
     for name in ("batch-status", "batch-resume"):
         bs = sub.add_parser(name, help="순차 제작 상태 조회" if name == "batch-status" else "순차 제작의 검토 대본 이어서 완성")
@@ -155,12 +157,13 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             voice=a.voice, subtitles=False if a.no_subtitles else None, assets=a.asset,
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
             hint=a.hint, content_format=a.content_format, allow_openai=a.allow_openai,
-            benchmark=a.benchmark, log=_log)
+            benchmark=a.benchmark, visuals=a.visuals, log=_log)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
                                 review=a.review, instructions=a.instructions, llm=a.llm, model=a.model,
-                                allow_openai=a.allow_openai, benchmark=a.benchmark, log=_log)
+                                allow_openai=a.allow_openai, benchmark=a.benchmark,
+                                visuals=a.visuals, log=_log)
     if a.cmd == "batch-status":
         return batch.status(a.batch_id)
     if a.cmd == "batch-resume":

@@ -1,5 +1,18 @@
 # 개발 계획 — 참고 영상의 좋은 기능을 내 AI 쇼츠 제작기에 맞게 적용
 
+## 2026-10-05 (저녁) — Source Resolver · Clip Analyzer
+
+| 항목 | 결과 |
+|---|---|
+| Source Resolver | 장면별 검색어 → Openverse/Commons/NASA(+키 있으면 Pexels/Pixabay) → 권리 판정 → 적합도·품질·권리 점수 → usable 만 ingest |
+| Rights Guard | 적극 탐색, 화면 사용은 근거 확인 자료만. YouTube·BY-SA·NC·ND·표기 없음은 reference_only/unknown |
+| Clip Analyzer | 샷 경계·무음 경계·자막 키워드로 장면 길이 구간 후보와 추천 구간 |
+| Scene Planner | 업로드 → 공개 자료(영상 구간·사진) → AI 이미지 → 카드, profile visual_priority·card_roles |
+| sources.json | usage·rights_status·rights_basis·scene_ids·clip_ranges |
+| 검증 | 247 테스트, 실제 D(YouTube)·E(주제)·F(영상 3장면) 통과. F 첫 렌더 SAR 버그 수정 |
+
+다음 후보: 자막 없는 영상의 프레임 비전 확인, Pexels 키 안내, Global Trend Radar.
+
 ## 2026-10-05 (오후) — Benchmark × V1 자동 통합
 
 | 단계 | 결과 |

@@ -29,6 +29,7 @@ def _info_sync(url: str) -> dict[str, Any]:
         "webpage_url": info.get("webpage_url", url),
         "has_subs": bool(info.get("subtitles")),
         "has_auto_subs": bool(info.get("automatic_captions")),
+        "license": info.get("license") or "",   # 예: "Creative Commons Attribution license (reuse allowed)"
     }
 
 

@@ -258,11 +258,15 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                voice: str | None = None, subtitles: bool | None = None, assets: list[str] | None = None,
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
-               benchmark: str | None = "auto", log: Log = print) -> dict[str, Any]:
+               benchmark: str | None = "auto", visuals: str | None = "auto", log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
+    visuals: auto(기본, 권리 확인 가능한 공개 영상·사진을 찾아 장면에 사용) | cards(자체 카드만).
     """
+    visuals = visuals or "auto"
+    if visuals not in ("auto", "cards"):
+        raise FactoryError("invalid", "visuals 는 auto / cards 중 하나여야 합니다.")
     modes = [bool(topic), bool(url), bool(auto), bool(script_text), bool(reference_video)]
     if sum(modes) != 1:
         raise FactoryError("invalid", "topic / url / auto / script / reference-video 중 하나만 지정해 주세요.")
@@ -288,7 +292,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     request = {"mode": mode, "input": text, "preset": preset, "style": style_data["id"] if style_data else None,
                "seconds": seconds, "review": review, "instructions": instructions, "llm": llm, "model": model,
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
-               "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark}
+               "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark,
+               "visuals": visuals}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
@@ -313,7 +318,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
             result = await runmod.run_pipeline(
                 job_dir, mode, text, run_cfg, progress=_progress(job_dir, state, log), review=None,
                 until="script" if review else "done", instructions=instructions, style=style_data,
-                upload_rights=rights, reference_name=request["reference_name"], benchmark=benchmark)
+                upload_rights=rights, reference_name=request["reference_name"], benchmark=benchmark,
+                source_search=visuals == "auto")
         state["topic"] = result.get("topic", "")
         _record_benchmark(job_dir, state, result)
         if review:
@@ -351,7 +357,7 @@ async def resume(project_id: str | None = None, log: Log = print) -> dict[str, A
                 job_dir, "resume", "", run_cfg, progress=_progress(job_dir, state, log), review=None,
                 instructions=req.get("instructions", ""), style=find_style(req.get("style")),
                 upload_rights=state.get("asset_rights") or {}, script_in=script,
-                reference_name=req.get("reference_name", ""))
+                reference_name=req.get("reference_name", ""), source_search=req.get("visuals") == "auto")
         _record_benchmark(job_dir, state, result)
         return await _finish(job_dir, state, result)
     except Exception as e:  # noqa: BLE001

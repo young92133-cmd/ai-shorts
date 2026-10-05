@@ -101,6 +101,10 @@ trend_date/trend_signal/localization_notes가 있다. Radar/Localization/성과 
 
 점수는 현재 자료로 어떤 구조가 경쟁력 있는지 고르는 내부 값이며 조회수 예측이 아니다.
 
+화면 자료(2026-10-05 저녁): profile 마다 `visual_priority`·`card_roles`·`visual_hint` 가 있고 Source Resolver 가 이를 따른다
+(curiosity/physics/ranked/kpop = 영상 우선, mechanism/illustrated/event/quote = 사진·도해 우선, 마지막 질문 장면은 카드).
+실제 검증: mechanism(D·E) 사진 위주, curiosity(F) NASA 영상 3장면. kpop/physics/ranked 는 여전히 권리 확인 영상이 있어야 자동 선택된다.
+
 ## 사용법
 
 ```powershell

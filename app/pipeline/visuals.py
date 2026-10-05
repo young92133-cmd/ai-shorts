@@ -85,9 +85,14 @@ def _card_decision(scene_id: str, scene: Any, requested: str, extra: str = "", k
 
 
 def plan_visuals(scenes: list[Any], uploads: dict[int, Asset], registry: SourceRegistry, *,
-                 ai_available: bool, broll: dict[int, str] | None = None) -> list[VisualDecision]:
-    """장면마다 쓸 화면을 정한다 (파일은 아직 만들지 않는다)."""
+                 ai_available: bool, broll: dict[int, str] | None = None,
+                 resolved: dict[int, dict[str, Any]] | None = None) -> list[VisualDecision]:
+    """장면마다 쓸 화면을 정한다 (파일은 아직 만들지 않는다).
+
+    순서: 내 영상 구간 → 내 업로드 → Source Resolver 가 찾은 권리 확인 자료(영상 구간·사진) → AI 이미지 → 카드.
+    """
     broll = broll or {}
+    resolved = resolved or {}
     out: list[VisualDecision] = []
     for i, s in enumerate(scenes):
         sid = f"scene_{i + 1:02d}"
@@ -110,6 +115,16 @@ def plan_visuals(scenes: list[Any], uploads: dict[int, Asset], registry: SourceR
                 rights_reason=f"권리 확인된 업로드 ({item.license})",
                 selection_reason=("이 장면에 쓰라고 지정한 파일" if asset.name.lower().startswith("scene")
                                   else "직접 올린 권리 확인 자료를 장면 내용에 맞춰 배치")))
+            continue
+        found = resolved.get(i)
+        found_item = registry.by_path(found["path"]) if found else None
+        if found and found_item and found_item.usable_in_video:
+            out.append(VisualDecision(
+                scene_id=sid, requested_visual_type=requested,
+                resolved_visual_type="source_video" if found["kind"] == "video" else "source_image",
+                asset_path=found["path"], asset_source="licensed_source", rights_status="allowed",
+                rights_reason=f"{found_item.license}: {found_item.rights_basis}"[:200],
+                selection_reason=found.get("reason", "장면에 맞는 권리 확인 공개 자료")))
             continue
         if ai_available and content in IMAGE_FIRST:
             out.append(VisualDecision(
@@ -188,10 +203,10 @@ async def materialize(decisions: list[VisualDecision], scenes: list[Any], job_di
 
     for i, (d, s) in enumerate(zip(decisions, scenes)):
         out = img_dir / (f"preview_{i:02d}.jpg" if preview else f"scene_{i:02d}.jpg")
-        if d.resolved_visual_type == "upload_video":
+        if d.resolved_visual_type in ("upload_video", "source_video"):
             done += 1
             continue   # 영상 구간은 렌더가 직접 쓴다
-        if d.resolved_visual_type in ("upload_image", "upload_video_frame"):
+        if d.resolved_visual_type in ("upload_image", "upload_video_frame", "source_image"):
             original = Path(d.asset_path)
             try:
                 src = original
@@ -237,7 +252,7 @@ async def materialize(decisions: list[VisualDecision], scenes: list[Any], job_di
             await card(d, s, out, variants[i])
         if d.resolved_visual_type != "upload_video":
             d.asset_path = str(out)
-            if not preview and registry and d.asset_source != "user_upload":
+            if not preview and registry and d.asset_source not in ("user_upload", "licensed_source"):
                 registry.add(kind="image", origin="generated", path=str(out), title=f"장면 {i + 1}",
                              used_for=f"scene_{i:02d}")
         if not preview and registry:

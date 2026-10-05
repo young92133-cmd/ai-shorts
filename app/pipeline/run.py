@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable
 from ..config import load_config, load_presets, merge_options
 from . import article as articlemod
 from . import bench_auto
+from . import source_resolver
 from . import assets as assetmod
 from . import blueprint as blueprintmod
 from . import broll as brollmod
@@ -287,12 +288,14 @@ async def run_pipeline(
     upload_rights: dict[str, dict[str, Any]] | None = None,
     script_in: Script | None = None,
     benchmark: str = "off",
+    source_search: bool = False,
 ) -> dict[str, Any]:
     """mode: topic | url | auto | upload | script | resume(승인된 script_in 으로 이어서). 결과 dict 에 산출물 경로를 담아 돌려준다.
 
     style 이 주어지면 그 지침을 따르고, 없으면 소재를 분석해 구성을 자동으로 정한다.
     visual_mode: images | broll | clip. 비우면 프리셋 기본값 → 자동 분석 결과 순.
     benchmark: off(기존 V1 그대로) | auto(8개 구조 자동 선택) | profile id(강제 지정).
+    source_search: True 면 Source Resolver 가 장면마다 권리 확인 가능한 공개 영상·사진을 찾아 화면에 쓴다.
     """
     require_ffmpeg()
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -376,8 +379,11 @@ async def run_pipeline(
         progress("research", 5, "유튜브 정보 가져오는 중")
         input_text = youtube_urls[0] if youtube_urls else input_text
         info = await youtube.fetch_info(input_text)
+        yt_rights = source_resolver.classify_youtube(info)
         registry.add(kind="video", origin="url", url=input_text, title=info.get("title", ""),
-                     used_for="script_research")
+                     used_for="script_research", source_type="youtube", usage=yt_rights["usage"],
+                     rights_status=yt_rights["rights_status"], rights_basis=yt_rights["rights_basis"])
+        result["source_usage"] = yt_rights
         result["source"] = info
         progress("research", 20, f"'{info['title']}' 자막 가져오는 중")
         words = await youtube.fetch_transcript(input_text, job_dir)
@@ -674,20 +680,43 @@ async def run_pipeline(
         await assetmod.describe_assets(uploads, log=lambda m: progress("images", 82, m))
     by_scene = await assetmod.plan_assets(llm, uploads, script.scenes, log=lambda m: progress("images", 84, m))
     broll_cover = {p.scene_index: broll_sources[p.source_index].path for p in broll_picks if p}
+    # 5-A. Source Resolver: 업로드·내 영상이 없는 장면에 권리 확인 가능한 공개 자료를 찾는다
+    resolved: dict[int, dict[str, Any]] = {}
+    if source_search:
+        spec = None
+        if bench_decision and bench_decision.get("selected_profile"):
+            spec = bench_auto.load_integration()["profiles"].get(bench_decision["selected_profile"])
+        fresh = bool(bench_decision and (next((r["criteria"].get("freshness", 0) for r in bench_decision.get("ranking", [])
+                                              if r["profile_id"] == bench_decision.get("selected_profile")), 0) >= 7))
+        try:
+            found = await source_resolver.resolve(
+                llm=llm, script=script, topic=topic, durations=durations, job_dir=job_dir, registry=registry,
+                cfg=cfg, profile_spec=spec, fresh_matters=fresh, skip=set(by_scene) | set(broll_cover),
+                progress=progress)
+            resolved = found["scenes"]
+            rep = found["report"]
+            result["source_resolver"] = {"providers": rep.get("providers"), "selected": rep.get("selected", {}),
+                                         "errors": rep.get("errors", [])[:5], "plan": source_resolver.PLAN_FILE}
+            progress("images", 60, f"공개 자료 {len(resolved)}개 장면에 배정 (영상 "
+                                   f"{sum(1 for r in resolved.values() if r['kind'] == 'video')}개)")
+        except Exception as e:  # noqa: BLE001 - 자료 탐색이 실패해도 카드로 영상은 만든다
+            progress("images", 60, f"자료 자동 탐색 실패 - 자체 카드로 진행합니다 ({safe_error(e)})")
+            result["source_resolver"] = {"error": safe_error(e)}
     decisions = visualsmod.plan_visuals(script.scenes, by_scene, registry,
-                                        ai_available=get_images(cfg) is not None, broll=broll_cover)
+                                        ai_available=get_images(cfg) is not None, broll=broll_cover,
+                                        resolved=resolved)
     decisions = await visualsmod.materialize(decisions, script.scenes, job_dir, cfg, registry, progress)
     images_by_scene = {i: Path(d.asset_path) for i, d in enumerate(decisions)
-                       if d.resolved_visual_type != "upload_video"}
+                       if d.resolved_visual_type not in ("upload_video", "source_video")}
     visuals: list[SceneVisual] = []
     for i, d in enumerate(decisions):
         credit = ""
         if d.resolved_visual_type == "upload_video":
             credit = brollmod.credit_for(broll_picks[i], broll_sources)
-        elif d.asset_source == "user_upload":
+        elif d.asset_source in ("user_upload", "licensed_source"):
             item = registry.by_path(d.asset_path)
             credit = item.credit if item else ""
-        kind = {"user_upload": "upload", "ai_generated": "generated"}.get(d.asset_source, "card")
+        kind = {"user_upload": "upload", "ai_generated": "generated", "licensed_source": "sourced"}.get(d.asset_source, "card")
         visuals.append(SceneVisual(scene_index=i, kind="broll" if d.resolved_visual_type == "upload_video" else kind,
                                    path=d.asset_path, credit=credit, note=d.resolved_visual_type))
     # 설계도·manifest 에 무엇을 왜 골랐는지 남긴다 (2C 시간은 그대로)
@@ -695,6 +724,17 @@ async def run_pipeline(
         scene.visual_decision = d
     blueprintmod.save(job_dir, blueprint)
     visualsmod.save_manifest(job_dir, decisions)
+    # sources.json: 화면에 실제로 쓴 소스마다 장면 번호와 영상 구간을 남긴다
+    for i, d in enumerate(decisions):
+        if d.asset_path and registry.by_path(d.asset_path):
+            registry.mark_used(d.asset_path, i + 1, (resolved.get(i) or {}).get("clip_range", "")
+                               if d.resolved_visual_type == "source_video" else "")
+    if resolved:
+        used_pages = [f"{r['credit']} — {r['page_url']}" for i, r in sorted(resolved.items())
+                      if decisions[i].asset_source == "licensed_source" and r.get("page_url")]
+        all_sources = list(dict.fromkeys([*all_sources, *used_pages]))
+        _write_meta(job_dir, script.titles, script.description, script.hashtags, all_sources)
+        result["final_sources"] = all_sources
     result["blueprint"] = blueprint.model_dump()
     result["visual_plan"] = [d.model_dump() for d in decisions]
     result["images"] = [str(p) for p in images_by_scene.values()]
@@ -708,7 +748,7 @@ async def run_pipeline(
     # 렌더 재료를 timeline.json 에 먼저 저장한다. 완성 후 자막·댓글만 고쳐 다시 렌더하거나
     # CapCut 으로 내보낼 때 이 파일만 쓴다.
     progress("render", 5, "자막 생성")
-    use_broll = any(broll_picks)
+    use_broll = any(broll_picks) or any(d.resolved_visual_type == "source_video" for d in decisions)
     tl_scenes: list[dict[str, Any]] = []
     for i, (dur, sc, v) in enumerate(zip(durations, script.scenes, visuals)):
         pick = broll_picks[i] if use_broll and i < len(broll_picks) else None
@@ -717,6 +757,11 @@ async def run_pipeline(
             src = Path(sv.path)
             visual = {"kind": "video", "path": src, "src_start": pick.start,
                       "has_audio": await has_audio(src), "source_url": sv.url}
+        elif decisions[i].resolved_visual_type == "source_video":
+            # 공개 자료 영상: Clip Analyzer 가 고른 구간. 원본 소리는 쓰지 않는다 (나레이션만)
+            found = resolved.get(i) or {}
+            visual = {"kind": "video", "path": Path(decisions[i].asset_path), "src_start": float(found.get("start", 0.0)),
+                      "has_audio": False, "source_url": found.get("page_url", "")}
         else:
             visual = {"kind": "image", "path": images_by_scene[i]}
         # 첨부 자료를 쓴 장면에는 해당 구간 동안 출처를 표시한다.

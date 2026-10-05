@@ -211,10 +211,10 @@ def _ninefix(src: str, out: str, width: int, height: int, fps: int, blur: bool) 
             f"[b_{out}]scale={width}:{height}:force_original_aspect_ratio=increase,"
             f"crop={width}:{height},boxblur=30:10[bg_{out}];"
             f"[c_{out}]scale={width}:-2[fg_{out}];"
-            f"[bg_{out}][fg_{out}]overlay=(W-w)/2:(H-h)/2,fps={fps},format=yuv420p[{out}]"
+            f"[bg_{out}][fg_{out}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps={fps},format=yuv420p[{out}]"
         )
     return (f"{src}scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},fps={fps},format=yuv420p[{out}]")
+            f"crop={width}:{height},setsar=1,fps={fps},format=yuv420p[{out}]")
 
 
 async def render_broll(
@@ -275,7 +275,7 @@ async def render_broll(
                 f"[{idx}:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
                 f"crop={width * 2}:{height * 2},"
                 f"zoompan=z='{zoom}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
-                f"trim=duration={dur:.3f},setpts=PTS-STARTPTS,format=yuv420p[{vl}]"
+                f"trim=duration={dur:.3f},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[{vl}]"
             )
             filters.append(f"anullsrc=r=44100:cl=stereo,atrim=duration={dur:.3f},asetpts=PTS-STARTPTS[{al}]")
         else:

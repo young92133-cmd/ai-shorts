@@ -20,6 +20,7 @@ CARD_KINDS = ("hook_card", "statement_card", "focus_card", "quote_card", "number
 TEXT_CARDS = ("statement_card", "focus_card", "quote_card")   # 같은 문구를 다른 모양으로 보여 주는 카드
 SIDE = 0.085            # 좌우 여백 비율
 CONTENT_BOTTOM = 0.62   # 이 아래는 자막 자리
+TITLE_BOTTOM = 0.23     # 이 위는 상단 키워드 자리 (ASS Title: MarginV 14% + 최대 2줄)
 LABELS = {"hook_card": "", "statement_card": "핵심", "focus_card": "포인트", "quote_card": "", "number_card": "숫자로 보면",
           "trend_card": "변화", "compare_card": "비교", "summary_card": "정리", "safe_card": ""}
 HUES = {"hook_card": 0.02, "statement_card": 0.60, "focus_card": 0.08, "quote_card": 0.83, "number_card": 0.12,
@@ -240,8 +241,9 @@ def fit_image(path: Path, width: int, height: int) -> str:
     left, top = (bg.width - width) // 2, (bg.height - height) // 2
     bg = bg.crop((left, top, left + width, top + height)).filter(ImageFilter.GaussianBlur(40))
     bg = Image.blend(bg, Image.new("RGB", (width, height), (0, 0, 0)), 0.35)
-    # 원본 전체를 자막 자리 위쪽 영역(0~62%) 안에 비율 그대로 넣는다
-    area_top, area_bottom = int(height * 0.04), int(height * CONTENT_BOTTOM)
+    # 원본 전체를 상단 키워드(14~22%)와 자막 자리(62%~) 사이에 비율 그대로 넣는다.
+    # 도표·인포그래픽의 글자가 상단 키워드와 겹치지 않게 키워드 아래에서 시작한다.
+    area_top, area_bottom = int(height * TITLE_BOTTOM), int(height * CONTENT_BOTTOM)
     fg_scale = min(width / img.width, (area_bottom - area_top) / img.height)
     fg = img.resize((round(img.width * fg_scale), round(img.height * fg_scale)), Image.LANCZOS)
     top_y = area_top + ((area_bottom - area_top) - fg.height) // 2

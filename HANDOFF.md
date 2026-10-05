@@ -1,5 +1,32 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-05 (저녁) — Source Resolver · Clip Analyzer · Rights Guard 변경
+
+`make` 가 기본으로(`--visuals auto`) 장면마다 공개 영상·사진을 찾아 권리를 판정하고, 사용 근거가 확인된 자료만 화면에 쓴다.
+`--visuals cards` 는 기존처럼 자체 카드만. 웹 UI(`run_pipeline(source_search=False)` 기본값)는 바뀌지 않았다.
+
+- **흐름:** TTS로 장면 길이 확정 → 업로드·내 영상이 없는 장면에 대해 `source_resolver.resolve`
+  → 검색어 계획(AI 1회: 장면별 영어 검색어·prefer video/image/card·must_show·자막 키워드, 비유 장면은 card)
+  → discover(Openverse 이미지 CC0/PDM/BY 필터, Wikimedia Commons 이미지·영상, NASA 이미지·영상, Pexels/Pixabay 는 키 있을 때)
+  → 권리 판정(`classify_license`) → usable 후보만 적합도 평가(AI 1회: visual_fit·evidence_fit)
+  → 내부 점수 0~100(visual 30·evidence 15·quality 15·freshness 5·rights 20·editability 15) + profile `visual_priority` 가산
+  → 장면별 선택(점수 ≥60, visual_fit ≥7, 같은 자료 중복 금지, profile `card_roles` 장면은 카드 유지)
+  → usable 일 때만 ingest(80MB 제한, 미디어 타입·디코딩 확인) → 영상이면 Clip Analyzer → Scene Planner(`source_video`/`source_image`) → 기존 렌더.
+- **권리:** usable 자동 = CC0 · 퍼블릭 도메인 · CC BY(화면 하단·설명란 출처) · NASA 제작 자료(제3자 저작권 표기 있으면 제외) · Pexels/Pixabay.
+  reference_only 자동 = YouTube(표기와 무관) · CC BY-SA · NC · ND · 사용 제한 표기, unknown = 표기 없음. 레지스트리는 호출 쪽 주장보다 계산 결과를 우선한다.
+- **YouTube 한계(보고):** YouTube 약관은 YouTube 가 제공하는 다운로드 외의 저장을 허용하지 않으므로 YouTube 영상은 CC BY 표기가 있어도 자동 ingest 하지 않는다(분석·참고만). 사용자 소유 영상은 원본 파일을 `--asset … --confirm-rights` 로 주면 기존 경로로 쓴다.
+- **Clip Analyzer** (`clip_analyzer.py`): ffmpeg scene score 샷 경계, silencedetect 말 경계, NASA `.srt` 자막(있으면) → 장면 길이 창 후보 → stability·boundary·position·relevance 점수 → 겹치지 않는 상위 3개와 추천 구간. 자막 없는 영상은 화면 내용(의미)까지는 판단하지 못한다.
+- **기록:** `sources.json` 항목에 source_type·usage(visual/reference_only/research)·rights_status·rights_basis·scene_ids·clip_ranges. 가공본(장면 이미지)을 쓰면 원본에도 장면 번호가 남는다. `source_plan.json` 에 장면별 검색어·후보·점수·제외 사유(reference_only/unknown 근거)·선택·오류.
+- **파일:** 신규 `app/pipeline/source_resolver.py`, `app/pipeline/clip_analyzer.py`, `tests/test_source_resolver.py`(19개).
+  수정: `models.SourceItem`(새 필드, 기본값으로 과거 sources.json 호환), `sources.py`(PROVEN_LICENSES·CC BY 출처 필수·`mark_used`), `visuals.py`(resolved 우선순위·licensed_source), `run.py`(5-A 단계·타임라인 영상 구간·meta 출처), `youtube.py`(license 필드), `cards.fit_image`(도표가 상단 키워드와 겹치지 않게 22% 아래 배치), `render.py`(**setsar=1** — 가로 영상 축소 반올림 SAR 로 concat 실패하던 기존 B-roll 버그), `config.yaml` `sources:`, `integration.yaml`(profile별 visual_priority·card_roles·visual_hint), factory `--visuals`.
+- **자동 테스트:** **247개 통과**(Benchmark×V1 228 + Source Resolver 19). 실제 ffmpeg 회귀 테스트 2개(샷 검출, 홀수 크기 영상+이미지 concat) 포함 — SAR 테스트는 수정 전 코드에서 실패함을 확인했다.
+- **실제 제작 (Claude 구독 + Edge TTS + 공개 API, 유료 없음, 모두 `verify_factory_v1.py --verify` 통과·장면 시트 확인):**
+  - D YouTube URL `ZUZqIWVgw2k` → `20261005_171137_be9d` mechanism_explainer 88점, 32.9초. YouTube 원본은 `reference_only`(재사용 라이선스 표기 없음)로 기록, 다운로드 없음. Commons 이미지 4장면(퍼블릭 도메인 3, CC BY 4.0 1 — 출처 표시), 맞는 자료가 없는 장면(최고 54점)은 카드. 도표·상단 키워드 겹침을 발견해 `fit_image` 수정 후 rerender 로 확인.
+  - E Topic "최근 화제가 된 기술 하나" → `20261005_171742_b5cb` mechanism_explainer 92점(HBM/HBF 메모리), 27.3초. Commons 이미지 2장면(SSD CC BY 4.0, 퍼블릭 도메인 1). 5번 장면에 대본의 비유('책상 옆 서가')를 따라 1900년대 도서관 판화가 골라진 것을 확인 → 검색어(비유 장면은 card)·적합도(비유·시대 불일치 4 이하) 지침과 min_visual_fit 7 로 강화.
+  - F(추가) Topic "NASA 아르테미스 2호 유인 달 비행 준비 근황" → `20261005_172334_074f` curiosity_update_story 87점, 26.2초. 첫 렌더가 SAR 불일치로 **실패**(실제 영상 경로 첫 사용) → `render.py` 수정 + 회귀 테스트 → `resume` 으로 완성. NASA 퍼블릭 도메인 **영상 3장면**(Clip Analyzer 구간 00:13.8-00:18.2, 00:27.0-00:30.3, 00:03.2-00:06.7) + 이미지 1장면, 원본 소리 없이 나레이션만. benchmark 결정은 resume 후에도 유지.
+- **알려진 한계:** 자막 없는 영상의 구간은 샷 안정성으로만 고른다(F 3번 장면은 발사 영상 중 우주비행사 클로즈업 구간이 선택됨, 원본 자막 그래픽 포함). 최신 기술 주제는 무료 공개 자료가 적어 카드 비율이 높다 — `PEXELS_API_KEY`(무료) 를 넣으면 스톡 영상이 추가된다. Commons 4K 원본만 있는 영상은 80MB 제한으로 건너뛴다. Edge TTS 단어 경계 때문에 자막 글자가 빠지는 기존 V1 버그를 발견해 별도 작업으로 분리했다(이 커밋에 포함하지 않음).
+- **AI 호출:** make 1편당 brief·대본·장면 + 검색어·적합도 = 5회(모두 Claude 구독).
+
 ## 2026-10-05 (오후) — Benchmark × V1 자동 통합
 
 `make --topic/--url/--auto/--reference-video` 가 기본으로 8개 benchmark profile 중 하나를 자동으로 골라 그 구조로 대본·장면을 만든다(`--benchmark auto`, 기본값).

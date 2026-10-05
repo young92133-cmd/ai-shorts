@@ -54,6 +54,17 @@ video:
   broll_max_per_source: 15    # 한 소스에서 쓸 수 있는 총 길이(초)
   font: "Malgun Gothic"       # assets/fonts 에 otf/ttf 넣으면 해당 폰트명 사용 가능
 
+sources:
+  # Source Resolver: 장면 화면에 쓸 공개 영상·사진 자동 탐색 (make --visuals auto, 기본)
+  # 자동으로 화면에 쓰는 것은 CC0 · 퍼블릭 도메인 · CC BY(출처 표기) · NASA 제작 자료 · Pexels/Pixabay(키 있을 때)뿐.
+  # YouTube·CC BY-SA·NC·ND·표기 없음은 참고만 한다.
+  providers: [openverse, wikimedia_commons, nasa, pexels, pixabay]   # pexels/pixabay 는 PEXELS_API_KEY / PIXABAY_API_KEY 가 있을 때만
+  contact: "https://github.com/young92133-cmd/ai-shorts"   # 공개 API User-Agent 연락처 (Wikimedia 정책상 필요)
+  max_file_mb: 80          # 자료 한 개 최대 크기
+  min_score: 60            # 장면 적합도 내부 점수(0~100) 기준
+  min_visual_fit: 7        # 장면과 화면이 맞는 정도(0~10) 최소값
+  per_query: 4             # 제공처별 검색 결과 수
+
 paths:
   output: output
   presets: presets

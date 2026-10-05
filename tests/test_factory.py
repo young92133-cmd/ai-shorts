@@ -69,7 +69,9 @@ class FactoryTestCase(unittest.IsolatedAsyncioTestCase):
                   patch.object(run.scriptmod, "write_script", new=self.write_script),
                   patch.object(run.script_split, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 없음"))),
                   # make 기본값은 benchmark=auto. 구조 분석 AI 도 가짜로 막아 안전한 정보형 구조로 진행한다.
-                  patch.object(run.bench_auto, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 없음")))]:
+                  patch.object(run.bench_auto, "ask_structured", new=AsyncMock(side_effect=RuntimeError("테스트: AI 없음"))),
+                  # make 기본값은 visuals=auto. 공개 자료 검색(네트워크)도 가짜로 막는다.
+                  patch.object(run.source_resolver, "resolve", new=AsyncMock(return_value={"scenes": {}, "report": {}}))]:
             self.stack.enter_context(p)
 
     def tearDown(self):

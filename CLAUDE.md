@@ -28,6 +28,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
 | `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
+| `make ... --visuals auto\|cards` | 화면 자료. 기본 auto(권리 확인 가능한 공개 영상·사진 자동 탐색), cards는 자체 카드만 |
 | `make ... --style "이름"` / `--preset daily` | 스타일·분야 기본값 지정 (`styles`로 목록 확인) |
 | `make ... --asset 파일 --note "근거" --confirm-rights` | 내가 권리를 가진 사진·영상을 장면 화면 후보로 |
 | `resume [id]` | 멈춘/실패한 프로젝트를 저장된 대본으로 이어서 MP4까지 (조사·대본 다시 안 함) |
@@ -87,18 +88,19 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 여러 편은 **명시적 요청이 있을 때만**, 한 편씩 순차로 만든다(한 번에 최대 10편). 한 편 실패해도 성공한 영상은 보존한다. 후보 번호는 사용자가 보고 고른 `candidates_id`에 연결한다. 다른 검색의 최근 목록으로 바꾸지 않는다.
 - `resume`에서 id를 생략하면 가장 최근의 이어 만들 수 있는 대기 프로젝트를 선택한다. 대화에서 id가 알려져 있으면 항상 지정한다. 직접 대본도 Factory에서는 `--review`를 지정했을 때만 멈춘다(기존 웹 UI의 강제 검토는 별도).
 
-## 자료 권리 규칙 (꼭 지킨다)
+## 자료 권리 규칙 (꼭 지킨다, 2026-10-05 Source Resolver 반영)
 
-- 영상 화면에 쓸 수 있는 것:
-  - 사용자 본인 채널 영상
-  - 사용자가 직접 만든 사진
-  - AI가 생성한 이미지
-  - 앱이 그린 카드
-  - 무료 스톡(pexels·pixabay)
-  - 공공누리 1유형(kogl_type0/1)
-- 다른 사람의 영상·기사·댓글·이미지는 **내용 참고용**이다. 화면에 그대로 넣지 않는다.
-- 사용자가 준 파일은 권리 근거(`--note`)를 확인하고 `--confirm-rights`를 붙인다. 확인되지 않은 파일은 엔진이 거부한다. 우회하지 않는다.
-- 렌더 전 권리 검사(`sources.json`)는 엔진이 강제한다.
+**원칙: 프로그램은 visual source 를 적극적으로 찾는다. 단, 최종 영상에 직접 쓰는 source 는 사용 근거·재사용 가능성이 확인된 자료만이다.**
+검색 금지 아님 · 분석 금지 아님 · 자동 탐색 금지 아님. 권리 불명 영상이 자동으로 화면에 올라가지 않을 뿐이다.
+
+- `make` 는 기본 `--visuals auto`: Source Resolver 가 장면마다 공개 자료를 찾아 권리를 판정하고 usable 만 화면에 쓴다. `--visuals cards` 는 자체 카드만.
+- 우선순위: ① 사용자 업로드(권리 확인) ② 라이선스로 재사용이 확인된 공개 자료 — CC0 · 퍼블릭 도메인 · CC BY(화면·설명란 출처 표기) · NASA 제작 자료 · Pexels/Pixabay(키 있을 때) ③ AI 이미지(켜져 있을 때) ④ 자체 카드.
+- 자동으로 **reference_only**(분석·참고만): YouTube 영상(라이선스 표기와 무관하게 — YouTube 약관상 자동 다운로드 미지원), CC BY-SA(동일조건이 영상 전체에 걸림), NC(비상업), ND(변경 금지), 사용 제한 표기, 표기 없음(**unknown**).
+- 처리 순서: discover → inspect → rights classify → usable 일 때만 ingest(다운로드) → Clip Analyzer. 발견했다고 내려받지 않는다.
+- 권리가 애매하고 다른 usable 자료로 대체할 수 있으면 **사용자에게 묻지 말고 자동 대체**한다. 특정 영상이 꼭 필요한데 권리 근거가 없을 때만 사용자에게 원본 파일과 권리 근거를 요청한다(`--asset 파일 --note … --confirm-rights`).
+- 사용자 본인 영상/사진, 직접 만든 자료, AI 생성 이미지, 앱 카드, 공공누리 1유형은 기존처럼 화면에 쓸 수 있다. 사용자가 준 파일은 권리 근거(`--note`)와 `--confirm-rights` 를 확인한다.
+- 렌더 전 권리 검사(`sources.json`)는 엔진이 강제한다. 우회하지 않는다. `sources.json` 에는 화면에 쓴 자료(usage=visual, rights_status, rights_basis, scene_ids, clip_ranges)와 참고만 한 자료(usage=reference_only/research)가 모두 남는다.
+- 결과를 알릴 때: 어느 장면에 어떤 공개 자료(제공처·라이선스·구간)를 썼는지, 카드로 대체된 장면과 이유를 쉬운 말로 전한다. `source_plan.json` 에 검색어·후보 점수·제외 이유가 있다.
 
 ## 무료·유료 API
 
@@ -138,10 +140,10 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - **제작 엔진(`app/pipeline`)을 새로 만들거나 갈아엎지 않는다.** 기능은 엔진에 작게 추가하고, 채팅용 동작은 `app/factory`에 둔다.
 - 웹 UI와 factory는 같은 엔진을 쓴다. 엔진은 UI(`app/main.py`, `app/jobs.py`)를 import하지 않는다.
 - 개발 중에는 유료 API·실제 샘플 제작을 하지 않는다. 테스트는 가짜(mock)로 돈다. 실제 제작은 사용자가 요청할 때만 한다.
-- `make` 를 부르는 테스트는 `run.bench_auto.ask_structured` 도 반드시 가짜로 막는다(`tests/test_factory.py` FactoryTestCase 참고). 막지 않으면 기본 benchmark auto 가 실제 Claude 를 호출한다.
+- `make` 를 부르는 테스트는 `run.bench_auto.ask_structured` 와 `run.source_resolver.resolve` 도 반드시 가짜로 막는다(`tests/test_factory.py` FactoryTestCase 참고). 막지 않으면 기본 benchmark auto·visuals auto 가 실제 Claude·공개 API 를 호출한다.
 - 2026-10-01 V1 요청은 서로 다른 실제 영상 최소 5편 검증을 허용한다. 유료 API는 여전히 미승인이다. 모든 실사용·회귀 테스트가 통과한 뒤에만 V1 완료 로컬 커밋을 만든다. 새 변경의 push는 하지 않는다(시작 시 `c6cd645` 백업 push만 승인됨).
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 통합 `tests/test_benchmark_auto.py` 포함 228개).
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 통합 `tests/test_benchmark_auto.py`·Source Resolver `tests/test_source_resolver.py` 포함 247개).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.
@@ -164,11 +166,12 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - `resume`·`rerender`·`batch-resume` 은 저장된 결정을 그대로 쓰고 다시 고르지 않는다. 완성 대본(`--script`)은 `not_applicable`, 스타일 지정(`--style`)은 auto 일 때 스타일을 따른다.
 - 사용자에게 결과를 알릴 때: 고른 구조 이름, 시청 질문, 선택 이유, 상위 3개 점수, fallback 여부와 quality 경고를 쉬운 말로 전한다.
 - 유튜브·기사 URL 은 분석 참고용이다(`source_analysis`). 원본 문장·장면 순서를 복제하지 않고, 타인 영상을 내려받아 화면에 쓰지 않는다.
-- 이번 단계에 없음: Clip Analyzer(권리 확인 내 영상의 하이라이트 자동 선택), 자동 게시, 채널 크롤링, Global Trend Radar, 조회수 예측, 성과 학습.
+- Source Resolver·Clip Analyzer 는 아래 자료 권리 규칙 참고. 아직 없음: 자동 게시, 채널 크롤링, Global Trend Radar, 조회수 예측, 성과 학습.
 
 | 사용자 말 | 실행 |
 |---|---|
-| "이 주제로 쇼츠 만들어줘" | `make --topic "…"` (benchmark auto 기본) |
+| "이 주제로 쇼츠 만들어줘", "영상 자료도 알아서 찾아줘" | `make --topic "…"` (benchmark auto · visuals auto 기본) |
+| "카드만으로 만들어줘", "외부 자료 쓰지 마" | `make --topic "…" --visuals cards` |
 | "이 유튜브 참고해서 쇼츠 만들어줘: URL" | `make --url "URL"` |
 | "비교형/사건 순서형으로 만들어줘" 처럼 구조를 명시 | `make --topic "…" --benchmark <profile id>` (예: event_timeline_story) |
 | "예전 방식(구조 선택 없이)으로 만들어줘" | `make --topic "…" --benchmark off` |
