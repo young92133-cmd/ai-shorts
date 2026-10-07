@@ -9,6 +9,9 @@
     python -m app.factory set-visual [project_id] --scene 3 --card number_card
     python -m app.factory rerender [project_id]
     python -m app.factory styles | trends | export [project_id] --pack
+    python -m app.factory make --topic "전세 vs 월세" --format card_news|insta_toon|hybrid|all
+    python -m app.factory make --topic "…" --request "카드뉴스랑 인스타툰 섞어서 만들어줘"   # 형식 자동 인식
+    python -m app.factory characters [list|show ID|add --file bible.json]
 
 종료 코드: 0 성공 / 1 제작 실패 / 2 요청 오류(없는 프로젝트, 잘못된 값, 아직 할 수 없는 단계)
 """
@@ -21,6 +24,21 @@ import sys
 from typing import Any
 
 from . import core, batch, benchmark
+from ..carousel import characters as charmod
+from ..carousel.schema import OUTPUT_FORMATS
+from ..carousel.templates import list_templates
+
+TONES = tuple(core.FORMATS)
+
+
+class _FormatAction(argparse.Action):
+    """--format: 출력 형식(shorts/card_news/...)이면 output_format, 예전 톤 값(information/story/issue)이면 content_format."""
+
+    def __call__(self, parser, namespace, value, option_string=None):
+        if value in TONES:
+            namespace.content_format = value
+        else:
+            namespace.output_format = value
 
 
 def _log(msg: str) -> None:
@@ -39,6 +57,7 @@ def _parser() -> argparse.ArgumentParser:
     src.add_argument("--script", dest="script_text", help="완성 대본 직접 입력 (보조 기능)")
     src.add_argument("--script-file", help="완성 대본 텍스트 파일")
     src.add_argument("--reference-video", help="참고 영상 파일 (분석 전용, 200MB 이하)")
+    src.add_argument("--research-file", help="기존 리서치 결과 JSON [{title,url,text}] (카드뉴스·인스타툰·하이브리드)")
     mk.add_argument("--hint", default="", help="참고 영상의 주제 힌트 (사실 근거로 취급하지 않음)")
     mk.add_argument("--seconds", type=int, help="목표 길이(초)")
     mk.add_argument("--preset", default="daily", help="분야 기본값 (styles 명령으로 목록 확인)")
@@ -47,7 +66,14 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--instructions", default="", help="추가 요청 (말투, 강조할 점 등)")
     mk.add_argument("--llm", choices=("claude", "openai", "auto"))
     mk.add_argument("--allow-openai", action="store_true", default=None, help="이번 제작에서 유료 OpenAI API 사용을 명시적으로 허용")
-    mk.add_argument("--format", dest="content_format", choices=tuple(core.FORMATS), help="information | story | issue")
+    mk.set_defaults(output_format=None, content_format=None)
+    mk.add_argument("--format", action=_FormatAction, choices=OUTPUT_FORMATS + TONES,
+                    help="출력 형식 shorts | card_news | insta_toon | hybrid | all (예전 톤 값 information | story | issue 도 그대로 받음)")
+    mk.add_argument("--tone", dest="content_format", choices=TONES, help="information | story | issue")
+    mk.add_argument("--request", dest="request_text", default="", help="사용자 자연어 요청 원문 (출력 형식 자동 인식)")
+    mk.add_argument("--template", help="캐러셀 템플릿: " + " | ".join(t["id"] for t in list_templates()))
+    mk.add_argument("--character", help="인스타툰 캐릭터 id (characters 명령으로 목록)")
+    mk.add_argument("--pages", type=int, help="캐러셀 장수 (6~10, 기본 8)")
     mk.add_argument("--model")
     mk.add_argument("--tts", help="edge | openai | elevenlabs | typecast")
     mk.add_argument("--voice")
@@ -66,7 +92,7 @@ def _parser() -> argparse.ArgumentParser:
 
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
-    ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "benchmark", "files"))
+    ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "benchmark", "carousel", "files"))
 
     ed = sub.add_parser("edit-scene", help="렌더 전 장면 문장/강조문구 수정")
     ed.add_argument("project_id", nargs="?")
@@ -83,7 +109,11 @@ def _parser() -> argparse.ArgumentParser:
     sv.add_argument("--note", default="")
     sv.add_argument("--confirm-rights", action="store_true")
 
-    sub.add_parser("styles", help="프리셋·스타일 목록")
+    sub.add_parser("styles", help="프리셋·스타일·캐러셀 템플릿·캐릭터 목록")
+    ch = sub.add_parser("characters", help="인스타툰 캐릭터(Character Bible) 목록·보기·등록")
+    ch.add_argument("action", nargs="?", default="list", choices=("list", "show", "add"))
+    ch.add_argument("character_id", nargs="?")
+    ch.add_argument("--file", help="add: Character Bible JSON 파일")
     tr = sub.add_parser("trends", help="요즘 화제 키워드")
     tr.add_argument("--limit", type=int, default=10)
 
@@ -132,6 +162,28 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _characters(a: argparse.Namespace) -> dict[str, Any]:
+    charmod.ensure_default()
+    if a.action == "list":
+        return {"status": "ok", "characters": [{"id": c.id, "name": c.name, "role": c.role, "personality": c.personality}
+                                              for c in charmod.list_characters()],
+                "folder": str(charmod.ROOT)}
+    if a.action == "show":
+        try:
+            return {"status": "ok", "character": charmod.get_character(a.character_id or "").model_dump()}
+        except KeyError as e:
+            raise core.FactoryError("not_found", str(e).strip("'\""),
+                                    characters=[c.id for c in charmod.list_characters()]) from e
+    if not a.file:
+        raise core.FactoryError("invalid", "add 에는 --file bible.json 이 필요합니다.")
+    try:
+        with open(a.file, encoding="utf-8") as f:
+            saved = charmod.save_character(json.load(f))
+    except (OSError, ValueError) as e:
+        raise core.FactoryError("invalid", f"Character Bible 을 저장하지 못했습니다: {e}") from e
+    return {"status": "ok", "character": saved.model_dump(), "message": f"캐릭터 {saved.name}({saved.id}) 저장"}
+
+
 async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
     if a.cmd == "benchmark":
         if a.benchmark_cmd == "profiles":
@@ -151,13 +203,18 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         if a.script_file:
             with open(a.script_file, encoding="utf-8") as f:
                 script_text = f.read()
+        tone, output_format = a.content_format, a.output_format
+        extra = {}
+        if output_format or a.request_text or a.research_file or a.template or a.character or a.pages:
+            extra = dict(output_format=output_format, request_text=a.request_text, template=a.template,
+                         character=a.character, pages=a.pages, research_file=a.research_file)
         return await core.make(
             topic=a.topic, url=a.url, auto=a.auto, script_text=script_text, preset=a.preset, style=a.style,
             seconds=a.seconds, review=a.review, instructions=a.instructions, llm=a.llm, model=a.model, tts=a.tts,
             voice=a.voice, subtitles=False if a.no_subtitles else None, assets=a.asset,
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
-            hint=a.hint, content_format=a.content_format, allow_openai=a.allow_openai,
-            benchmark=a.benchmark, visuals=a.visuals, log=_log)
+            hint=a.hint, content_format=tone, allow_openai=a.allow_openai,
+            benchmark=a.benchmark, visuals=a.visuals, log=_log, **extra)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
@@ -183,6 +240,8 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await core.rerender(a.project_id, log=_log)
     if a.cmd == "styles":
         return core.styles()
+    if a.cmd == "characters":
+        return _characters(a)
     if a.cmd == "trends":
         return await core.trends(a.limit, log=_log)
     if a.cmd == "export":

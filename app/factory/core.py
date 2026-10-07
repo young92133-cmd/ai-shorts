@@ -24,6 +24,9 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from ..carousel import characters as charmod, pipeline as carouselmod
+from ..carousel.schema import CAROUSEL_FORMATS, OUTPUT_FORMATS
+from ..carousel.templates import list_templates, load_template
 from ..config import load_config, load_presets, merge_options
 from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
 from ..pipeline import run as runmod, llm as llmmod, bench_auto
@@ -34,6 +37,7 @@ from ..pipeline.script_split import EMPHASIS_MAX, trend_direction
 from ..pipeline.sources import SourceRegistry
 from ..pipeline.styles import load_styles, nfc
 from . import state as st
+from .intent import detect_output_format
 
 Log = Callable[[str], None]
 PID_RE = re.compile(r"^[A-Za-z0-9_-]{3,80}$")
@@ -252,18 +256,55 @@ def _fail(job_dir: Path, state: dict[str, Any], e: Exception) -> dict[str, Any]:
 
 # ---------- 명령 ----------
 
+def _copy_assets(job_dir: Path, assets: list[str] | None, asset_rights: dict[str, Any] | None,
+                 ref: Path | None, register: bool = False) -> dict[str, Any]:
+    rights: dict[str, Any] = {}
+    for path in assets or []:
+        src = Path(path)
+        if not src.is_file() or not kind_of(src):
+            raise FactoryError("invalid", f"첨부 파일을 쓸 수 없습니다: {path}")
+        (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, job_dir / "uploads" / src.name)
+        rights[src.name] = asset_rights or {}
+    if ref:
+        (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ref, job_dir / "uploads" / ref.name)
+        # 참고 파일은 권리 확인된 화면 자료와 분리한다. 분석용으로만 쓴다.
+        rights[ref.name] = {"license": "reference_only"}
+    if register and rights:
+        # 캐러셀은 run_pipeline 을 거치지 않으므로 소스 대장에 직접 올린다 (쇼츠는 run_pipeline 이 올린다)
+        registry = SourceRegistry(job_dir)
+        for name, r in rights.items():
+            f = job_dir / "uploads" / name
+            registry.add(kind=kind_of(f) or "image", origin="upload", path=str(f), title=name, rights=r,
+                         used_for="candidate")
+    return rights
+
 async def make(*, topic: str | None = None, url: str | None = None, auto: bool = False, script_text: str | None = None,
                preset: str = "daily", style: str | None = None, seconds: int | None = None, review: bool = False,
                instructions: str = "", llm: str | None = None, model: str | None = None, tts: str | None = None,
                voice: str | None = None, subtitles: bool | None = None, assets: list[str] | None = None,
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
-               benchmark: str | None = "auto", visuals: str | None = "auto", log: Log = print) -> dict[str, Any]:
+               benchmark: str | None = "auto", visuals: str | None = "auto", output_format: str | None = None,
+               request_text: str = "", template: str | None = None, character: str | None = None,
+               pages: int | None = None, research_file: str | None = None, log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
     visuals: auto(기본, 권리 확인 가능한 공개 영상·사진을 찾아 장면에 사용) | cards(자체 카드만).
+    output_format: shorts(기본) | card_news | insta_toon | hybrid | all. 비우면 request_text(자연어)에서 알아낸다.
     """
+    output_format = output_format or (detect_output_format(request_text) if request_text else "shorts")
+    if output_format not in OUTPUT_FORMATS:
+        raise FactoryError("invalid", f"출력 형식은 {' / '.join(OUTPUT_FORMATS)} 중 하나여야 합니다.")
+    if output_format != "shorts" or research_file:
+        return await _make_carousel(
+            output_format=output_format, topic=topic, url=url, auto=auto, script_text=script_text,
+            research_file=research_file, preset=preset, seconds=seconds, review=review, instructions=instructions,
+            llm=llm, model=model, tts=tts, voice=voice, subtitles=subtitles, assets=assets, asset_rights=asset_rights,
+            reference_video=reference_video, content_format=content_format, allow_openai=allow_openai,
+            benchmark=benchmark, visuals=visuals, template=template, character=character, pages=pages, log=log)
     visuals = visuals or "auto"
     if visuals not in ("auto", "cards"):
         raise FactoryError("invalid", "visuals 는 auto / cards 중 하나여야 합니다.")
@@ -299,20 +340,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     project_id = _new_id()
     job_dir = output_root() / project_id
     state = st.save(job_dir, st.new(project_id, request))
-    rights: dict[str, Any] = {}
     try:
-        for path in assets or []:
-            src = Path(path)
-            if not src.is_file() or not kind_of(src):
-                raise FactoryError("invalid", f"첨부 파일을 쓸 수 없습니다: {path}")
-            (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, job_dir / "uploads" / src.name)
-            rights[src.name] = asset_rights or {}
-        if ref:
-            (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ref, job_dir / "uploads" / ref.name)
-            # 참고 파일은 권리 확인된 화면 자료와 분리한다. 분석용으로만 쓴다.
-            rights[ref.name] = {"license": "reference_only"}
+        rights = _copy_assets(job_dir, assets, asset_rights, ref)
         state = st.save(job_dir, {**state, "asset_rights": rights})
         with _ai_session(job_dir, state, run_cfg):
             result = await runmod.run_pipeline(
@@ -330,15 +359,143 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
         return _fail(job_dir, state, e)
 
 
+def _carousel_view(out: dict[str, Any]) -> dict[str, Any]:
+    keys = ("format", "dir", "pages", "manifest", "title", "mix", "plan_method", "master_method", "fallback_pages",
+            "image_pages")
+    return {k: out[k] for k in keys if k in out}
+
+
+async def _make_carousel(*, output_format: str, topic: str | None, url: str | None, auto: bool, script_text: str | None,
+                         research_file: str | None, preset: str, seconds: int | None, review: bool, instructions: str,
+                         llm: str | None, model: str | None, tts: str | None, voice: str | None,
+                         subtitles: bool | None, assets: list[str] | None, asset_rights: dict[str, Any] | None,
+                         reference_video: str | None, content_format: str | None, allow_openai: bool | None,
+                         benchmark: str | None, visuals: str | None, template: str | None, character: str | None,
+                         pages: int | None, log: Log) -> dict[str, Any]:
+    """카드뉴스 / 인스타툰 / 하이브리드 (all 이면 쇼츠 + 하이브리드). 결과는 output/<id>/<format>/card_NN.png."""
+    fmt = output_format
+    if fmt == "shorts":
+        raise FactoryError("invalid", "기존 리서치 파일 입력(--research-file)은 카드뉴스/인스타툰/하이브리드에서만 씁니다.")
+    if sum([bool(topic), bool(url), bool(auto), bool(script_text), bool(research_file), bool(reference_video)]) != 1:
+        raise FactoryError("invalid", "topic / url / auto / script / research-file 중 하나만 지정해 주세요.")
+    if reference_video:
+        raise FactoryError("invalid", "참고 영상 파일 입력은 쇼츠에서만 지원합니다. 주제·링크·원고로 만들어 주세요.")
+    if review:
+        raise FactoryError("invalid", "카드뉴스·인스타툰은 대본 검토 단계 없이 바로 PNG 까지 만듭니다. --review 없이 실행해 주세요.")
+    if fmt == "all" and research_file:
+        raise FactoryError("invalid", "all 모드는 쇼츠 입력(topic/url/auto/script)으로 시작해 주세요.")
+    if pages is not None and (isinstance(pages, bool) or not isinstance(pages, int) or not 6 <= pages <= 10):
+        raise FactoryError("invalid", "페이지 수는 6~10 사이 정수여야 합니다.")
+    if research_file and not Path(research_file).is_file():
+        raise FactoryError("invalid", f"리서치 파일이 없습니다: {research_file}")
+    if content_format and content_format not in FORMATS:
+        raise FactoryError("invalid", "형식(톤)은 information / story / issue 중 하나여야 합니다.")
+    if fmt == "all":
+        try:
+            benchmark = bench_auto.validate_choice(benchmark)
+        except ValueError as e:
+            raise FactoryError("invalid", str(e)) from e
+    try:
+        if template:
+            load_template(template, "hybrid" if fmt == "all" else fmt)
+        if character:
+            charmod.get_character(character)
+    except (KeyError, ValueError) as e:
+        raise FactoryError("invalid", str(e).strip("'\""), templates=[t["id"] for t in list_templates()],
+                           characters=[c.id for c in charmod.list_characters()]) from e
+    if content_format:
+        instructions = f"{FORMATS[content_format]['instructions']}\n{instructions}".strip()
+    mode = ("topic" if topic else "url" if url else "auto" if auto else "research" if research_file else "script")
+    text = topic or url or script_text or (str(Path(research_file).resolve()) if research_file else "")
+    request = {"mode": mode, "input": text, "preset": preset, "seconds": seconds, "review": False,
+               "instructions": instructions, "llm": llm, "model": model, "tts": tts, "voice": voice,
+               "subtitles": subtitles, "allow_openai": allow_openai, "format": content_format,
+               "output_format": fmt, "template": template, "character": character, "pages": pages,
+               "benchmark": benchmark or "auto", "visuals": visuals or "auto", "reference_name": "", "style": None}
+    run_cfg = _run_cfg(request)
+    if fmt == "all":
+        require_ffmpeg()
+    project_id = _new_id()
+    job_dir = output_root() / project_id
+    state = st.save(job_dir, st.new(project_id, request))
+    try:
+        rights = _copy_assets(job_dir, assets, asset_rights, None, register=fmt != "all")
+        state = st.save(job_dir, {**state, "asset_rights": rights})
+    except Exception as e:  # noqa: BLE001
+        return _fail(job_dir, state, e)
+    progress = _progress(job_dir, state, log)
+    kwargs = dict(cfg=run_cfg, progress=progress, template=template, character=character, n_pages=pages,
+                  instructions=instructions, image_search=(visuals or "auto") == "auto")
+    if fmt != "all":
+        try:
+            with _ai_session(job_dir, state, run_cfg):
+                out = await carouselmod.run_carousel(job_dir, fmt=fmt, mode=mode, text=text, **kwargs)
+            return _finish_carousel(job_dir, state, out)
+        except Exception as e:  # noqa: BLE001
+            return _fail(job_dir, state, e)
+
+    # all: 쇼츠(기존 엔진 그대로) → 같은 조사·대본으로 하이브리드 캐러셀
+    result: dict[str, Any] = {}
+    try:
+        with _ai_session(job_dir, state, run_cfg):
+            result = await runmod.run_pipeline(
+                job_dir, mode, text, run_cfg, progress=progress, review=None, until="done",
+                instructions=instructions, style=None, upload_rights=state.get("asset_rights") or {},
+                reference_name="", benchmark=benchmark, source_search=(visuals or "auto") == "auto")
+        state["topic"] = result.get("topic", "")
+        _record_benchmark(job_dir, state, result)
+        shorts_summary = await _finish(job_dir, state, result)
+    except Exception as e:  # noqa: BLE001 - 쇼츠가 실패해도 카드는 만든다
+        shorts_summary = _fail(job_dir, state, e)
+    state = st.load(job_dir)
+    try:
+        inputs = carouselmod.inputs_from_shorts(job_dir, result) if (job_dir / "script.json").is_file() else None
+        with _ai_session(job_dir, state, run_cfg):
+            out = await carouselmod.run_carousel(job_dir, fmt="hybrid", mode=mode, text=text, inputs=inputs, **kwargs)
+        state = st.load(job_dir)
+        st.save(job_dir, {**state, "carousel": _carousel_view(out),
+                          "outputs": {**state.get("outputs", {}), "carousel_dir": out["dir"],
+                                      "carousel_manifest": out["manifest"]}})
+        carousel = {"status": "complete", **_carousel_view(out)}
+    except Exception as e:  # noqa: BLE001
+        carousel = {"status": "failed", "error": f"{type(e).__name__}: {llmmod.safe_error(e)}"}
+        st.save(job_dir, {**st.load(job_dir), "carousel": carousel})
+    shorts_ok = shorts_summary.get("status") == "render_complete"
+    overall = ("render_complete" if shorts_ok and carousel["status"] == "complete" else
+               "failed" if not shorts_ok and carousel["status"] != "complete" else "partial_failure")
+    return {**shorts_summary, "status": overall, "output_format": "all",
+            "shorts_status": shorts_summary.get("status"), "carousel": carousel}
+
+
+def _finish_carousel(job_dir: Path, state: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
+    pages = [Path(p) for p in out["pages"]]
+    if not pages or not all(p.is_file() and p.stat().st_size for p in pages):
+        raise RuntimeError("페이지 PNG 가 만들어지지 않았습니다.")
+    outputs = {"carousel_dir": out["dir"], "carousel_manifest": out["manifest"],
+               "sources": str(job_dir / "sources.json"), "master": str(job_dir / "master.json")}
+    state = st.advance(job_dir, state, "render_complete", error="", failed_at="", outputs=outputs,
+                       topic=out.get("topic", ""), carousel=_carousel_view(out))
+    return _summary(job_dir, state, output_format=out["format"], **_carousel_view(out),
+                    message=f"{out['format']} {len(pages)}장(1080x1350 PNG)을 만들었습니다.",
+                    page_count=len(pages), resolution="1080x1350",
+                    image_search_error=out.get("image_search_error", ""))
+
+
+def _is_carousel(state: dict[str, Any]) -> bool:
+    return (state.get("request") or {}).get("output_format") in CAROUSEL_FORMATS
+
+
 async def resume(project_id: str | None = None, log: Log = print) -> dict[str, Any]:
     """승인된(또는 멈춘) 대본으로 이어서 장면·TTS·화면·자막·렌더를 한다. 조사·대본은 다시 하지 않는다."""
     if not project_id:
-        pending = [p for p in _projects() if st.next_action(st.load(p), p) == "resume"]
+        pending = [p for p in _projects() if st.next_action(st.load(p), p) == "resume" and not _is_carousel(st.load(p))]
         if pending:
             project_id = pending[0].name
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     status = state.get("status")
+    if _is_carousel(state):
+        raise FactoryError("not_ready", "카드뉴스·인스타툰 프로젝트는 이어서 만들 단계가 없습니다. make 로 다시 만들어 주세요.")
     if status == "render_complete":
         raise FactoryError("not_ready", "이미 완성된 영상입니다. 다시 만들려면 rerender 를 쓰세요.",
                            final_video=state.get("outputs", {}).get("final_video", ""))
@@ -383,9 +540,9 @@ def inspect(project_id: str | None = None, part: str = "all") -> dict[str, Any]:
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     out = _summary(job_dir, state)
-    if part in ("all", "script") and (job_dir / "script.json").is_file():
+    if part in ("all", "script") and (job_dir / "script.json").is_file() and not _is_carousel(state):
         out["script"] = _script_view(job_dir)
-    if part in ("all", "scenes", "visuals") and (job_dir / bpmod.FILE).is_file():
+    if part in ("all", "scenes", "visuals") and (job_dir / bpmod.FILE).is_file() and not _is_carousel(state):
         bp = bpmod.load(job_dir)
         out["timing"] = bp.timing
         out["scenes"] = [{
@@ -396,7 +553,16 @@ def inspect(project_id: str | None = None, part: str = "all") -> dict[str, Any]:
                 "rights": s.visual_decision.rights_status, "reason": s.visual_decision.selection_reason,
                 "fallback": s.visual_decision.fallback_used, "asset": s.visual_decision.asset_path}
                if s.visual_decision and part != "scenes" else {})} for s in bp.scenes]
-    if part in ("all", "benchmark"):
+    if part in ("all", "carousel") and (state.get("outputs") or {}).get("carousel_manifest"):
+        path = Path(state["outputs"]["carousel_manifest"])
+        if path.is_file():
+            m = json.loads(path.read_text(encoding="utf-8"))
+            out["carousel"] = {k: m.get(k) for k in ("format", "template", "size", "page_count", "mix", "plan_method",
+                                                     "fallback_pages", "image_credits")}
+            out["carousel"]["pages"] = [{**{k: r.get(k) for k in ("page", "file", "type", "headline", "layout",
+                                                                  "characters", "fallback_used")},
+                                         "image": bool(r.get("image"))} for r in m.get("pages", [])]
+    if part in ("all", "benchmark") and not _is_carousel(state):
         out["benchmark"] = bench_auto.load_decision(job_dir) or state.get("benchmark") or {"mode": "off"}
     if part in ("all", "files"):
         out["files"] = {p.name: str(p) for p in sorted(job_dir.iterdir()) if p.is_file()}
@@ -531,6 +697,9 @@ def styles() -> dict[str, Any]:
     cfg = _cfg()
     return {"status": "ok",
             "formats": [{"id": k, "name": v["name"]} for k, v in FORMATS.items()],
+            "output_formats": list(OUTPUT_FORMATS),
+            "carousel_templates": list_templates(),
+            "characters": [{"id": c.id, "name": c.name, "role": c.role} for c in charmod.list_characters()],
             "presets": [{"id": k, "name": v.get("name", k), "description": v.get("description", "")}
                         for k, v in load_presets(cfg).items()],
             "styles": [{"id": s["id"], "name": s.get("name", ""), "hook": str(s.get("hook_pattern", ""))[:80]}
@@ -556,6 +725,10 @@ async def export(project_id: str | None = None, *, pack: bool = False, capcut_dr
     """완성 파일 목록. pack=True 면 재료 묶음 zip, capcut_draft=True 면 CapCut 프로젝트도 만든다."""
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
+    if _is_carousel(state):
+        if pack or capcut_draft:
+            raise FactoryError("invalid", "카드뉴스·인스타툰은 편집 재료 zip·CapCut 내보내기가 없습니다. PNG 폴더를 그대로 쓰세요.")
+        return _summary(job_dir, state, files=state.get("outputs", {}), **(state.get("carousel") or {}))
     if state.get("status") != "render_complete":
         raise FactoryError("not_ready", "완성된 영상이 아직 없습니다.", status=state.get("status"))
     out = _summary(job_dir, state, files=state.get("outputs", {}))

@@ -1,0 +1,83 @@
+id: character_info
+name: 캐릭터 정보형
+description: 정보 카드 오른쪽 아래에 고정 캐릭터가 등장해 짧게 한마디 하는 카드뉴스.
+canvas: {width: 1080, height: 1350}
+palette:
+  bg: "#FFF7EC"
+  bg2: "#FFEFD9"
+  ink: "#2A1F1A"
+  sub: "#6B5A50"
+  accent: "#FF7A45"
+  highlight: "#FFE07A"
+  on_accent: "#FFFFFF"
+  panel: "#FFFFFF"
+  line: "#F1DCC4"
+  cover_bg: "#FF9B6A"
+  cover_bg2: "#FF7A45"
+  cover_ink: "#FFFFFF"
+  bubble: "#FFFFFF"
+  bubble_line: "#2A1F1A"
+fonts:
+  title: 0.072
+  title_min: 0.046
+  cover_title: 0.094
+  body: 0.042
+  body_min: 0.031
+  item: 0.041
+  bubble: 0.036
+  bubble_min: 0.027
+  label: 0.029
+  footer: 0.021
+  big_number: 0.18
+style:
+  radius: 0.045
+  title_align: left
+  texture: dots
+  page_number: true
+  title_lines: 3
+  body_lines: 5
+character:
+  on_cards: true           # 정보 카드에도 캐릭터를 작게 넣는다
+  card_pose: pointing
+  card_emotion: happy
+boxes:
+  label:     [0.08, 0.055, 0.92, 0.095]
+  title:     [0.08, 0.11, 0.92, 0.28]
+  image:     [0.08, 0.30, 0.92, 0.58]
+  body:      [0.08, 0.61, 0.62, 0.90]
+  footer:    [0.08, 0.935, 0.92, 0.975]
+  character: [0.62, 0.60, 0.98, 0.93]
+  card_bubble: [0.50, 0.54, 0.96, 0.62]
+  panel:     [0.045, 0.045, 0.955, 0.905]
+  caption:   [0.08, 0.78, 0.92, 0.90]
+pages:
+  cover:
+    background: cover
+    image:     [0.0, 0.0, 1.0, 0.50]
+    label:     [0.08, 0.54, 0.62, 0.58]
+    title:     [0.08, 0.59, 0.66, 0.84]
+    body:      [0.08, 0.85, 0.66, 0.92]
+    character: [0.60, 0.50, 1.0, 0.93]
+  hook:
+    title:     [0.08, 0.16, 0.92, 0.48]
+    body:      [0.08, 0.52, 0.62, 0.88]
+    image:     [0.08, 0.52, 0.62, 0.88]
+  info_card: {}
+  checklist:
+    title: [0.08, 0.11, 0.92, 0.25]
+    items: [0.08, 0.28, 0.70, 0.90]
+  comparison:
+    title:   [0.08, 0.11, 0.92, 0.24]
+    compare: [0.08, 0.27, 0.92, 0.62]
+    body:    [0.08, 0.66, 0.62, 0.90]
+  quote:
+    title: [0.10, 0.20, 0.90, 0.52]
+    body:  [0.10, 0.55, 0.60, 0.64]
+  summary:
+    title: [0.08, 0.11, 0.92, 0.24]
+    items: [0.08, 0.27, 0.70, 0.90]
+  cta:
+    background: cover
+    title: [0.08, 0.16, 0.92, 0.42]
+    body:  [0.08, 0.44, 0.62, 0.58]
+    items: [0.08, 0.66, 0.62, 0.80]

@@ -32,3 +32,6 @@ temp/
 reference/frames/
 reference.mp4
 reference/*.mp4
+
+# 인스타툰 캐릭터 AI 생성 캐시 (Character Bible 은 저장소에 보존)
+characters/*/generated/

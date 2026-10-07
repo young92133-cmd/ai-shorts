@@ -1,0 +1,86 @@
+id: comic_hybrid
+name: 만화 하이브리드
+description: 굵은 테두리 만화 컷과 정보 카드를 한 톤으로 섞는 하이브리드·인스타툰 기본.
+canvas: {width: 1080, height: 1350}
+palette:
+  bg: "#FFFDF7"
+  bg2: "#FFF6E0"
+  ink: "#151515"
+  sub: "#4D4D4D"
+  accent: "#3B5BDB"
+  highlight: "#FFE066"
+  on_accent: "#FFFFFF"
+  panel: "#FFFFFF"
+  line: "#151515"
+  cover_bg: "#3B5BDB"
+  cover_bg2: "#2B44B0"
+  cover_ink: "#FFFFFF"
+  bubble: "#FFFFFF"
+  bubble_line: "#151515"
+  scene_wall: "#F3E9D7"
+  scene_floor: "#D9C7A8"
+  scene_sky: "#CFE6FF"
+  scene_ground: "#BFD9A8"
+fonts:
+  title: 0.072
+  title_min: 0.046
+  cover_title: 0.096
+  body: 0.042
+  body_min: 0.031
+  item: 0.042
+  bubble: 0.041
+  bubble_min: 0.029
+  label: 0.029
+  footer: 0.021
+  big_number: 0.19
+style:
+  radius: 0.02
+  title_align: left
+  texture: none
+  page_number: true
+  panel_border: 7          # 만화 컷 테두리 두께(px)
+  card_border: 6           # 정보 카드에도 같은 테두리를 둘러 톤을 맞춘다
+  title_lines: 3
+  body_lines: 6
+character:
+  on_cards: false
+boxes:
+  label:     [0.08, 0.06, 0.92, 0.10]
+  title:     [0.08, 0.11, 0.92, 0.29]
+  image:     [0.08, 0.31, 0.92, 0.64]
+  body:      [0.08, 0.67, 0.92, 0.89]
+  footer:    [0.08, 0.935, 0.92, 0.975]
+  character: [0.55, 0.50, 0.98, 0.92]
+  panel:     [0.045, 0.045, 0.955, 0.905]
+  caption:   [0.07, 0.76, 0.93, 0.885]
+pages:
+  cover:
+    background: cover
+    image:  [0.06, 0.05, 0.94, 0.55]
+    label:  [0.08, 0.60, 0.92, 0.64]
+    title:  [0.08, 0.65, 0.92, 0.85]
+    body:   [0.08, 0.86, 0.92, 0.92]
+  hook:
+    title:  [0.08, 0.18, 0.92, 0.50]
+    image:  [0.08, 0.54, 0.92, 0.88]
+    body:   [0.08, 0.54, 0.92, 0.88]
+  checklist:
+    title: [0.08, 0.11, 0.92, 0.25]
+    items: [0.08, 0.28, 0.92, 0.90]
+  comparison:
+    title:   [0.08, 0.11, 0.92, 0.24]
+    compare: [0.08, 0.27, 0.92, 0.90]
+  quote:
+    title: [0.12, 0.26, 0.88, 0.62]
+    body:  [0.12, 0.66, 0.88, 0.74]
+  summary:
+    title: [0.08, 0.11, 0.92, 0.24]
+    items: [0.08, 0.27, 0.92, 0.90]
+  cta:
+    background: cover
+    title: [0.10, 0.20, 0.90, 0.46]
+    body:  [0.10, 0.48, 0.90, 0.60]
+    items: [0.10, 0.70, 0.90, 0.84]
+  explanation_scene:
+    panel:   [0.045, 0.045, 0.955, 0.66]
+    caption: [0.07, 0.69, 0.93, 0.905]

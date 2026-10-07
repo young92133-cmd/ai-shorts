@@ -1,0 +1,78 @@
+id: clean_info
+name: 클린 정보형
+description: 밝은 배경, 큰 제목, 이미지 한 장과 짧은 본문. 정보형 카드뉴스 기본.
+canvas: {width: 1080, height: 1350}
+palette:
+  bg: "#F6F4EF"
+  bg2: "#EFEBE2"
+  ink: "#1C2230"
+  sub: "#565E70"
+  accent: "#2F6BFF"
+  highlight: "#FFD84D"
+  on_accent: "#FFFFFF"
+  panel: "#FFFFFF"
+  line: "#DAD5CA"
+  cover_bg: "#1C2230"
+  cover_bg2: "#2B3550"
+  cover_ink: "#FFFFFF"
+  bubble: "#FFFFFF"
+  bubble_line: "#1C2230"
+fonts:            # 캔버스 너비 대비 비율
+  title: 0.074
+  title_min: 0.046
+  cover_title: 0.098
+  body: 0.043
+  body_min: 0.031
+  item: 0.042
+  bubble: 0.040
+  bubble_min: 0.029
+  label: 0.029
+  footer: 0.021
+  big_number: 0.20
+style:
+  radius: 0.035
+  title_align: left
+  texture: none
+  page_number: true
+  title_lines: 3
+  body_lines: 6
+character:
+  on_cards: false
+boxes:
+  label:     [0.08, 0.055, 0.92, 0.095]
+  title:     [0.08, 0.11, 0.92, 0.29]
+  image:     [0.08, 0.31, 0.92, 0.65]
+  body:      [0.08, 0.68, 0.92, 0.90]
+  footer:    [0.08, 0.935, 0.92, 0.975]
+  character: [0.60, 0.58, 0.97, 0.92]
+  panel:     [0.045, 0.045, 0.955, 0.905]
+  caption:   [0.08, 0.78, 0.92, 0.90]
+pages:
+  cover:
+    background: cover
+    image:  [0.0, 0.0, 1.0, 0.56]
+    label:  [0.08, 0.60, 0.92, 0.64]
+    title:  [0.08, 0.65, 0.92, 0.85]
+    body:   [0.08, 0.86, 0.92, 0.92]
+  hook:
+    title:  [0.08, 0.20, 0.92, 0.52]
+    image:  [0.08, 0.56, 0.92, 0.88]
+    body:   [0.08, 0.56, 0.92, 0.88]
+  info_card: {}
+  checklist:
+    title:  [0.08, 0.11, 0.92, 0.25]
+    items:  [0.08, 0.28, 0.92, 0.90]
+  comparison:
+    title:   [0.08, 0.11, 0.92, 0.24]
+    compare: [0.08, 0.27, 0.92, 0.90]
+  quote:
+    title:  [0.12, 0.26, 0.88, 0.62]
+    body:   [0.12, 0.66, 0.88, 0.74]
+  summary:
+    title:  [0.08, 0.11, 0.92, 0.24]
+    items:  [0.08, 0.27, 0.92, 0.90]
+  cta:
+    background: cover
+    title:  [0.10, 0.22, 0.90, 0.50]
+    body:   [0.10, 0.52, 0.90, 0.64]
+    items:  [0.10, 0.70, 0.90, 0.84]

@@ -65,6 +65,19 @@ sources:
   min_visual_fit: 7        # 장면과 화면이 맞는 정도(0~10) 최소값
   per_query: 4             # 제공처별 검색 결과 수
 
+carousel:
+  # 카드뉴스 · 인스타툰 · 하이브리드 (make --format card_news|insta_toon|hybrid|all). 1080x1350 PNG
+  pages: 8                 # 기본 장수 (6~10)
+  character: tory_01       # 인스타툰 기본 캐릭터 (characters/<id>/bible.json)
+  image_search: true       # 카드 사진을 Source Resolver 로 찾기 (권리 확인되는 공개 자료만). false 면 그래픽 카드
+  max_images: 4            # 사진을 찾을 최대 페이지 수
+  # 캐릭터 컷 그림: none = 앱이 직접 그리는 마스코트(무료, 기본). gemini-lite 등을 넣으면 AI 생성(유료, 캐시됨)
+  image_provider: none
+  templates:               # 형식별 기본 템플릿
+    card_news: clean_info
+    insta_toon: comic_hybrid
+    hybrid: comic_hybrid
+
 paths:
   output: output
   presets: presets

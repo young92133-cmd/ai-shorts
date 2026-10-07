@@ -1,0 +1,37 @@
+{
+  "id": "tory_01",
+  "name": "토리",
+  "role": "경제/부동산 설명 캐릭터",
+  "appearance": {
+    "face": "round face, big friendly eyes, rosy cheeks",
+    "skin_tone": "light warm",
+    "hair_style": "chin-length brown bob with straight bangs",
+    "hair_color": "chestnut brown",
+    "eye_color": "dark brown",
+    "age_look": "early 20s"
+  },
+  "default_outfit": {
+    "top": "mint green cardigan over white collared shirt",
+    "bottom": "navy skirt"
+  },
+  "accessories": [
+    "round black glasses",
+    "small yellow star hairpin"
+  ],
+  "personality": "차분하고 친절한 설명가. 어려운 말을 쉬운 비유로 바꿔 준다.",
+  "speech_style": "~요 체, 짧고 다정하게",
+  "visual_style": "clean Korean webtoon style, thick clean outlines, flat pastel colors, chibi proportions",
+  "reference_images": [],
+  "mascot": {
+    "skin": "#FCE0CC",
+    "hair": "#6B4329",
+    "hair_style": "bob",
+    "eye": "#2B2118",
+    "outfit": "#7FD1B9",
+    "outfit_detail": "#FFFFFF",
+    "accessory": "round_glasses",
+    "hairpin": "#FFD43B",
+    "cheek": "#FF9AA2"
+  },
+  "prompt_lock": ""
+}
