@@ -82,6 +82,10 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--license", default="my_channel", help="첨부 파일 권리: my_channel | ai_generated | pexels | pixabay | kogl_type0 | kogl_type1")
     mk.add_argument("--note", default="", help="권리 근거 (예: 내가 직접 찍은 사진)")
     mk.add_argument("--confirm-rights", action="store_true", help="첨부 파일을 영상에 써도 된다는 것을 확인함")
+    mk.add_argument("--quote", action="append", default=[], dest="quotes",
+                    help="분석·비평·비교·해설에 인용할 외부 영상·캡처 (transformative_quote, 여러 번 가능)")
+    mk.add_argument("--quote-source", default="", help='인용 원본 출처 "제목 | 채널 | URL" (비우면 --url 을 출처로)')
+    mk.add_argument("--quote-reference", action="store_true", help="--reference-video 파일도 인용 자료로 쓴다")
     mk.add_argument("--visuals", default="auto", choices=("auto", "cards"), help="화면 자료: auto(기본, 권리 확인 가능한 공개 영상·사진 자동 탐색) | cards(자체 카드만)")
     mk.add_argument("--benchmark", default="auto", help="콘텐츠 구조: auto(기본, 8개 중 자동 선택) | off(기존 구성) | profile id 강제 지정")
 
@@ -213,6 +217,7 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             seconds=a.seconds, review=a.review, instructions=a.instructions, llm=a.llm, model=a.model, tts=a.tts,
             voice=a.voice, subtitles=False if a.no_subtitles else None, assets=a.asset,
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
+            quotes=a.quotes, quote_source=a.quote_source, quote_reference=a.quote_reference,
             hint=a.hint, content_format=tone, allow_openai=a.allow_openai,
             benchmark=a.benchmark, visuals=a.visuals, log=_log, **extra)
     if a.cmd == "batch":

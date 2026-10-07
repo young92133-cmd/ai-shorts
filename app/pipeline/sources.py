@@ -14,6 +14,11 @@ PROVEN_LICENSES = {"my_channel", "licensed_upload", "ai_generated", "pexels", "p
                    # Source Resolver 가 라이선스 메타데이터로 자동 판정한 공개 자료 (상업 이용·변형 허용)
                    "cc0", "public_domain", "cc_by", "nasa_media"}
 ATTRIBUTION_LICENSES = {"pexels", "pixabay", "kogl_type0", "kogl_type1", "cc_by"}
+PUBLIC_DOMAIN_LICENSES = {"cc0", "public_domain", "nasa_media"}
+# 재사용 라이선스는 확인되지 않았지만 분석·비평·비교·해설을 위한 인용으로 쓰는 자료.
+# 권리 '확인'이 아니라 인용 목적·출처 기록이 조건이고, 렌더 전 quote 검사(quote.guard)가 사용 범위를 제한한다.
+QUOTE_LICENSE = "transformative_quote"
+RIGHTS_STATUSES = ("licensed", "public_domain", "transformative_quote", "reference_only", "unknown")
 
 
 def _now() -> str:
@@ -28,6 +33,10 @@ def _key(path: str = "", url: str = "") -> str:
 def _usable(item: SourceItem) -> bool:
     if item.origin == "generated" and item.license == "ai_generated":
         return True  # 앱이 만든 출력물. 외부 입력 파일에는 적용하지 않는다.
+    if item.license == QUOTE_LICENSE:
+        # 인용은 목적과 원본 출처(제목·채널·주소 중 하나)가 기록돼 있어야 화면 후보가 된다
+        who = any(str(item.attribution.get(k) or "").strip() for k in ("title", "channel", "url"))
+        return bool(item.purpose.strip()) and who and bool(item.credit.strip())
     if item.license not in PROVEN_LICENSES:
         return False
     if not (item.rights_confirmed and item.commercial_allowed and item.adaptation_allowed
@@ -57,7 +66,8 @@ class SourceRegistry:
 
     def add(self, *, kind: str, origin: str, path: str = "", url: str = "", title: str = "",
             rights: dict[str, Any] | None = None, used_for: str = "", parent_id: str = "",
-            source_type: str = "", usage: str = "", rights_status: str = "", rights_basis: str = "") -> SourceItem:
+            source_type: str = "", usage: str = "", rights_status: str = "", rights_basis: str = "",
+            purpose: str = "", attribution: dict[str, str] | None = None, media_status: str = "") -> SourceItem:
         rights = rights or {}
         key = _key(path, url)
         old = self.items.get(key)
@@ -77,13 +87,21 @@ class SourceRegistry:
             usage=usage or (old.usage if old else ""),
             rights_basis=rights_basis or str(rights.get("rights_basis") or (old.rights_basis if old else "")),
             scene_ids=old.scene_ids if old else [], clip_ranges=old.clip_ranges if old else [],
+            purpose=purpose or str(rights.get("purpose") or (old.purpose if old else "")),
+            attribution=dict(attribution or rights.get("attribution") or (old.attribution if old else {})),
+            media_status=media_status or str(rights.get("media_status") or (old.media_status if old else "")),
         )
         item.usable_in_video = _usable(item)
         # 권리 상태는 계산 결과를 우선한다. 호출 쪽이 usable 이라고 해도 근거가 부족하면 낮춘다.
-        status = rights_status or str(rights.get("rights_status") or "")
-        if item.usable_in_video:
-            item.rights_status = "usable"
-        elif status in ("reference_only", "unknown"):
+        status = rights_status or str(rights.get("rights_status") or "") or (old.rights_status if old else "")
+        if item.usable_in_video and item.license == QUOTE_LICENSE:
+            item.rights_status = "transformative_quote"
+        elif item.usable_in_video:
+            item.rights_status = "public_domain" if item.license in PUBLIC_DOMAIN_LICENSES else "licensed"
+        elif status in ("reference_only", "unknown", "transformative_quote") or (
+                status in ("licensed", "public_domain") and item.media_status == "not_downloaded_platform_terms"):
+            # 라이선스 판단은 유지하되, 미디어가 없어(기술 제한) 화면에 못 쓰는 경우는 usable_in_video 만 False
+            # transformative_quote 후보지만 화면 조건(목적·출처·미디어)이 아직 없는 경우 포함
             item.rights_status = status
         else:
             item.rights_status = "reference_only" if origin == "url" else "unknown"
@@ -100,7 +118,7 @@ class SourceRegistry:
         seen: set[str] = set()
         while item and item.id not in seen:
             seen.add(item.id)
-            item.usage = "visual"
+            item.usage = "transformative_quote" if item.license == QUOTE_LICENSE else "visual"
             if scene_number not in item.scene_ids:
                 item.scene_ids.append(scene_number)
             if clip_range and clip_range not in item.clip_ranges:

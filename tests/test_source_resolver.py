@@ -44,21 +44,26 @@ def jpg_bytes() -> bytes:
 
 class RightsTests(unittest.TestCase):
     def test_license_matrix(self):
-        cases = {"cc0": ("usable", "cc0"), "pdm": ("usable", "public_domain"), "cc-by-4.0": ("usable", "cc_by"),
-                 "by": ("usable", "cc_by"), "by-sa": ("reference_only", ""), "cc-by-nc-2.0": ("reference_only", ""),
-                 "by-nd": ("reference_only", ""), "": ("unknown", ""), "GFDL": ("unknown", "")}
+        q = ("transformative_quote", "transformative_quote")
+        cases = {"cc0": ("public_domain", "cc0"), "pdm": ("public_domain", "public_domain"),
+                 "cc-by-4.0": ("licensed", "cc_by"), "by": ("licensed", "cc_by"),
+                 # 재사용 라이선스가 없거나 조건이 붙은 자료는 reference_only 가 아니라 인용 후보다 (2026-10-07)
+                 "by-sa": q, "cc-by-nc-2.0": q, "by-nd": q, "": q, "GFDL": q}
         for code, (status, key) in cases.items():
             r = sr.classify_license(code)
             self.assertEqual((r.status, r.license_key), (status, key), code)
         self.assertEqual(sr.classify_license("cc0", restrictions="personality rights").status, "reference_only")
-        self.assertEqual(sr.classify_license("", provider="nasa").status, "usable")
-        self.assertEqual(sr.classify_license("", provider="nasa", copyright_marker=True).status, "reference_only")
+        self.assertEqual(sr.classify_license("", provider="nasa").status, "public_domain")
+        self.assertEqual(sr.classify_license("", provider="nasa", copyright_marker=True).status, "transformative_quote")
 
-    def test_youtube_is_never_auto_usable(self):
+    def test_youtube_rights_and_download_limit_are_separate(self):
         cc = sr.classify_youtube({"license": "Creative Commons Attribution license (reuse allowed)"})
-        self.assertEqual(cc["rights_status"], "reference_only")
-        self.assertIn("약관", cc["rights_basis"])
-        self.assertEqual(sr.classify_youtube({"license": ""})["rights_status"], "reference_only")
+        self.assertEqual(cc["rights_status"], "licensed")
+        self.assertEqual(cc["media_status"], sr.NOT_DOWNLOADED)          # 권리와 별개로 미디어는 내려받지 않는다
+        plain = sr.classify_youtube({"license": ""})
+        self.assertEqual(plain["rights_status"], "transformative_quote")  # 라이선스가 없다고 reference_only 가 아니다
+        self.assertEqual(plain["media_status"], sr.NOT_DOWNLOADED)
+        self.assertIn("로컬", plain["rights_basis"])
         self.assertEqual(sr.classify_youtube(None)["rights_status"], "unknown")
 
     def test_registry_accepts_auto_licenses_only_with_basis(self):
@@ -69,13 +74,13 @@ class RightsTests(unittest.TestCase):
                                  "rights_confirmed": True, "commercial_allowed": True, "adaptation_allowed": True,
                                  "third_party_rights_checked": True, "credit": "사진: Kim / CC BY 2.0"})
             self.assertTrue(ok.usable_in_video)
-            self.assertEqual(ok.rights_status, "usable")
+            self.assertEqual(ok.rights_status, "licensed")
             no_credit = reg.add(kind="image", origin="resolved", path=str(Path(d) / "b.jpg"),
                                 rights={"license": "cc_by", "license_url": "https://creativecommons.org/licenses/by/2.0/",
                                         "rights_confirmed": True, "commercial_allowed": True, "adaptation_allowed": True,
                                         "third_party_rights_checked": True})
             self.assertFalse(no_credit.usable_in_video)          # CC BY 는 출처 표기가 있어야 한다
-            self.assertNotEqual(no_credit.rights_status, "usable")
+            self.assertNotEqual(no_credit.rights_status, "licensed")
             ref = reg.add(kind="video", origin="url", url="https://youtube.com/watch?v=x", source_type="youtube",
                           rights_status="usable", used_for="script_research")
             self.assertEqual(ref.rights_status, "reference_only")   # 호출 쪽 주장보다 계산 결과가 우선
@@ -120,7 +125,7 @@ class ScoringTests(unittest.TestCase):
         picked = sr.choose(by_scene, scores, fits, queries, ["video", "image"], min_score=50, min_visual_fit=6)
         self.assertEqual(picked[0].id, "v")                     # 구조 우선순위·장면 선호가 영상
         self.assertIn(picked[1].id, ("a", "b"))
-        self.assertNotIn("sa", [c.id for c in picked.values()])  # BY-SA 는 자동 사용 안 함
+        self.assertNotIn("sa", [c.id for c in picked.values()])  # 인용 후보는 근거 장면이 아니면 쓰지 않음
         low = {k: {**v2, "total": 10} for k, v2 in scores.items()}
         self.assertEqual(sr.choose(by_scene, low, fits, queries, ["image"], min_score=50, min_visual_fit=6), {})
 
@@ -205,12 +210,13 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
             disc = sr.Discoverer(client, sr.settings(cfg), print)
             ov = await disc.search("openverse", "image", "ship")
             wc = await disc.search("wikimedia_commons", "image", "ship")
-            self.assertEqual([c.rights.status for c in ov], ["usable", "reference_only"])
-            self.assertEqual(wc[0].rights.status, "reference_only")
+            self.assertEqual([c.rights.status for c in ov], ["licensed", "transformative_quote"])
+            self.assertEqual(wc[0].rights.status, "transformative_quote")
             self.assertEqual(wc[0].creator, "Park")
             with tempfile.TemporaryDirectory() as d:
+                ref_only = ov[0].model_copy(update={"rights": sr.classify_license("cc0", restrictions="personality")})
                 with self.assertRaises(ValueError):
-                    await sr.ingest(client, ov[1], Path(d), 10)        # BY-SA 는 내려받지 않는다
+                    await sr.ingest(client, ref_only, Path(d), 10)     # reference_only 는 내려받지 않는다
                 path, _ = await sr.ingest(client, ov[0], Path(d), 10)
                 self.assertTrue(path.is_file())
                 with self.assertRaises(ValueError):
@@ -246,10 +252,10 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("CC BY", picked["credit"])
             item = reg.by_path(picked["path"])
             self.assertTrue(item.usable_in_video)
-            self.assertEqual((item.source_type, item.rights_status), ("openverse", "usable"))
+            self.assertEqual((item.source_type, item.rights_status), ("openverse", "licensed"))
             plan = json.loads((job / sr.PLAN_FILE).read_text(encoding="utf-8"))
             self.assertIn(4, [s - 0 for s in plan["skipped_scenes"]])
-            self.assertTrue(any(r["rights_status"] == "reference_only"
+            self.assertTrue(any(r["rights_status"] == "transformative_quote"
                                 for s in plan["scenes"] for r in s["reference_only_or_unknown"]))
 
     async def test_no_provider_returns_empty(self):
@@ -313,7 +319,7 @@ class PipelineSourceTests(FactoryTestCase):
         self.assertEqual(tl["scenes"][1]["credit"], "사진: Kim / CC BY 2.0 / Openverse")
         items = json.loads((job / "sources.json").read_text(encoding="utf-8"))
         used = [i for i in items if i.get("source_type") == "openverse" and i["origin"] == "resolved"][0]
-        self.assertEqual((used["usage"], used["rights_status"], used["scene_ids"]), ("visual", "usable", [2]))
+        self.assertEqual((used["usage"], used["rights_status"], used["scene_ids"]), ("visual", "licensed", [2]))
         self.assertIn("flickr.ex/ok1", (job / "meta.txt").read_text(encoding="utf-8"))
         self.assertEqual(st.load(job)["request"]["visuals"], "auto")
 
@@ -363,7 +369,8 @@ class PipelineSourceTests(FactoryTestCase):
         download.assert_not_awaited()
         items = json.loads((Path(out["project_dir"]) / "sources.json").read_text(encoding="utf-8"))
         yt = [i for i in items if i.get("source_type") == "youtube"][0]
-        self.assertEqual((yt["rights_status"], yt["usage"]), ("reference_only", "reference_only"))
+        self.assertEqual((yt["rights_status"], yt["usage"], yt["media_status"]),
+                         ("licensed", "reference_only", sr.NOT_DOWNLOADED))
         self.assertFalse(yt["usable_in_video"])
 
 

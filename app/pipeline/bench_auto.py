@@ -76,6 +76,13 @@ class ProfileScore(BaseModel):
     reason: str = Field(description="점수의 이유 한 문장")
 
 
+class EvidenceMoment(BaseModel):
+    start_sec: float = Field(description="원본 영상에서 근거가 시작하는 초 (자막 타임스탬프 기준)")
+    end_sec: float = Field(description="근거가 끝나는 초")
+    what: str = Field(description="이 구간에서 확인되는 것 한 문장 (자막·설명으로 확인된 범위)")
+    candidate_index: int = Field(default=0, description="이 근거가 받치는 기획 후보 번호 (0부터)")
+
+
 class FollowupQuery(BaseModel):
     profile_id: str
     query: str = Field(description="이 구조에 부족한 근거를 찾을 한국어 검색어")
@@ -90,6 +97,8 @@ class ContentBrief(BaseModel):
     profile_scores: list[ProfileScore] = Field(description="목록의 모든 profile 을 하나씩 평가")
     followup_queries: list[FollowupQuery] = Field(default_factory=list,
                                                   description="점수 상위 profile 에 부족한 근거를 찾을 검색어")
+    evidence_moments: list[EvidenceMoment] = Field(
+        default_factory=list, description="참고 원본에 타임스탬프 자막이 있을 때: 관찰 포인트·주장의 근거가 되는 원본 구간 2~5개")
 
 
 # ---------- 통합 정보 ----------
@@ -142,7 +151,10 @@ BRIEF_SYSTEM = """당신은 한국어 유튜브 쇼츠 기획 PD입니다. 대�
 - creative_hook 은 표현일 뿐 새로운 사실을 만들지 않는다.
 - viewer_question 은 '○○는 여러 활동을 한다' 같은 설명이 아니라 구체적인 궁금증 하나여야 한다.
 - 모든 profile 을 빠짐없이 평가한다. 점수는 조회수 예측이 아니라 구조 적합도다.
-- 직접 만든 실험 영상·권리 확인 영상이 필요한 profile 은 그런 영상이 없다고 적혀 있으면 rights_safety 와 evidence_availability 를 낮게 준다.
+- 근거 영상이 필요한 profile 은 [근거 영상]이 '없음'이면 rights_safety 와 evidence_availability 를 낮게 준다.
+  사용자가 준 인용용 영상·캡처가 있으면 분석·비평·비교·해설 목적의 인용(transformative_quote)으로 쓸 수 있으므로,
+  해설 중심 구성이 가능한지로 rights_safety 를 평가한다.
+- 참고 원본에 [타임스탬프 자막]이 있으면 evidence_moments 에 근거 구간(초)을 적는다. 자막으로 확인되지 않는 표정·동작은 단정하지 않는다.
 - covered_slots 에는 그 profile 목록에 적힌 슬롯 이름 중 자료에서 실제로 확인된 것만 넣는다.
 - 참고 원본(유튜브·기사)이 있으면 source_analysis 에 왜 볼 만한지 분석하되 원본 문장을 베끼지 않는다. 우리 영상은 새 구성으로 만든다.
 - 모든 내용은 한국어로."""
@@ -152,7 +164,7 @@ def _profile_menu(integ: dict[str, Any]) -> str:
     rows = []
     for pid, spec in integ["profiles"].items():
         needs = spec.get("research_needs") or {}
-        video = " · 직접 만든/권리 확인 영상 필요" if spec.get("requires_licensed_video") else ""
+        video = " · 근거 영상 필요(권리 확인 영상 또는 사용자가 준 인용 영상·캡처)" if spec.get("requires_licensed_video") else ""
         rows.append(f"- {pid}: {spec.get('summary', '')}{video}\n"
                     f"  필수 슬롯: {', '.join(needs.get('required', []))} / 선택 슬롯: {', '.join(needs.get('optional', []))}")
     return "\n".join(rows)
@@ -160,10 +172,11 @@ def _profile_menu(integ: dict[str, Any]) -> str:
 
 async def analyze_brief(llm: dict[str, Any], topic: str, docs: list[ResearchDoc], integ: dict[str, Any], *,
                         input_kind: str = "topic", source_info: str = "", has_licensed_video: bool = False,
-                        instructions: str = "") -> ContentBrief:
+                        instructions: str = "", quote_media: str = "") -> ContentBrief:
     user = (
         f"[입력 종류] {input_kind}\n[주제] {topic}\n"
-        f"[권리 확인된 사용자 영상] {'있음' if has_licensed_video else '없음'}\n"
+        f"[근거 영상] {'있음' if has_licensed_video else '없음'}"
+        + (f" ({quote_media})" if quote_media else "") + "\n"
         + (f"[사용자 지침] {instructions.strip()}\n" if instructions.strip() else "")
         + (f"\n[참고 원본 정보]\n{source_info.strip()}\n" if source_info.strip() else "")
         + f"\n## 평가할 profile 목록\n{_profile_menu(integ)}\n\n"
@@ -202,7 +215,7 @@ def route(brief: ContentBrief | None, integ: dict[str, Any], *, forced: str | No
         score, parts = score_profile(ps, weights)
         gates: list[str] = []
         if spec.get("requires_licensed_video") and not has_licensed_video:
-            gates.append("권리 확인된 영상이 없어 이 구조를 만들 수 없음")
+            gates.append("근거 영상(권리 확인 영상 또는 사용자가 준 인용 영상)이 없어 이 구조를 만들 수 없음")
         required = (spec.get("research_needs") or {}).get("required", [])
         covered = [s for s in (ps.covered_slots if ps else []) if s in required + (spec.get("research_needs") or {}).get("optional", [])]
         missing = [s for s in required if s not in covered]
@@ -300,7 +313,8 @@ def scene_roles(spec: dict[str, Any], seconds: int) -> list[str]:
 
 
 def compose_prompt_block(profile_id: str, integ: dict[str, Any], decision: dict[str, Any],
-                         brief: ContentBrief | None, candidate: ContentCandidate | None, seconds: int) -> str:
+                         brief: ContentBrief | None, candidate: ContentCandidate | None, seconds: int,
+                         quote_media: bool = False) -> str:
     spec = integ["profiles"][profile_id]
     roles = scene_roles(spec, seconds)
     beats = {b["role"]: b for b in spec["beats"]}
@@ -345,6 +359,13 @@ def compose_prompt_block(profile_id: str, integ: dict[str, Any], decision: dict[
                   f"- 원본 주제: {sa.source_topic}", f"- 원본 훅 방식: {sa.source_hook}",
                   f"- 원본 구조: {sa.source_structure}",
                   f"- 볼 만한 포인트: {' / '.join(sa.interesting_points)}"]
+    if quote_media:
+        roles = ", ".join(spec.get("evidence_roles") or [])
+        lines += ["", f"[인용 장면 — {roles} 역할 장면에는 원본 영상·캡처가 짧게 인용된다]",
+                  "- 그 장면 나레이션은 원본을 다시 들려주는 게 아니라 화면에서 무엇을 봐야 하는지, 왜 중요한지 해설한다.",
+                  "- 원본 대사·가사를 그대로 읽지 않는다. 우리 분석·비교가 중심이고 원본은 근거로만 쓴다."]
+        if brief and brief.evidence_moments:
+            lines += [f"- 근거 구간 {m.start_sec:.0f}~{m.end_sec:.0f}초: {m.what}" for m in brief.evidence_moments[:5]]
     lines.append("- 사실(verified_facts)·추론(inference)·창작 표현(creative_hook)을 섞지 마세요. 자료에 없는 숫자·날짜·발언을 만들지 마세요.")
     return "\n".join(lines) + "\n"
 
@@ -459,7 +480,7 @@ def brief_summary(brief: ContentBrief | None, index: int, scored: list[dict[str,
     if not brief:
         return {"viewer_question": "", "reason_to_watch": "", "claim": "", "creative_hook": "",
                 "view_potential_score": None, "content_candidates": [], "selected_candidate": None,
-                "verified_facts": [], "inferences": [], "source_analysis": None}
+                "verified_facts": [], "inferences": [], "source_analysis": None, "evidence_moments": []}
     cand = brief.candidates[index] if 0 <= index < len(brief.candidates) else None
     return {
         "viewer_question": cand.viewer_question if cand else "",
@@ -473,6 +494,7 @@ def brief_summary(brief: ContentBrief | None, index: int, scored: list[dict[str,
         "verified_facts": [f.model_dump() for f in brief.verified_facts],
         "inferences": list(brief.inferences),
         "source_analysis": brief.source_analysis.model_dump() if brief.source_analysis else None,
+        "evidence_moments": [m.model_dump() for m in brief.evidence_moments],
     }
 
 
@@ -496,5 +518,11 @@ def state_view(decision: dict[str, Any] | None) -> dict[str, Any]:
     keys = ("mode", "requested", "selected_profile", "profile_name", "candidate_scores", "top3",
             "viewer_question", "reason_to_watch", "claim", "view_potential_score", "selection_reason",
             "fallback_used", "fallback_reason", "narration_mode", "scene_roles", "research_followup",
-            "warnings", "quality", "note")
-    return {k: decision[k] for k in keys if k in decision}
+            "warnings", "quality", "note", "view_potential", "creative_hook", "evidence_moments")
+    out = {k: decision[k] for k in keys if k in decision}
+    # 주장을 받치는 근거: 선택 후보가 가리킨 verified_facts 원문 (전체 사실·추론은 benchmark_decision.json)
+    facts = decision.get("verified_facts") or []
+    ids = decision.get("evidence_fact_ids") or []
+    if facts and ids:
+        out["evidence"] = [facts[i - 1]["text"] for i in ids if isinstance(i, int) and 0 < i <= len(facts)]
+    return out

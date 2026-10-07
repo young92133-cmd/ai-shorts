@@ -13,6 +13,7 @@ from ..config import load_config, load_presets, merge_options
 from . import article as articlemod
 from . import bench_auto
 from . import source_resolver
+from . import quote as quotemod
 from . import assets as assetmod
 from . import blueprint as blueprintmod
 from . import broll as brollmod
@@ -191,7 +192,9 @@ async def _usable_uploads(job_dir: Path, registry: SourceRegistry, reference_pat
     uploads = await assetmod.load_assets(job_dir / "uploads", log=lambda m: progress("images", 80, m))
     if reference_path:
         uploads = [a for a in uploads if Path(a.path) != reference_path]
-    return [a for a in uploads if (registry.by_path(a.path) and registry.by_path(a.path).usable_in_video)]
+    # 인용 자료(transformative_quote)는 업로드 화면 경로가 아니라 quote 배치(근거 장면·최소 구간·해설)로만 쓴다
+    return [a for a in uploads if (registry.by_path(a.path) and registry.by_path(a.path).usable_in_video
+                                   and registry.by_path(a.path).license != quotemod.QUOTE_LICENSE)]
 
 
 async def _preview_visuals(script: Script, job_dir: Path, cfg: dict[str, Any], registry: SourceRegistry,
@@ -212,7 +215,7 @@ async def _preview_visuals(script: Script, job_dir: Path, cfg: dict[str, Any], r
 
 
 def _has_licensed_video(registry: SourceRegistry) -> bool:
-    """영상 화면에 써도 되는(권리 확인된) 사용자 영상이 있는가. 분석 전용 참고 영상은 제외."""
+    """근거로 화면에 쓸 수 있는 사용자 영상(권리 확인 영상 또는 인용 영상)이 있는가. 분석 전용 참고 영상은 제외."""
     return any(i.kind == "video" and i.usable_in_video and i.used_for != "reference"
                for i in registry.items.values())
 
@@ -235,14 +238,17 @@ async def _choose_benchmark(benchmark: str, *, mode: str, llm: dict[str, Any], t
         return decision, "", None
     integ = bench_auto.load_integration()
     forced = None if benchmark == "auto" else bench_auto.validate_choice(benchmark, integ)
-    has_video = _has_licensed_video(registry)
+    has_video = _has_licensed_video(registry) or quotemod.has_quote_video(registry)
+    quotes = quotemod.quote_items(registry)
+    quote_media = (f"사용자가 준 인용 자료 영상 {sum(q.kind == 'video' for q in quotes)}개·캡처 "
+                   f"{sum(q.kind == 'image' for q in quotes)}장 — 분석·비평·비교·해설용 transformative_quote") if quotes else ""
     progress("script", 3, "시청자가 볼 이유와 어울리는 콘텐츠 구조를 분석하는 중")
     input_kind = {"url": "reference_url", "upload": "uploaded_reference_video"}.get(mode, mode)
     cbrief = None
     try:
         cbrief = await bench_auto.analyze_brief(llm, topic, docs, integ, input_kind=input_kind,
                                                 source_info=source_info, has_licensed_video=has_video,
-                                                instructions=instructions)
+                                                instructions=instructions, quote_media=quote_media)
     except Exception as e:  # noqa: BLE001 - 구조 분석이 실패해도 안전한 정보형 구조로 계속한다
         progress("script", 4, f"구조 분석 실패 - 안전한 정보형 구조로 진행합니다 ({safe_error(e)})")
     decision = bench_auto.route(cbrief, integ, forced=forced, has_licensed_video=has_video)
@@ -266,7 +272,8 @@ async def _choose_benchmark(benchmark: str, *, mode: str, llm: dict[str, Any], t
                 registry.add(kind="article", origin="url", url=doc.url, title=doc.title, used_for="script_research")
         docs.extend(extra)
         decision["research_followup"] = {"query": query, "added_docs": [d.url for d in extra]}
-    block = bench_auto.compose_prompt_block(profile_id, integ, decision, cbrief, candidate, seconds)
+    block = bench_auto.compose_prompt_block(profile_id, integ, decision, cbrief, candidate, seconds,
+                                            quote_media=bool(quotes))
     if decision.get("research_followup", {}).get("added_docs"):
         block += "- 보충 조사 자료(위 사실 목록 뒤에 추가된 자료)는 본문에서 확인되는 내용만 쓰세요.\n"
     bench_auto.save_decision(job_dir, decision)
@@ -332,6 +339,7 @@ async def run_pipeline(
     youtube_urls = [u for u in urls if articlemod.is_youtube(u)]
     reference_path: Path | None = None
     reference_lines: list[str] = []
+    reference_words: list[Word] = []   # 업로드 참고 영상의 전사 (인용 구간을 고를 때 사용)
     reference_query = ""
     source_info = ""   # benchmark 분석용 참고 원본 정보 (제목·채널·요약)
 
@@ -357,6 +365,7 @@ async def run_pipeline(
         topic, reference_query = brief.topic, brief.search_query
         docs = [doc]
         reference_lines = youtube.words_to_lines(words)
+        reference_words = list(words)
         result["reference"] = brief.model_dump()
         source_info = f"업로드 참고 영상 요약: {brief.summary}"
         extra_context = "업로드 영상에서 확인된 내용만 출발점으로 쓰고, 새 자료와 대조해 새로운 관점의 대본을 쓰세요."
@@ -386,7 +395,8 @@ async def run_pipeline(
         yt_rights = source_resolver.classify_youtube(info)
         registry.add(kind="video", origin="url", url=input_text, title=info.get("title", ""),
                      used_for="script_research", source_type="youtube", usage=yt_rights["usage"],
-                     rights_status=yt_rights["rights_status"], rights_basis=yt_rights["rights_basis"])
+                     rights_status=yt_rights["rights_status"], rights_basis=yt_rights["rights_basis"],
+                     media_status=yt_rights["media_status"])
         result["source_usage"] = yt_rights
         result["source"] = info
         progress("research", 20, f"'{info['title']}' 자막 가져오는 중")
@@ -397,6 +407,12 @@ async def run_pipeline(
             words = await youtube.transcribe(audio)
         (job_dir / "transcript.json").write_text(
             json.dumps([w.model_dump() for w in words], ensure_ascii=False), encoding="utf-8")
+        quotemod.enrich_attribution(registry, input_text, info)
+        (job_dir / quotemod.CONTEXT_FILE).write_text(json.dumps(
+            {"url": input_text, "title": info.get("title", ""), "channel": info.get("channel", "")},
+            ensure_ascii=False), encoding="utf-8")
+        stamped = "\n".join(youtube.words_to_lines(words))[:6000]
+        source_info += f"\n[타임스탬프 자막 — 근거 구간을 고를 때만 사용]\n{stamped}"
 
         if visual_mode == "clip":
             progress("script", 10, "하이라이트 구간 고르는 중")
@@ -686,6 +702,19 @@ async def run_pipeline(
     broll_cover = {p.scene_index: broll_sources[p.source_index].path for p in broll_picks if p}
     # 5-A. Source Resolver: 업로드·내 영상이 없는 장면에 권리 확인 가능한 공개 자료를 찾는다
     resolved: dict[int, dict[str, Any]] = {}
+    spec_q = None
+    if bench_decision and bench_decision.get("selected_profile"):
+        spec_q = bench_auto.load_integration()["profiles"].get(bench_decision["selected_profile"])
+    quoted: dict[int, dict[str, Any]] = {}
+    if quotemod.quote_items(registry):
+        progress("images", 25, "사용자가 준 인용 영상·캡처를 근거 장면에 배치하는 중")
+        ctx = quotemod.load_context(job_dir)
+        quoted = await quotemod.plan_quotes(
+            job_dir=job_dir, registry=registry, script=script, durations=durations, spec=spec_q,
+            decision=bench_decision, transcript=quotemod.load_transcript(job_dir) or (
+                [w for w in reference_words] if reference_words else None),
+            transcript_url=ctx.get("url", ""), transcript_path=str(reference_path) if reference_path else "",
+            skip=set(by_scene) | set(broll_cover), progress=progress)
     if source_search:
         spec = None
         if bench_decision and bench_decision.get("selected_profile"):
@@ -695,7 +724,7 @@ async def run_pipeline(
         try:
             found = await source_resolver.resolve(
                 llm=llm, script=script, topic=topic, durations=durations, job_dir=job_dir, registry=registry,
-                cfg=cfg, profile_spec=spec, fresh_matters=fresh, skip=set(by_scene) | set(broll_cover),
+                cfg=cfg, profile_spec=spec, fresh_matters=fresh, skip=set(by_scene) | set(broll_cover) | set(quoted),
                 progress=progress)
             resolved = found["scenes"]
             rep = found["report"]
@@ -706,6 +735,14 @@ async def run_pipeline(
         except Exception as e:  # noqa: BLE001 - 자료 탐색이 실패해도 카드로 영상은 만든다
             progress("images", 60, f"자료 자동 탐색 실패 - 자체 카드로 진행합니다 ({safe_error(e)})")
             result["source_resolver"] = {"error": safe_error(e)}
+    resolved = {**resolved, **quoted}
+    if any(e.get("quote") for e in resolved.values()):
+        # 렌더 전 인용 안전 검사: 비중·해설·출처·중복·질문 연결. 문제가 있으면 줄이거나 카드로 되돌린다
+        resolved, quote_report = quotemod.guard(resolved, script, durations, bench_decision, registry, spec_q)
+        quotemod.save_report(job_dir, quote_report)
+        result["quote_check"] = quote_report
+        for line in quote_report["actions"]:
+            progress("images", 62, f"인용 검사: {line}")
     decisions = visualsmod.plan_visuals(script.scenes, by_scene, registry,
                                         ai_available=get_images(cfg) is not None, broll=broll_cover,
                                         resolved=resolved)
@@ -717,10 +754,11 @@ async def run_pipeline(
         credit = ""
         if d.resolved_visual_type == "upload_video":
             credit = brollmod.credit_for(broll_picks[i], broll_sources)
-        elif d.asset_source in ("user_upload", "licensed_source"):
+        elif d.asset_source in ("user_upload", "licensed_source", "quote_source"):
             item = registry.by_path(d.asset_path)
             credit = item.credit if item else ""
-        kind = {"user_upload": "upload", "ai_generated": "generated", "licensed_source": "sourced"}.get(d.asset_source, "card")
+        kind = {"user_upload": "upload", "ai_generated": "generated", "licensed_source": "sourced",
+                "quote_source": "sourced"}.get(d.asset_source, "card")
         visuals.append(SceneVisual(scene_index=i, kind="broll" if d.resolved_visual_type == "upload_video" else kind,
                                    path=d.asset_path, credit=credit, note=d.resolved_visual_type))
     # 설계도·manifest 에 무엇을 왜 골랐는지 남긴다 (2C 시간은 그대로)
@@ -735,7 +773,7 @@ async def run_pipeline(
                                if d.resolved_visual_type == "source_video" else "")
     if resolved:
         used_pages = [f"{r['credit']} — {r['page_url']}" for i, r in sorted(resolved.items())
-                      if decisions[i].asset_source == "licensed_source" and r.get("page_url")]
+                      if decisions[i].asset_source in ("licensed_source", "quote_source") and r.get("page_url")]
         all_sources = list(dict.fromkeys([*all_sources, *used_pages]))
         _write_meta(job_dir, script.titles, script.description, script.hashtags, all_sources)
         result["final_sources"] = all_sources
@@ -766,6 +804,8 @@ async def run_pipeline(
             found = resolved.get(i) or {}
             visual = {"kind": "video", "path": Path(decisions[i].asset_path), "src_start": float(found.get("start", 0.0)),
                       "has_audio": False, "source_url": found.get("page_url", "")}
+            if found.get("play"):
+                visual["play"] = float(found["play"])   # 인용: 이 길이만 재생하고 나머지는 정지 화면(해설)
         else:
             visual = {"kind": "image", "path": images_by_scene[i]}
         # 첨부 자료를 쓴 장면에는 해당 구간 동안 출처를 표시한다.

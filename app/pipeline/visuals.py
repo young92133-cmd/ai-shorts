@@ -122,8 +122,11 @@ def plan_visuals(scenes: list[Any], uploads: dict[int, Asset], registry: SourceR
             out.append(VisualDecision(
                 scene_id=sid, requested_visual_type=requested,
                 resolved_visual_type="source_video" if found["kind"] == "video" else "source_image",
-                asset_path=found["path"], asset_source="licensed_source", rights_status="allowed",
-                rights_reason=f"{found_item.license}: {found_item.rights_basis}"[:200],
+                asset_path=found["path"], asset_source=found.get("asset_source", "licensed_source"),
+                rights_status="allowed",
+                rights_reason=(f"인용(transformative_quote, 목적: {found_item.purpose}) — 출처: {found_item.credit}"
+                               if found_item.license == "transformative_quote"
+                               else f"{found_item.license}: {found_item.rights_basis}")[:200],
                 selection_reason=found.get("reason", "장면에 맞는 권리 확인 공개 자료")))
             continue
         if ai_available and content in IMAGE_FIRST:
@@ -252,7 +255,7 @@ async def materialize(decisions: list[VisualDecision], scenes: list[Any], job_di
             await card(d, s, out, variants[i])
         if d.resolved_visual_type != "upload_video":
             d.asset_path = str(out)
-            if not preview and registry and d.asset_source not in ("user_upload", "licensed_source"):
+            if not preview and registry and d.asset_source not in ("user_upload", "licensed_source", "quote_source"):
                 registry.add(kind="image", origin="generated", path=str(out), title=f"장면 {i + 1}",
                              used_for=f"scene_{i:02d}")
         if not preview and registry:

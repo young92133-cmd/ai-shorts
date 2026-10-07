@@ -89,7 +89,8 @@ def build_timeline(
             "visual": {"kind": v["kind"], "path": rel(v["path"], job_dir),
                        "src_start": round(float(v.get("src_start", 0.0)), 3),
                        "has_audio": bool(v.get("has_audio", False)),
-                       "source_url": v.get("source_url", "")},
+                       "source_url": v.get("source_url", ""),
+                       **({"play": round(float(v["play"]), 3)} if v.get("play") else {})},
         })
         t += float(s["duration"])
     return {
@@ -256,6 +257,8 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
             clip = {"kind": v["kind"], "path": resolve(v["path"], job_dir), "duration": s["duration"]}
             if v["kind"] == "video":
                 clip.update(start=v["src_start"], has_audio=v["has_audio"])
+                if v.get("play"):
+                    clip["play"] = v["play"]   # 인용: 이만큼만 재생하고 나머지는 정지 화면
             clips.append(clip)
         return await render_broll(clips, narration, out_path,
                                   source_volume=float(tl["source_volume"]),

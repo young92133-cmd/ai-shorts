@@ -186,6 +186,10 @@ class SourceItem(BaseModel):
     rights_basis: str = ""         # 판정 근거 한 문장
     scene_ids: list[int] = Field(default_factory=list)       # 화면에 쓴 장면 번호 (1부터)
     clip_ranges: list[str] = Field(default_factory=list)     # 영상에서 쓴 구간 "mm:ss.s-mm:ss.s"
+    # transformative_quote (2026-10-07): 인용·비평·해설 목적과 원본 출처
+    purpose: str = ""              # 예: comparison/commentary, observation/analysis
+    attribution: dict[str, str] = Field(default_factory=dict)   # {"title", "channel", "url"}
+    media_status: str = ""         # 권리와 별개인 기술 상태: local_file / downloaded / not_downloaded_platform_terms
 
 
 class BrollPick(BaseModel):

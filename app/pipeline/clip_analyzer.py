@@ -99,8 +99,14 @@ def _tokens(text: str) -> set[str]:
 
 def score_windows(duration: float, need: float, shots: list[float], silences: list[tuple[float, float]],
                   transcript: list[Word] | None = None, keywords: list[str] | None = None,
-                  step: float = 1.0) -> list[ClipCandidate]:
-    """need 초 길이의 후보 구간을 만들고 점수를 매긴다 (순수 함수: 테스트 가능)."""
+                  step: float = 1.0, prefer: list[tuple[float, float]] | None = None,
+                  avoid: list[tuple[float, float]] | None = None) -> list[ClipCandidate]:
+    """need 초 길이의 후보 구간을 만들고 점수를 매긴다 (순수 함수: 테스트 가능).
+
+    prefer: benchmark 가 찾은 근거 시각(원본 자막 타임스탬프). 겹치는 구간에 가산점.
+    avoid: 이미 다른 장면에서 쓴 구간. 겹치면 후보에서 뺀다.
+    """
+    prefer, avoid = list(prefer or []), list(avoid or [])
     need = max(0.5, min(need, duration))
     keys = set().union(*[_tokens(k) for k in keywords or []]) if keywords else set()
     starts = {0.0, *[s for s in shots if s + need <= duration]}
@@ -112,6 +118,8 @@ def score_windows(duration: float, need: float, shots: list[float], silences: li
     out: list[ClipCandidate] = []
     for s in sorted(starts):
         e = round(min(duration, s + need), 2)
+        if any(s < b and a < e for a, b in avoid):
+            continue
         cuts = [c for c in shots if s + 0.15 < c < e - 0.15]
         stability = 40 if not cuts else (24 if len(cuts) == 1 else 8)
         on_shot = any(abs(s - c) < 0.25 for c in shots) or s == 0.0
@@ -124,8 +132,15 @@ def score_windows(duration: float, need: float, shots: list[float], silences: li
             text = " ".join(w.text for w in transcript if w.end > s and w.start < e)
             hit = len(keys & _tokens(text))
             relevance = min(20, 4 + 8 * hit)
-        parts = {"stability": stability, "boundary": boundary, "position": position, "relevance": relevance}
+        evidence = 0
+        if prefer:
+            hit_rank = next((k for k, (a, b) in enumerate(prefer) if s < b and a < e), None)
+            evidence = 0 if hit_rank is None else max(10, 30 - 5 * hit_rank)
+        parts = {"stability": stability, "boundary": boundary, "position": position, "relevance": relevance,
+                 "evidence": evidence}
         why = []
+        if evidence:
+            why.append("근거 시각과 겹침")
         why.append("한 샷 안" if not cuts else f"컷 {len(cuts)}번 포함")
         if on_shot:
             why.append("샷 경계에서 시작")
@@ -149,12 +164,14 @@ def _pick_spread(cands: list[ClipCandidate], n: int, gap: float) -> list[ClipCan
 
 
 def analyze_sync(path: Path, need: float, *, keywords: list[str] | None = None,
-                 transcript: list[Word] | None = None, top: int = 3) -> ClipAnalysis:
+                 transcript: list[Word] | None = None, top: int = 3,
+                 prefer: list[tuple[float, float]] | None = None,
+                 avoid: list[tuple[float, float]] | None = None) -> ClipAnalysis:
     duration = probe_duration_sync(path)
     limit = min(duration, MAX_ANALYZE_SECONDS)
     shots = detect_shots(path, limit)
     silences = detect_silences(path, limit) if has_audio_sync(path) else []
-    cands = score_windows(limit, need, shots, silences, transcript, keywords)
+    cands = score_windows(limit, need, shots, silences, transcript, keywords, prefer=prefer, avoid=avoid)
     best = _pick_spread(cands, top, gap=0.5)
     return ClipAnalysis(path=str(path), duration=round(duration, 2), shots=shots, silences=silences,
                         has_transcript=bool(transcript), candidates=best, recommended=best[0] if best else None)

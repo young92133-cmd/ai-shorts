@@ -283,6 +283,9 @@ async def render_broll(
             s = float(c.get("start", 0.0))
             e = s + dur
             proof_end = e if frame_layout == "observation" else e + 1.0
+            if c.get("play"):
+                # 인용(transformative_quote): 필요한 구간만 재생하고 장면의 나머지는 마지막 프레임 정지(해설 자막·나레이션)
+                proof_end = s + min(dur, float(c["play"]))
             # 원본이 모자랄 수 있으니 뒤를 마지막 프레임으로 채운 뒤 정확히 자른다
             filters.append(
                 f"[{idx}:v]trim={s:.3f}:{proof_end:.3f},setpts=PTS-STARTPTS,"

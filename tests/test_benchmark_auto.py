@@ -236,6 +236,10 @@ class PipelineIntegrationTests(FactoryTestCase):
         self.assertTrue(bench["selection_reason"])
         self.assertEqual(bench["narration_mode"], "narrated")
         self.assertIn("quality", bench)
+        # 근거와 View Potential 내부 평가도 상태 파일에 남는다
+        self.assertEqual(bench["evidence"], ["최근 무대 의상 색이 바뀌었다", "작년 무대는 검은 의상 위주였다"])
+        self.assertEqual(bench["view_potential"]["total"], 84)
+        self.assertEqual(bench["creative_hook"], "결국 달라졌다")
         self.assertEqual(out["benchmark"]["selected_profile"], "curiosity_update_story")
         decision = bench_auto.load_decision(job)
         self.assertEqual(decision["verified_facts"][0]["text"], "최근 무대 의상 색이 바뀌었다")

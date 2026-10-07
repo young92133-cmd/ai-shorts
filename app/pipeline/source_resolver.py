@@ -4,13 +4,17 @@
      → 적합도 평가(AI) + 품질·최신성·권리 확실성·편집 용이성 점수 → 장면별 선택 → ingest(다운로드)
      → 영상이면 Clip Analyzer 로 구간 선택 → Scene Planner 로 넘김.
 
-권리 원칙
-- 검색·분석은 적극적으로 한다. 최종 화면에 직접 쓰는 것은 사용 근거가 확인된 자료뿐이다.
-- 자동 usable: CC0 · Public Domain Mark · CC BY(출처 표기) · NASA 제작 자료 · Pexels/Pixabay 라이선스(키가 있을 때).
-- 자동 reference_only: CC BY-SA(영상 전체에 동일 조건이 걸림) · NC(비상업) · ND(변경 금지) · 표기 없음.
-- YouTube: 공개돼 있다는 이유로 usable 이 아니다. 라이선스 표기는 기록하되, YouTube 약관상 자동 다운로드를
-  지원하지 않으므로 화면 소스로 승격하지 않는다(사용자가 원본 파일을 직접 제공하면 기존 업로드 경로).
-- 다운로드는 discover → inspect → classify → usable 일 때만 ingest 순서로 한다.
+권리 원칙 (2026-10-07 transformative_quote 반영)
+- 검색·분석은 적극적으로 한다. 외부 자료의 직접 재업로드를 기본 동작으로 하지 않는다.
+- 상태: licensed(재사용 라이선스·권리 확인) · public_domain(CC0·퍼블릭 도메인·NASA 제작)
+  · transformative_quote(라이선스는 확인되지 않았지만 분석·비평·비교·해설을 위한 인용 후보)
+  · reference_only(사용 제한 표기 등으로 현재 구성에서 화면 사용이 부적절) · unknown.
+- 재사용 라이선스가 없다는 이유만으로 reference_only 로 보내지 않는다. NC·ND·SA·표기 없음은 transformative_quote 후보다.
+  인용 후보는 profile 의 source_strategy 가 허용하고, 근거 역할 장면이며, 장면 주장을 실제로 보여 줄 때(evidence_fit)만 고른다.
+  사용 범위는 quote.guard 가 렌더 전에 제한한다(짧은 구간·정지 화면·해설 필수·출처 표시).
+- 권리 판단과 다운로드 기술 제한은 별개다. YouTube 는 약관상 자동 다운로드를 하지 않는다(media_status 로 기록).
+  YouTube 장면은 사용자가 제공한 로컬 영상·캡처로 인용한다(quote.py).
+- 다운로드는 discover → inspect → classify → 화면 후보일 때만 ingest 순서로 한다.
 """
 from __future__ import annotations
 
@@ -40,8 +44,14 @@ Progress = Callable[[str, int, str], None]
 
 # ---------- 모델 ----------
 
+USABLE = ("licensed", "public_domain")
+QUOTE = "transformative_quote"
+EVIDENCE_STRATEGY = ["licensed", "public_domain", "transformative_quote", "generated", "card"]
+INFO_STRATEGY = ["licensed", "public_domain", "generated", "transformative_quote", "card"]
+
+
 class Rights(BaseModel):
-    status: Literal["usable", "reference_only", "unknown"]
+    status: Literal["licensed", "public_domain", "transformative_quote", "reference_only", "unknown"]
     basis: str
     confidence: float = 0.0           # 0~1
     license_key: str = ""             # sources.py PROVEN_LICENSES 의 키 (usable 일 때)
@@ -68,6 +78,8 @@ class VisualCandidate(BaseModel):
 
     def credit(self) -> str:
         who = self.creator.strip()[:30] or self.provider
+        if self.rights.status == QUOTE:
+            return f"인용: {who} · {self.title[:30]}"[:80]
         label = self.rights.label or self.rights.license_key
         src = {"openverse": "Openverse", "wikimedia_commons": "Wikimedia Commons", "nasa": "NASA",
                "pexels": "Pexels", "pixabay": "Pixabay"}.get(self.provider, self.provider)
@@ -116,61 +128,66 @@ def classify_license(code: str, *, version: str = "", license_url: str = "", pro
                       confidence=0.0, license_url=license_url)
     if provider == "nasa":
         if copyright_marker:
-            return Rights(status="reference_only", basis="NASA 자료지만 제3자 저작권 표기가 있어 화면 사용 제외",
-                          license_url=license_url)
-        return Rights(status="usable", basis="NASA 미디어 이용 지침: NASA 제작 자료는 일반적으로 저작권이 없음 "
+            return Rights(status=QUOTE, basis="NASA 자료지만 제3자 저작권 표기가 있음 — 해설 목적 인용 후보로만",
+                          confidence=0.4, license_key=QUOTE, license_url=license_url)
+        return Rights(status="public_domain", basis="NASA 미디어 이용 지침: NASA 제작 자료는 일반적으로 저작권이 없음 "
                       "(NASA 로고·인물의 보증 표현 금지)", confidence=0.8, license_key="nasa_media",
                       license_url=license_url or "https://www.nasa.gov/nasa-brand-center/images-and-media/",
                       label="NASA")
     if provider in ("pexels", "pixabay"):
         url = {"pexels": "https://www.pexels.com/license/",
                "pixabay": "https://pixabay.com/service/license-summary/"}[provider]
-        return Rights(status="usable", basis=f"{provider.title()} 라이선스: 상업 이용·변형 허용, 출처 표기 권장",
+        return Rights(status="licensed", basis=f"{provider.title()} 라이선스: 상업 이용·변형 허용, 출처 표기 권장",
                       confidence=0.9, license_key=provider, license_url=url, label=provider.title())
     norm, label = _cc(code, version)
     if not norm:
-        return Rights(status="unknown", basis="라이선스 표기를 확인할 수 없음", license_url=license_url)
+        return Rights(status=QUOTE, basis="재사용 라이선스 표기 없음 — 분석·해설 목적 인용 후보", confidence=0.35,
+                      license_key=QUOTE, license_url=license_url)
     if norm in ("cc0", "zero"):
-        return Rights(status="usable", basis="CC0: 권리 포기, 상업 이용·변형 허용", confidence=1.0,
+        return Rights(status="public_domain", basis="CC0: 권리 포기, 상업 이용·변형 허용", confidence=1.0,
                       license_key="cc0", license_url=license_url or "https://creativecommons.org/publicdomain/zero/1.0/",
                       label="CC0")
     if norm in ("pdm", "pd", "public domain", "publicdomain") or "public domain" in norm:
-        return Rights(status="usable", basis="퍼블릭 도메인 표기: 상업 이용·변형 허용", confidence=0.95,
+        return Rights(status="public_domain", basis="퍼블릭 도메인 표기: 상업 이용·변형 허용", confidence=0.95,
                       license_key="public_domain",
                       license_url=license_url or "https://creativecommons.org/publicdomain/mark/1.0/",
                       label="Public Domain")
     parts = {p for p in re.split(r"[- ]+", norm) if p and not re.fullmatch(r"[0-9.]+", p)}
-    if "nc" in parts:
-        return Rights(status="reference_only", basis=f"{label}: 비상업 조건이라 화면 사용 제외", license_url=license_url,
-                      label=label)
-    if "nd" in parts:
-        return Rights(status="reference_only", basis=f"{label}: 변경 금지 조건(자르기·자막 불가)이라 화면 사용 제외",
-                      license_url=license_url, label=label)
-    if "sa" in parts:
-        return Rights(status="reference_only", basis=f"{label}: 동일조건변경허락이 영상 전체에 걸릴 수 있어 자동 사용 제외",
-                      license_url=license_url, label=label)
+    if parts & {"nc", "nd", "sa"}:
+        why = {"nc": "비상업 조건", "nd": "변경 금지 조건", "sa": "동일조건변경허락"}
+        cond = ", ".join(why[k] for k in ("nc", "nd", "sa") if k in parts)
+        return Rights(status=QUOTE, basis=f"{label}: {cond}이 있어 라이선스로는 쓰지 않음 — 분석·해설 목적 인용 후보",
+                      confidence=0.45, license_key=QUOTE, license_url=license_url, label=label)
     if parts == {"by"}:
-        return Rights(status="usable", basis=f"{label}: 출처 표기 조건으로 상업 이용·변형 허용", confidence=0.85,
+        return Rights(status="licensed", basis=f"{label}: 출처 표기 조건으로 상업 이용·변형 허용", confidence=0.85,
                       license_key="cc_by", license_url=license_url or "https://creativecommons.org/licenses/by/4.0/",
                       label=label)
-    return Rights(status="unknown", basis=f"알 수 없는 라이선스 표기({code})", license_url=license_url)
+    return Rights(status=QUOTE, basis=f"알 수 없는 라이선스 표기({code}) — 분석·해설 목적 인용 후보", confidence=0.35,
+                  license_key=QUOTE, license_url=license_url)
+
+
+NOT_DOWNLOADED = "not_downloaded_platform_terms"
 
 
 def classify_youtube(info: dict[str, Any] | None) -> dict[str, str]:
-    """YouTube 링크의 권리 상태. 공개 영상이라는 이유만으로 usable 이 아니다."""
+    """YouTube 링크의 권리 상태와 미디어 상태를 따로 기록한다.
+
+    권리: CC BY 표기면 licensed, 그 외에는 분석·해설 목적 transformative_quote 후보.
+    미디어: YouTube 약관상 자동 다운로드를 하지 않는다 → 화면에 쓰려면 사용자가 로컬 영상·캡처를 제공한다.
+    """
+    media = {"media_status": NOT_DOWNLOADED, "usage": "reference_only"}
     if not info:
-        return {"rights_status": "unknown", "usage": "reference_only",
-                "rights_basis": "영상 정보를 확인하지 못해 권리 상태를 알 수 없음 — 내용 참고만"}
+        return {**media, "rights_status": "unknown",
+                "rights_basis": "영상 정보를 확인하지 못해 권리 상태를 알 수 없음 — 내용 분석만"}
     lic = str(info.get("license") or "")
     if "creative commons" in lic.lower():
-        return {"rights_status": "reference_only", "usage": "reference_only", "license_label": "CC BY (YouTube)",
-                "rights_basis": "YouTube 표기상 CC BY(재사용 허용)지만 YouTube 약관상 자동 다운로드를 지원하지 않아 "
-                                "화면 소스로 쓰지 않음. 쓰려면 원본 파일을 직접 제공"}
-    if lic:
-        return {"rights_status": "reference_only", "usage": "reference_only",
-                "rights_basis": f"YouTube 표준 라이선스({lic[:40]}) — 내용·구조 분석만, 화면에 쓰지 않음"}
-    return {"rights_status": "reference_only", "usage": "reference_only",
-            "rights_basis": "재사용 라이선스 표기가 없는 YouTube 영상 — 내용·구조 분석만, 화면에 쓰지 않음"}
+        return {**media, "rights_status": "licensed", "license_label": "CC BY (YouTube)",
+                "rights_basis": "YouTube 표기상 CC BY(재사용 허용). 미디어는 약관상 자동 다운로드하지 않음 — "
+                                "원본 파일을 제공하면 출처 표기와 함께 사용"}
+    return {**media, "rights_status": QUOTE,
+            "rights_basis": (f"YouTube 표준 라이선스({lic[:40]})" if lic else "재사용 라이선스 표기 없음")
+                            + " — 분석·비평·비교·해설 목적 인용 후보. 미디어는 약관상 자동 다운로드하지 않으므로 "
+                              "사용자가 로컬 영상·캡처를 제공하면 transformative_quote 로 사용"}
 
 
 # ---------- discover (공개 API) ----------
@@ -429,7 +446,7 @@ def score_candidate(c: VisualCandidate, fit: FitScore | None, need: float, *, fr
     if fresh_matters and c.date[:4].isdigit():
         age = today.year - int(c.date[:4])
         fresh = 1.0 if age <= 1 else 0.7 if age <= 3 else 0.4
-    rights = c.rights.confidence if c.rights.status == "usable" else 0.0
+    rights = c.rights.confidence if c.rights.status in (*USABLE, QUOTE) else 0.0
     if c.media_type == "video":
         if c.duration and c.duration < need * 0.6:
             edit = 0.3
@@ -448,23 +465,35 @@ def score_candidate(c: VisualCandidate, fit: FitScore | None, need: float, *, fr
 
 def choose(by_scene: dict[int, list[VisualCandidate]], scores: dict[str, dict[str, Any]],
            fits: dict[str, FitScore], queries: dict[int, SceneQuery], priority: list[str], *,
-           min_score: int, min_visual_fit: int) -> dict[int, VisualCandidate]:
-    """장면마다 권리 usable + 점수 기준을 넘는 최고 후보. 같은 자료를 두 장면에 쓰지 않는다."""
+           min_score: int, min_visual_fit: int, strategy: list[str] | None = None,
+           quote_scenes: set[int] | None = None) -> dict[int, VisualCandidate]:
+    """장면마다 화면 후보 중 점수 기준을 넘는 최고 후보. 같은 자료를 두 장면에 쓰지 않는다.
+
+    licensed/public_domain 은 어느 장면이든, transformative_quote 는 profile 전략이 허용하고
+    근거 역할 장면(quote_scenes)이며 장면 주장을 실제로 보여 줄 때(evidence_fit >= 7)만 후보가 된다.
+    전략 순서가 앞인 상태일수록 가산점을 받는다.
+    """
+    strategy = strategy or INFO_STRATEGY
+    quote_scenes = quote_scenes or set()
     bonus = {kind: (8 if i == 0 else 3) for i, kind in enumerate(priority)}
+    order = {st: len(strategy) - k for k, st in enumerate(strategy)}
     ranked: list[tuple[float, int, VisualCandidate]] = []
     for i, cands in by_scene.items():
         q = queries.get(i)
         for c in cands:
-            if c.rights.status != "usable":
-                continue
             fit = fits.get(c.id)
+            if c.rights.status == QUOTE:
+                if QUOTE not in strategy or i not in quote_scenes or not fit or fit.evidence_fit < 7:
+                    continue
+            elif c.rights.status not in USABLE:
+                continue
             if not fit or fit.visual_fit < min_visual_fit:
                 continue
             total = scores[c.id]["total"]
             if total < min_score:
                 continue
             pref = 4 if q and q.prefer == c.media_type else 0
-            ranked.append((total + bonus.get(c.media_type, 0) + pref, i, c))
+            ranked.append((total + bonus.get(c.media_type, 0) + pref + 3 * order.get(c.rights.status, 0), i, c))
     ranked.sort(key=lambda r: -r[0])
     picked: dict[int, VisualCandidate] = {}
     used: set[str] = set()
@@ -493,8 +522,8 @@ async def _nasa_files(client: httpx.AsyncClient, c: VisualCandidate) -> tuple[st
 
 async def ingest(client: httpx.AsyncClient, c: VisualCandidate, dest_dir: Path, max_mb: int) -> tuple[Path, str]:
     """usable 로 판정된 후보만 내려받는다. (파일, 자막 텍스트)"""
-    if c.rights.status != "usable":
-        raise ValueError("usable 이 아닌 자료는 내려받지 않습니다")
+    if c.rights.status not in (*USABLE, QUOTE):
+        raise ValueError("화면 후보가 아닌 자료(reference_only/unknown)는 내려받지 않습니다")
     srt_text = ""
     url = c.file_url
     if c.provider == "nasa":
@@ -567,7 +596,11 @@ async def resolve(*, llm: dict[str, Any], script: Any, topic: str, durations: li
         if getattr(s, "beat_role", "") in card_roles:
             skip.add(i)
     priority = list((profile_spec or {}).get("visual_priority", ["image", "video"]))
+    strategy = list((profile_spec or {}).get("source_strategy") or INFO_STRATEGY)
+    evidence_roles = set((profile_spec or {}).get("evidence_roles") or [])
+    quote_scenes = {i for i, s in enumerate(script.scenes) if getattr(s, "beat_role", "") in evidence_roles}
     report: dict[str, Any] = {"providers": [], "query_method": "", "fit_method": "", "scenes": [], "errors": [],
+                              "source_strategy": strategy, "quote_scenes": sorted(i + 1 for i in quote_scenes),
                               "skipped_scenes": sorted(skip), "note": "점수는 장면 화면 적합도 내부 값이며 조회수 예측이 아님"}
     log = lambda m: progress("images", 40, m)  # noqa: E731
     async with httpx.AsyncClient(headers={"User-Agent": user_agent(cfg)}, timeout=30, follow_redirects=True) as client:
@@ -597,23 +630,26 @@ async def resolve(*, llm: dict[str, Any], script: Any, topic: str, durations: li
             jobs = [one(p, m, q.query_en) for p in providers for m in medias]
             results = await asyncio.gather(*jobs)
             cands = [c for group in results for c in group]
-            if len([c for c in cands if c.rights.status == "usable"]) < 2 and q.alt_query_en:
+            if len([c for c in cands if c.rights.status in USABLE]) < 2 and q.alt_query_en:
                 results = await asyncio.gather(*[one(p, m, q.alt_query_en) for p in providers for m in medias])
                 cands += [c for group in results for c in group]
             seen: set[str] = set()
             uniq = [c for c in cands if not (c.id in seen or seen.add(c.id))]
             # usable 을 앞에, 제공처를 섞어서 평가 대상 수를 제한한다
-            uniq.sort(key=lambda c: (c.rights.status != "usable", -c.rights.confidence))
+            uniq.sort(key=lambda c: (c.rights.status not in USABLE, c.rights.status != QUOTE, -c.rights.confidence))
             by_scene[i] = uniq[: int(st["max_candidates_per_scene"])]
             report["scenes"].append({"scene": i + 1, "query": q.query_en, "alt_query": q.alt_query_en,
                                      "prefer": q.prefer, "must_show": q.must_show,
-                                     "found": len(uniq), "usable": sum(c.rights.status == "usable" for c in uniq),
+                                     "found": len(uniq), "usable": sum(c.rights.status in USABLE for c in uniq),
+                                     "quote_candidates": sum(c.rights.status == QUOTE for c in uniq),
                                      "reference_only_or_unknown": [
                                          {"title": c.title[:60], "provider": c.provider, "rights_status": c.rights.status,
                                           "basis": c.rights.basis, "url": c.page_url}
-                                         for c in uniq if c.rights.status != "usable"][:4]})
+                                         for c in uniq if c.rights.status not in USABLE][:4]})
         report["errors"] = disc.errors
-        usable_by_scene = {i: [c for c in cs if c.rights.status == "usable"] for i, cs in by_scene.items()}
+        allowed = (*USABLE, QUOTE) if QUOTE in strategy else USABLE
+        usable_by_scene = {i: [c for c in cs if c.rights.status in allowed and
+                               (c.rights.status != QUOTE or i in quote_scenes)] for i, cs in by_scene.items()}
         progress("images", 44, "자료 후보가 장면과 맞는지 평가하는 중")
         fits, report["fit_method"] = await rate_fit(llm, script, queries, usable_by_scene)
         scores = {c.id: score_candidate(c, fits.get(c.id), durations[i] if i < len(durations) else 4.0,
@@ -629,7 +665,8 @@ async def resolve(*, llm: dict[str, Any], script: Any, topic: str, durations: li
                   **scores.get(c.id, {})} for c in usable_by_scene.get(i, [])],
                 key=lambda x: -(x.get("total") or 0))
         picked = choose(usable_by_scene, scores, fits, queries, priority,
-                        min_score=int(st["min_score"]), min_visual_fit=int(st["min_visual_fit"]))
+                        min_score=int(st["min_score"]), min_visual_fit=int(st["min_visual_fit"]),
+                        strategy=strategy, quote_scenes=quote_scenes)
         out: dict[int, dict[str, Any]] = {}
         for i, c in sorted(picked.items()):
             need = durations[i] if i < len(durations) else 4.0
@@ -640,18 +677,29 @@ async def resolve(*, llm: dict[str, Any], script: Any, topic: str, durations: li
             except Exception as e:  # noqa: BLE001 - 이 자료를 못 쓰면 카드로 대체된다
                 report["errors"].append(f"장면 {i + 1} ingest 실패 ({c.id}): {safe_error(e)[:120]}")
                 continue
-            registry.add(kind=c.media_type, origin="resolved", path=str(path), url=c.page_url, title=c.title[:120],
-                         used_for=f"scene_{i:02d}", source_type=c.provider,
-                         rights={"license": c.rights.license_key, "license_url": c.rights.license_url,
-                                 "rights_confirmed": True, "commercial_allowed": True, "adaptation_allowed": True,
-                                 "third_party_rights_checked": True, "credit": c.credit(),
-                                 "license_note": f"자동 판정: {c.rights.basis}",
-                                 "rights_basis": c.rights.basis})
+            is_quote = c.rights.status == QUOTE
+            if is_quote:
+                registry.add(kind=c.media_type, origin="resolved", path=str(path), url=c.page_url, title=c.title[:120],
+                             used_for=f"scene_{i:02d}", source_type=c.provider, media_status="downloaded",
+                             purpose=f"{(profile_spec or {}).get('quote_purpose') or 'commentary/analysis'}",
+                             attribution={"title": c.title[:120], "channel": c.creator[:80], "url": c.page_url},
+                             rights={"license": QUOTE, "license_url": c.rights.license_url, "credit": c.credit(),
+                                     "license_note": c.rights.basis, "rights_basis": c.rights.basis})
+            else:
+                registry.add(kind=c.media_type, origin="resolved", path=str(path), url=c.page_url, title=c.title[:120],
+                             used_for=f"scene_{i:02d}", source_type=c.provider, media_status="downloaded",
+                             rights={"license": c.rights.license_key, "license_url": c.rights.license_url,
+                                     "rights_confirmed": True, "commercial_allowed": True, "adaptation_allowed": True,
+                                     "third_party_rights_checked": True, "credit": c.credit(),
+                                     "license_note": f"자동 판정: {c.rights.basis}",
+                                     "rights_basis": c.rights.basis})
             item = registry.by_path(path)
             if not item or not item.usable_in_video:
                 report["errors"].append(f"장면 {i + 1}: 소스 대장이 사용 불가로 판정 ({c.id})")
                 continue
             entry: dict[str, Any] = {"kind": c.media_type, "path": str(path), "credit": c.credit(),
+                                     "quote": is_quote, "asset_source": "quote_source" if is_quote else "licensed_source",
+                                     "rights_status": c.rights.status,
                                      "candidate_id": c.id, "page_url": c.page_url, "score": scores[c.id]["total"],
                                      "reason": f"{c.provider} {c.rights.label or c.rights.license_key} · "
                                                f"점수 {scores[c.id]['total']} · {scores[c.id]['reason']}"}

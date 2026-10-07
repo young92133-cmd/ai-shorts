@@ -29,7 +29,7 @@ from ..carousel.schema import CAROUSEL_FORMATS, OUTPUT_FORMATS
 from ..carousel.templates import list_templates, load_template
 from ..config import load_config, load_presets, merge_options
 from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
-from ..pipeline import run as runmod, llm as llmmod, bench_auto
+from ..pipeline import run as runmod, llm as llmmod, bench_auto, quote as quotemod
 from ..pipeline.assets import kind_of
 from ..pipeline.media import probe_video, require_ffmpeg
 from ..pipeline.models import PlannedScript, VisualDecision
@@ -280,6 +280,28 @@ def _copy_assets(job_dir: Path, assets: list[str] | None, asset_rights: dict[str
                          used_for="candidate")
     return rights
 
+def parse_quote_source(text: str | None, default_url: str = "") -> dict[str, str]:
+    """--quote-source "제목 | 채널 | URL" 또는 URL 하나. 비우면 분석한 링크(--url)를 출처로 쓴다."""
+    parts = [x.strip() for x in (text or "").split("|")]
+    url = next((x for x in parts if x.startswith(("http://", "https://"))), "") or default_url
+    rest = [x for x in parts if x and not x.startswith(("http://", "https://"))]
+    return {"title": rest[0] if rest else "", "channel": rest[1] if len(rest) > 1 else "", "url": url}
+
+
+def _copy_quotes(job_dir: Path, quotes: list[str] | None, source: dict[str, str]) -> dict[str, Any]:
+    """인용 자료(외부 영상·캡처)를 업로드 폴더로 복사한다. 권리 확인이 아니라 인용 목적·출처를 기록한다."""
+    rights: dict[str, Any] = {}
+    for path in quotes or []:
+        src = Path(path)
+        if not src.is_file() or not kind_of(src):
+            raise FactoryError("invalid", f"인용 파일을 쓸 수 없습니다: {path}")
+        (job_dir / "uploads").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, job_dir / "uploads" / src.name)
+        rights[src.name] = quotemod.quote_rights(title=source.get("title") or src.stem, channel=source.get("channel", ""),
+                                                 url=source.get("url", ""))
+    return rights
+
+
 async def make(*, topic: str | None = None, url: str | None = None, auto: bool = False, script_text: str | None = None,
                preset: str = "daily", style: str | None = None, seconds: int | None = None, review: bool = False,
                instructions: str = "", llm: str | None = None, model: str | None = None, tts: str | None = None,
@@ -288,12 +310,16 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
                benchmark: str | None = "auto", visuals: str | None = "auto", output_format: str | None = None,
                request_text: str = "", template: str | None = None, character: str | None = None,
-               pages: int | None = None, research_file: str | None = None, log: Log = print) -> dict[str, Any]:
+               pages: int | None = None, research_file: str | None = None, quotes: list[str] | None = None,
+               quote_source: str | None = None, quote_reference: bool = False, log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
     visuals: auto(기본, 권리 확인 가능한 공개 영상·사진을 찾아 장면에 사용) | cards(자체 카드만).
     output_format: shorts(기본) | card_news | insta_toon | hybrid | all. 비우면 request_text(자연어)에서 알아낸다.
+    quotes: 분석·비평·비교·해설에 인용할 외부 영상·캡처 파일 (transformative_quote). 재사용 라이선스를 묻지 않는다.
+            근거 역할 장면에 필요한 최소 구간만, 해설과 출처 표기와 함께 쓴다. quote_source 로 제목·채널·주소를 남긴다.
+    quote_reference: reference_video 파일 자체를 인용 자료로도 쓴다 (기본은 분석 전용).
     """
     output_format = output_format or (detect_output_format(request_text) if request_text else "shorts")
     if output_format not in OUTPUT_FORMATS:
@@ -326,7 +352,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     ref = Path(reference_video).resolve() if reference_video else None
     if ref and (not ref.is_file() or kind_of(ref) != "video" or ref.stat().st_size > 200 * 1024 * 1024):
         raise FactoryError("invalid", "참고 영상은 200MB 이하의 읽을 수 있는 영상 파일이어야 합니다.")
-    names = [Path(p).name for p in assets or []] + ([ref.name] if ref else [])
+    names = [Path(p).name for p in assets or []] + [Path(p).name for p in quotes or []] + ([ref.name] if ref else [])
     if len({n.casefold() for n in names}) != len(names):
         raise FactoryError("invalid", "첨부 파일과 참고 영상의 파일명이 겹칩니다. 이름을 다르게 해 주세요.")
     style_data = find_style(style)
@@ -334,7 +360,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                "seconds": seconds, "review": review, "instructions": instructions, "llm": llm, "model": model,
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
                "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark,
-               "visuals": visuals}
+               "visuals": visuals, "quotes": [Path(p).name for p in quotes or []],
+               "quote_source": quote_source or "", "quote_reference": bool(quote_reference and ref)}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
@@ -342,6 +369,11 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     state = st.save(job_dir, st.new(project_id, request))
     try:
         rights = _copy_assets(job_dir, assets, asset_rights, ref)
+        qsource = parse_quote_source(quote_source, url or "")
+        rights.update(_copy_quotes(job_dir, quotes, qsource))
+        if ref and quote_reference:
+            rights[ref.name] = quotemod.quote_rights(title=qsource.get("title") or ref.stem,
+                                                     channel=qsource.get("channel", ""), url=qsource.get("url", ""))
         state = st.save(job_dir, {**state, "asset_rights": rights})
         with _ai_session(job_dir, state, run_cfg):
             result = await runmod.run_pipeline(
