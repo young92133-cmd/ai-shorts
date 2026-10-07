@@ -30,6 +30,7 @@ from .comment_layout import clean_slots, place as place_comment
 from .render import make_thumbnail
 from .subtitles import words_to_lines
 from .tts import get_tts
+from .tts.base import align_words
 
 ProgressFn = Callable[[str, int, str], None]
 ReviewFn = Callable[[Script, dict[str, Any]], Awaitable[tuple[Script, dict[str, Any]]]]
@@ -112,6 +113,9 @@ async def _synthesize_one(tts: Any, text: str, out: Path, voice: str, attempts: 
         try:
             out.unlink(missing_ok=True)
             words = await tts.synthesize(text, out, voice)
+            if words:
+                # 자막 글자는 항상 나레이션 단어 그대로 (TTS 경계 토큰은 시간만 쓴다)
+                words = align_words(text, words)
             if not out.is_file() or out.stat().st_size == 0:
                 raise RuntimeError("음성 파일이 만들어지지 않았습니다")
             try:
