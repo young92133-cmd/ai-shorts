@@ -1,5 +1,17 @@
 # 개발 계획 — 참고 영상의 좋은 기능을 내 AI 쇼츠 제작기에 맞게 적용
 
+## 2026-10-08 — 통합 정리 (캐러셀 · 인용 모드 · 문서/상태 일치)
+
+| 항목 | 결과 |
+|---|---|
+| 캐러셀 | 카드뉴스·인스타툰·하이브리드(`--format`), 2026-10-07 별도 세션 구현 + 테스트 39개 — 이번에 커밋 |
+| transformative_quote | 분석·비평·비교·해설용 인용 모드(`--quote`), 상태 5종, profile별 source_strategy, guard — 테스트 16개 |
+| 상태 기록 | `project_state.benchmark` 에 evidence·view_potential·creative_hook·evidence_moments 추가 |
+| 문서 | BENCHMARKS.md 를 단일 현황판으로, HANDOFF 맨 위 요약, CLAUDE/AGENTS 동일화·작업 요청 규칙, README 사용법 |
+| 검증 | 전체 308개 통과. 렌더 경로 변경(부분 재생·정지)은 실제 1편(H)만 확인 |
+
+다음 후보(미구현): Global Trend Radar · US/KR/JP Localization · Vision Clip Analyzer · YouTube Studio 성과 피드백 · Pexels/Pixabay 확대 · 자동 게시.
+
 ## 2026-10-05 (저녁) — Source Resolver · Clip Analyzer
 
 | 항목 | 결과 |

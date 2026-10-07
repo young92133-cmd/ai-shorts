@@ -1,4 +1,87 @@
-# Benchmark Inventory — 2026-10-05
+# Benchmark 현황판 (단일 기준 문서)
+
+**최종 갱신: 2026-10-08.** 새 benchmark 를 분석·반영할 때 이 표를 같이 갱신한다(CLAUDE.md/AGENTS.md 규칙).
+상태는 문서·과거 대화가 아니라 **현재 코드·테스트·output 기록**으로 판정했다. "분석됨"과 "구현됨"을 구분한다.
+
+상태 열 의미
+- analyzed: 실제 영상/목록을 보고 구조를 분석한 기록이 있다
+- source_registered: `benchmarks/sources/<id>.json` 에 등록됐다
+- profile_created: 일반화된 production profile(`benchmarks/profiles/*.yaml` 또는 `benchmarks/kpop_observation_clip.yaml`)이 있다
+- pipeline_connected: V1 `make` 자동 경로(benchmark auto router → 대본·장면 → TTS·렌더)가 이 구조로 실제 영상을 만들 수 있다
+- tested: 자동 테스트(mock)가 있다
+- real_video_verified: 실제 Claude 구독 + Edge TTS + ffmpeg 로 MP4 를 만들고 `verify_factory_v1.py --verify` 를 통과했다
+
+## 1. Benchmark source (6개 등록 + 미등록 분석·언급 5건)
+
+채널 이름은 source 로만 쓰고 production profile 이름으로 쓰지 않는다. 한 source 가 여러 profile 로, 여러 source 가 한 profile 로 갈 수 있다.
+
+| source id | 이름 | 분석일 | 분류 | 핵심 성공 구조 | derived profile | analyzed | registered | profile | pipeline | tests | real video |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| doltori | 돌토리 @doltori | 2026-10-02 | K팝 관찰 | 볼 이유 → 장면 근거 → 짧은 해설 → 선택 질문 | kpop_observation_clip | ✅ | ✅ | ✅ | △ 근거 영상(권리 확인 또는 `--quote`) 있을 때만 | ✅ | ❌ |
+| zzal_ing | 짤잉 @zzal_ing | 2026-10-02 | 근황/이유/후속 | 궁금증 → 과거 → 변화 → 현재 → 제목의 답 | curiosity_update_story | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (A·F·G) |
+| bks_simulation | BKS Simulation | 2026-10-03 | 단일 변수 물리 비교 | 질문/장치 → 변수 하나 → 반복 → 결과 비교 | physics_comparison_simulation | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |
+| lesgi | 레스기 | 2026-10-03 | 순위 사례 | 쉬운 주제 → 5위부터 1위 → 마지막 보상 | ranked_moments | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |
+| architecture_mania | 건축매니아 (콘크리트/DDP 2편) | 2026-09-21 | 원리/문제 해결 | 통념 → 반전 → 질문 → 원리 → 대안 한계 → 해결 → 답 | mechanism_explainer (+ 기존 스타일 `style-f8b83e20`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (B·D·E) |
+| factory_reference | reference.mp4 — 제작 시스템 + 12종 스타일 | 2026-09-29 | 시스템/복수 예시 | 채팅 → 구조 선택 → 근거 → 제작 계획 → 화면/자막 → 검토 | curiosity_update_story, ranked_moments, mechanism_explainer, quote_context_story, illustrated_fact_explainer, event_timeline_story | ✅ | ✅ | ✅ | ✅ (단 ranked 는 △) | ✅ | 부분 (curiosity·mechanism·event_timeline) |
+
+`factory_reference` 안의 세부 스타일(findings, 13건): 건축사전st(catalog_only → mechanism), 더다큐롱폼st(partial → event_timeline),
+랭킹st(partial → ranked), 무비st·비하인드스토리st·연예인쇼핑st·정치채널st(direct → quote_context), 스포츠st(direct → event_timeline),
+이게맞나st(catalog_only → curiosity), 이라스토야st·커뮤니티형st(direct → illustrated_fact), 요즘PDst(catalog_only, profile 없음), 롱투숏/모션그래픽(제작 기능, profile 아님).
+
+미등록 분석 (source 로 등록하지 않은 이유)
+
+| 분석 | 상태 | 처리 |
+|---|---|---|
+| 요즘PD (factory_reference finding) | catalog_only — 완성 영상의 실제 구조를 확인하지 못함 | profile 만들지 않음. 실영상 분석 후 기존 profile variation 인지 판단 |
+| 롱투숏/모션그래픽 (factory_reference finding) | 제작 기능 관찰 | profile 이 아니라 기능 후보 (구현 없음) |
+| `../shorts-ai-benchmark-v2` (별도 폴더, 2026-10-02) | 돌토리 K팝 구조의 별도 1단계 구현 | 같은 source(doltori). 이 브랜치에 병합하지 않음 |
+| 경제대부·경제뉴스·해외 콘텐츠 등 | 기능 예시로만 언급, 분석 URL 없음 | source 로 꾸며서 추가하지 않음 |
+| 2026-10-07 "오사카에서 생긴 일" 링크 (G) | benchmark 분석이 아니라 제작 실사용 | source 아님 (아래 실제 검증 G) |
+
+## 2. Production profile (8개, 코드 기준)
+
+V1 자동 경로 정보는 `benchmarks/v1/integration.yaml`, 오프라인 profile 계약은 `benchmarks/profiles/*.yaml`·`benchmarks/kpop_observation_clip.yaml`.
+모든 profile 이 auto router 평가 대상이다(8개 전부 점수화). 목표 길이는 `make --seconds` 가 정하고, 아래 범위를 벗어나면 quality 경고만 남긴다.
+
+| profile | 목적 | reason_to_watch / viewer_question | hook | evidence (필수 슬롯) | narration | scene structure (beat_role) | 권장 길이 | 화면 전략 (source_strategy) | V1 연결 | real video |
+|---|---|---|---|---|---|---|---|---|---|---|
+| curiosity_update_story | 익숙한 대상의 변화·후속 소식 | 익숙한 대상의 변화 / "왜·무엇이 바뀌었나" | 결과·현재 모습 먼저 | past_state, change_point, current_state | Edge TTS | hook → background → change×2 → current_update → payoff → ending_question | 20~60초 | 근거형: licensed→PD→인용→생성→카드, 영상 우선 | ✅ | ✅ A·F·G |
+| event_timeline_story | 사건을 시간 순서로 | 결과·극적 순간 / "어떻게 여기까지" | 결과 먼저 | event_start, turning_point, outcome | Edge TTS | hook → background → turning_point×2 → outcome → payoff → ending_question | 30~90초 | 근거형, 사진 우선 | ✅ | ✅ C |
+| mechanism_explainer | 통념을 뒤집고 원리 설명 | 통념과 사실의 어긋남 / "사실은 왜" | 통념 → 반전 질문 | common_belief, mechanism | Edge TTS | hook → question_context → mechanism×2 → solution → payoff → ending_question | 30~90초 | 정보형: licensed→PD→생성→인용→카드, 도해 우선 | ✅ | ✅ B·D·E |
+| illustrated_fact_explainer | 생활 질문·숫자를 짧게 (안전 fallback) | 생활 궁금증 / "이건 왜/얼마나" | 생활 질문·의외의 숫자 | core_fact | Edge TTS | hook → context×2 → explanation×2 → payoff → ending_question | 20~60초 | 정보형, 사진 우선 | ✅ (fallback 겸용) | ❌ |
+| quote_context_story | 화제 발언을 맥락과 함께 | 발언의 진짜 뜻 / "무슨 뜻이었나" | 발언 핵심 인용 | quote, speaker_context | Edge TTS | hook → context×2 → statement×2 → payoff → ending_question | 20~60초 | 근거형, 훅도 카드 | ✅ | ❌ (G에서 2위 70점) |
+| kpop_observation_clip | 무대·영상에서 확인 가능한 포인트 관찰 | 놓치기 쉬운 포인트·변화 / "어떤 차이가 보이나" | 볼 이유 한 문장 | observed_moment, evidence_clip | optional (V1 은 해설 나레이션) | reason_to_watch → first_evidence → comparison_or_interpretation×2 → payoff_or_question | 20~35초 | 근거형, 영상 우선, 인용 허용 | △ 근거 영상 필요 | ❌ |
+| physics_comparison_simulation | 변수 하나만 바꾼 실험 비교 | 결과 예상 / "어느 조건이 어떻게 다를까" | 실험 질문 | variable, conditions, result | optional | hook → trials×3 → payoff → ending_question | 20~45초 | 근거형, 영상 우선 | △ 근거 영상 필요 | ❌ |
+| ranked_moments | 정의한 기준으로 사례 순위 | 기준과 사례 수 / "1위는?" | 순위 기준·사례 수 | ranking_criterion, ranked_items | optional | hook → ranked_examples×3 → payoff → ending_question | 15~60초 | 근거형, 영상 우선 | △ 근거 영상 필요 | ❌ |
+
+"△ 근거 영상 필요": router 게이트가 권리 확인 영상 또는 사용자가 준 인용 영상(`--quote`, transformative_quote)이 없으면 이 구조를 후보에서 뺀다.
+오프라인 `app.factory benchmark plan/render` 경로(사람이 근거 JSON 작성, 나레이션 없음)는 8개 모두 mock 테스트로 연결돼 있으나 실제 MP4 검증은 없다.
+
+## 3. 실제 검증 기록 (output 폴더의 project_state.json 으로 대조함)
+
+| 실행 | 입력 | 선택 profile (점수) | 길이 | 화면 | 프로젝트 |
+|---|---|---|---|---|---|
+| A | 주제 "최근 화제가 된 AI 기술 하나" 30초 | curiosity_update_story 84 | 25.2초 | 카드 7 | 20261005_164635_c740 |
+| B | YouTube URL (웹 망원경 분광학) | mechanism_explainer 90 | 32.9초 | 카드 (숫자·비교 카드 포함) | 20261005_165012_0833 |
+| C | 주제 "1912년 타이타닉호 침몰 과정" | event_timeline_story 88 | 32.6초 | 카드 | 20261005_165421_c7c8 |
+| D | YouTube URL + Source Resolver | mechanism_explainer 88 | 32.9초 | Commons 사진 4장면 (PD 3·CC BY 1) + 카드 | 20261005_171137_be9d |
+| E | 주제만 + Source Resolver | mechanism_explainer 92 | 27.3초 | Commons 사진 2장면 + 카드 | 20261005_171742_b5cb |
+| F | 주제 "아르테미스 2호" + Source Resolver | curiosity_update_story 87 | 26.2초 | NASA PD 영상 3장면 + 사진 1 (첫 렌더 SAR 버그 → 수정 후 resume) | 20261005_172334_074f |
+| G | YouTube URL (여행 예능, K팝 관찰 요청) | curiosity_update_story 85 (kpop 62, 근거 영상 없어 제외) | 25.1초 | Commons 사진 1 + 카드 | 20261007_223747_c9e4 |
+| H | 직접 대본 + `--quote` 로컬 영상 (인용 렌더 경로 확인) | not_applicable | 17.8초 | 인용 3장면 (부분 재생 + 정지, 비중 34%) | 20261007_235056_e55c |
+
+## 4. 알려진 한계 (benchmark 관련)
+
+- kpop_observation_clip·physics_comparison_simulation·ranked_moments 는 V1 자동 경로에서 실제 MP4 로 검증되지 않았다. 근거 영상 없이 링크만 주면 router 가 다음 구조로 넘어간다.
+- illustrated_fact_explainer·quote_context_story 도 실제 MP4 검증이 없다(router 가 아직 1위로 고른 적 없음).
+- Content Brief 는 자막·설명·기사 텍스트만 본다. 화면 속 표정·동작은 판단하지 못한다(Vision 분석 없음).
+- 점수는 구조 선택용 내부 값이며 조회수 예측이 아니다.
+
+---
+
+# 이력
+
+## 2026-10-05 Benchmark Inventory (당시 기록)
 
 ## 변경 전 Audit (코드 수정 전에 확정)
 

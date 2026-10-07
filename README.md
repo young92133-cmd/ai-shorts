@@ -1,21 +1,28 @@
 # AI 콘텐츠팩토리
 
-## Benchmark 통합 (2026-10-05)
+주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4(와 카드뉴스·인스타툰 PNG)를 자동으로 만드는 개인용 도구.
+현재 상태·한계는 [HANDOFF.md](HANDOFF.md) 맨 위, benchmark 현황은 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) 맨 위를 봅니다.
 
-6개 분석 source → 8개 구조적 production profile. [전체 Audit/인벤토리](docs/BENCHMARKS.md), [실행 가이드](benchmarks/README.md).
-현재 `benchmark profiles/sources/plan/inspect/render`에서 선택한다. 기존 K팝 관찰 클립을 유지하고 순위/물리 비교 영상과 사실/근황/원리/발언/사건 카드 adapter를 추가했다.
-V1 make/resume와 별도 상태로 동작한다. API/다운로드/TTS 없이 사용자 주석 근거를 검증한다. 실제 영상/Blender 생성/자동 사실 확인/Global Trend Radar는 이번 범위가 아니다.
+## 가장 많이 쓰는 말 (Claude Code / Codex 채팅)
 
-## V2 첫 기능: Benchmark Engine 1단계
+| 이렇게 말하면 | 프로그램이 하는 일 |
+|---|---|
+| "○○ 주제로 30초 쇼츠 만들어줘." | 조사 → 시청 질문·근거 정리 → **8개 제작 구조 중 자동 선택** → 대본 → 장면 → Edge TTS → 자막 → MP4 |
+| "자료도 알아서 찾아서 써." | 기본값이다. 장면마다 공개 사진·영상(Commons·NASA·Openverse, 키가 있으면 Pexels/Pixabay)을 찾아 권리를 판정하고 쓸 수 있는 것만 넣는다. 없으면 자체 카드 |
+| "이 유튜브 영상 참고해서 쇼츠 만들어줘: URL" | 제목·설명·자막을 분석해 볼 이유·질문·근거 구간을 뽑고 새 대본으로 제작. 원본은 자동으로 내려받지 않는다 |
+| "이 영상에서 가장 재미있는 포인트로 쇼츠 만들어줘: URL" (+ 영상/캡처 파일) | 같은 분석에 더해, 준 파일을 **인용(transformative_quote)** 으로 근거 장면에 짧게 넣고 우리 해설을 얹는다 |
+| "대본 먼저 보여줘" / "좋아, 계속해" | `--review` 로 멈춤 / `resume` |
+| "카드뉴스로도 만들어줘" | `--format card_news`·`insta_toon`·`hybrid`·`all` |
 
-`benchmark profiles/plan/inspect/render` 명령으로 K팝 관찰 메모의 시청 이유·claim과 근거 클립을
-함께 검증·선택하고 기존 B-roll/자막 렌더로 제작합니다. 기본 1080×1920·30초(20~35초), TTS 없음,
-원본 오디오 선택, 자체 브랜딩입니다. 로컬의 사용 권한이 확인된 영상만 받으며 유료 API·외부 영상 다운로드는 없습니다.
-1단계는 사용자가 작성한 관찰 메모와 타임코드를 분석합니다. 영상 자동 이해/자동 사실 판정은 포함하지 않습니다.
-V1의 `information/story/issue`와 작업 목록은 별도로 유지합니다.
-입력 예시·새 프로필 추가·명령·현재 PC의 Python 우회 실행은 [benchmarks/README.md](benchmarks/README.md)를 참조하세요.
+기본값은 `benchmark = auto`, `visuals = auto` 다. 구조를 직접 정하려면 `--benchmark <profile>`, 예전 방식은 `--benchmark off`, 자체 카드만 쓰려면 `--visuals cards`.
+명령 전체 목록과 자연어 대응표는 [CLAUDE.md](CLAUDE.md) 에 있다.
 
-주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4 를 자동으로 만드는 개인용 도구.
+## Benchmark (8개 제작 구조)
+
+6개 분석 source(돌토리·짤잉·BKS Simulation·레스기·건축매니아·reference 제작 시스템)를 일반화한 8개 production profile:
+curiosity_update_story · event_timeline_story · mechanism_explainer · illustrated_fact_explainer · quote_context_story ·
+kpop_observation_clip · physics_comparison_simulation · ranked_moments. 상태·실제 검증 여부는 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+사람이 근거 JSON 을 직접 쓰는 오프라인 경로(`benchmark plan/render`)는 [benchmarks/README.md](benchmarks/README.md).
 
 ## 채팅으로 사용하는 방법 (V1)
 
@@ -313,7 +320,10 @@ python -m app.pipeline.run --topic "..." --uploads "C:\내사진폴더"        #
 
 ## ⚠ 저작권
 
-- **타인 영상·기사 이미지·댓글 원문은 영상에 넣지 않습니다.** URL은 내용·구조 참고용입니다.
+- **외부 원본을 그대로 재업로드하지 않습니다.** 공개 자료는 라이선스가 확인된 것(licensed·public_domain)을 출처와 함께 쓰고,
+  재사용 라이선스가 없는 영상·캡처는 사용자가 준 파일을 분석·비평·비교·해설 목적의 **인용(transformative_quote)** 으로만
+  짧게(최소 구간 + 정지 화면 + 해설, 출처 표기) 씁니다. 인용은 법적 판단을 대신하지 않으니 게시 전 확인하세요.
+- YouTube 영상은 자동으로 내려받지 않습니다(약관). 댓글 원문은 영상에 넣지 않습니다.
 - 업로드 파일은 권리 유형, 개별 증빙 링크 또는 근거 설명, 상업·수정·제3자 권리 확인이 있어야 사용할 수 있습니다. 공공누리 2~4유형은 현재 제외합니다. 잡별 `sources.json`에서 판정을 볼 수 있습니다.
 - 정치·연예 주제는 프리셋에 사실 기반·중립 규칙이 들어 있지만, 업로드 전 내용을 한 번 확인하는 것을 권합니다
 

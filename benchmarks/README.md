@@ -1,5 +1,9 @@
 # Benchmark Engine — Stage 1
 
+> **2026-10-08 기준:** 이 문서는 사람이 근거 JSON 을 직접 쓰는 **오프라인 경로**(`benchmark plan/inspect/render`) 안내다.
+> 일반 제작은 `make` 가 같은 8개 profile 을 자동 평가·선택한다(`--benchmark auto`, `benchmarks/v1/integration.yaml`, 나레이션 포함).
+> source·profile·연결·실제 검증 상태는 [docs/BENCHMARKS.md](../docs/BENCHMARKS.md) 맨 위 현황판이 기준이다.
+
 ## 최신 통합 상태 (2026-10-05)
 
 기존 Stage1 경로에6개 source/8개 production profile을 통합했다. 전체 표와 제한은 [BENCHMARKS.md](../docs/BENCHMARKS.md).

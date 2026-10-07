@@ -1,5 +1,58 @@
 # HANDOFF — 개발 인수인계 문서
 
+## ★ 현재 상태 요약 (2026-10-08, 다른 PC 는 여기부터 읽는다)
+
+- **브랜치:** `feature/agent-content-factory` (origin 과 동기화). 받기: `git clone --branch feature/agent-content-factory https://github.com/young92133-cmd/ai-shorts.git` 또는 `git pull`.
+- **주요 커밋(수정 금지):** `daa97e7` Benchmark × V1 auto router · `d52393e` Source Resolver · Clip Analyzer · `00cd7a6` 자막 정렬 수정.
+  2026-10-08 정리: `56e3d98` 캐러셀(카드뉴스·인스타툰) → `fcdfedb` transformative_quote 인용 모드·state evidence → 문서 정리 커밋(이 문서가 들어 있는 커밋).
+- **테스트:** 전체 **308개 통과, 실패 0, skip 0** (`.venv\Scripts\python.exe -B -m unittest discover -s tests -q`).
+- **Benchmark × V1:** 완료. `make` 기본 `--benchmark auto` → 조사 → Content Brief(사실/추론 분리, 시청 질문 후보, View Potential, 8개 profile 9기준 점수, YouTube 는 근거 구간 타임스탬프)
+  → router(게이트·fallback) → 구조 주입 대본 → 장면 역할 → Edge TTS·자막·렌더. 결정은 `project_state.json` `benchmark`(selected_profile, candidate_scores, top3, reason_to_watch, viewer_question, claim, evidence, view_potential, selection_reason, quality)와 `benchmark_decision.json`.
+- **8개 profile 전부 router 평가 대상.** 실제 MP4 검증: curiosity_update_story·mechanism_explainer·event_timeline_story. 근거 영상이 필요한 kpop/physics/ranked 는 권리 확인 영상이나 `--quote` 영상이 있을 때만 후보(실제 MP4 미검증). 현황은 `docs/BENCHMARKS.md` 맨 위.
+- **Source Resolver (`--visuals auto` 기본):** Openverse · Wikimedia Commons(사진·영상) · NASA · Pexels/Pixabay(키 있을 때만) · 사용자 업로드 · AI 이미지(꺼짐 기본) · 자체 카드 fallback. YouTube 는 분석만.
+  상태: licensed / public_domain / transformative_quote / reference_only / unknown. `sources.json` 에 source_type·url/path·usage·rights_status·rights_basis·purpose·attribution·scene_ids·clip_ranges·media_status. 검색 기록 `source_plan.json`.
+- **transformative_quote (인용·비평·해설 모드):** 재사용 라이선스가 없어도 분석·비교·해설 목적이면 인용 후보. `make --url URL --quote 영상·캡처`. 근거 역할 장면에만, 최소 구간 재생 + 정지 화면 + 해설, 원본 소리 없음, `인용: 채널 · 제목`.
+  렌더 전 `quote.guard`(해설·출처·비중·중복·질문 연결, 고정 초 규칙 없음, 상대 비율만) → `quote_plan.json`. 캡처 2장은 전/후 비교 레이아웃.
+- **Clip Analyzer:** ffmpeg 샷 경계 · 무음 경계 · 자막(.srt/전사) 키워드 · benchmark 근거 시각 우선 · 이미 쓴 구간 회피 → 후보 구간·추천 시작/끝. 결과는 `source_plan.json`/`quote_plan.json`/`sources.json clip_ranges`.
+- **자막 정렬 (`00cd7a6`):** Edge TTS 단어 경계 시간은 그대로, 자막 글자는 나레이션 원문(`tts/base.align_words`).
+- **실제 검증 A~H:** A curiosity 84 25.2초 · B(YouTube) mechanism 90 32.9초 · C event_timeline 88 32.6초 · D(YouTube+공개 사진 4) mechanism 88 32.9초 · E(주제+사진 2) mechanism 92 27.3초 · F(NASA 영상 3+사진 1, resume) curiosity 87 26.2초 · G(여행 예능 링크, kpop 근거 영상 없어 제외) curiosity 85 25.1초 · H(직접 대본+`--quote`, 인용 3장면 부분 재생·정지) 17.8초. 상세 `docs/BENCHMARKS.md` §3.
+- **이 과정에서 고친 문제:** B-roll concat SAR 불일치(`render._ninefix` `setsar=1`) · 도표/사진이 상단 제목과 겹침(`cards.fit_image` 22% 아래 배치) · 비유 장면에 엉뚱한 사진(검색어 비유 장면은 card, 시대 불일치 자료 감점, min_visual_fit 7) · 자막 글자 누락(align_words) · 같은 주소 재등록 시 권리 상태 덮어쓰기 · 인용 캡처 파일 잠김.
+- **알려진 한계:**
+  - Clip Analyzer 는 화면 의미를 보지 못한다. 자막·대사 없는 영상은 샷 안정성으로만 고르므로 원하는 장면(예: 발사) 대신 인물 클로즈업을 고를 수 있다(F 3번 장면). Vision 분석 없음.
+  - Content Brief 도 텍스트(자막·설명·기사)만 본다. 표정·동작 같은 화면 근거는 판단하지 않는다.
+  - YouTube 미디어는 약관상 자동 다운로드하지 않는다. 화면 인용은 사용자가 준 로컬 영상·캡처로만. **단, 기존 V1 코드는 YouTube 자막이 없으면 음성 인식용 오디오를 내려받는다**(`run.py` url 분기) — 유지 여부 미결정.
+  - 인용 화면의 강조 박스·화살표·영상 2개 분할 화면은 미구현(캡처 전/후 비교만). 인용은 법적 판단을 대신하지 않으므로 게시 전 사용자 확인.
+  - resume 은 화면 자료 검색을 다시 하므로 공개 자료 선택이 달라질 수 있다(rerender 는 timeline 그대로). 최신 기술 주제는 무료 공개 자료가 적어 카드 비율이 높다.
+  - 마지막 질문 장면이 ✓ '정리' 카드로 나온다. 캐러셀 한계는 아래 2026-10-07 절.
+- **다음 개발 후보(미구현, 사용자 요청 시):** Global Trend Radar · US/KR/JP Localization Engine · Vision 기반 Clip Analyzer · YouTube Studio 성과 피드백 · Pexels/Pixabay 실사 확대(무료 키) · 자동 업로드/게시.
+
+## 2026-10-07 (밤) — transformative_quote 인용·재가공 모드
+
+- 신규 `app/pipeline/quote.py`(인용 배치·전/후 비교 합성·렌더 전 guard), `tests/test_quote_mode.py`(16개).
+- 수정: `sources.py`(상태 5종·QUOTE_LICENSE·purpose/attribution/media_status), `source_resolver.py`(상태·profile source_strategy·근거 장면 인용 후보·YouTube 권리/미디어 분리),
+  `clip_analyzer.py`(prefer/avoid 구간), `bench_auto.py`(evidence_moments·근거 영상 게이트·인용 해설 지시·state 에 evidence/view_potential), `run.py`(타임스탬프 자막→brief, 인용 배치·guard, play),
+  `timeline.py`/`render.py`(play → 부분 재생 후 정지), `visuals.py`(quote_source), `integration.yaml`(source_strategy·evidence_roles·quote_purpose), factory `--quote`·`--quote-source`·`--quote-reference`.
+- 기존 테스트 6개는 예전 정책(BY-SA·YouTube=reference_only, 상태 "usable")을 확인하던 것이라 새 상태로 갱신.
+
+## 2026-10-07 — 카드뉴스 · 인스타툰 · 하이브리드 캐러셀 (`app/carousel/`)
+
+`make --format card_news|insta_toon|hybrid|all` 를 추가했다. 쇼츠 경로(`--format` 없음 / `shorts`)는 코드 흐름이 그대로다(`run.py` 무변경).
+
+- **구조:** `gather_inputs`(쇼츠와 같은 research/article/youtube 모듈, `--research-file` JSON 추가) → `master.build_master`(AI 1회, 실패 시 자료 문장으로 규칙 생성)
+  → `planner.plan_pages`(mix_ratio·skeleton 규칙 + AI 문구 1회 + `normalize` 로 첫 장 cover·끝 장 cta·6~10장·형식별 허용 타입·캐릭터 id·말풍선 위치 강제)
+  → `visuals.find_card_images`(쇼츠 `source_resolver.resolve` 를 페이지=장면으로 그대로 호출, image 전용) + 렌더 직전 `guard_image`(소스 대장 usable 재확인)
+  → `CharacterArtist`(업로드 `toon_NN_*` → Bible 참고 이미지 → AI(설정 시, `characters/<id>/generated/` 캐시) → `mascot.draw_mascot`)
+  → `render.render_page`(Pillow, 타입별 RENDERERS, 실패 시 `render_safe`).
+- **템플릿:** `app/carousel/templates/{clean_info,character_info,comic_hybrid}.yaml` — 비율 좌표·팔레트·글자 크기·페이지별 영역 덮어쓰기.
+- **캐릭터:** `characters/tory_01/bible.json`(토리). `characters list|show|add`. AI 생성 캐시는 .gitignore.
+- **factory:** `core._make_carousel`, `_finish_carousel`, `_copy_assets` 추출(쇼츠 동작 동일). `--format` 은 parser Action 으로 톤 값이면 `content_format` 으로 보낸다(기존 테스트 그대로 통과). `--tone`·`--request`(자연어, `intent.detect_output_format`)·`--template`·`--character`·`--pages`. 캐러셀 프로젝트는 resume/pack/capcut 거부, `inspect --part carousel`.
+- **all:** 쇼츠를 먼저 만들고 `inputs_from_shorts`(script.json 나레이션 + 조사 목록)로 하이브리드. 조사는 1번. 쇼츠 실패 시에도 캐러셀은 만들고 `partial_failure`.
+- **테스트:** `tests/test_carousel.py` 39개 추가 → 전체 **292개 통과**(기존 253 그대로).
+- **실제 샘플 (Claude 구독, 유료 없음):** `output/20261007_225503_1732/hybrid/` "전세와 월세, 금리 시대에 뭐가 더 유리할까" — Master·Plan 모두 AI, story_score 0.35 → 카드 50/만화 50, 8장, 대체 0장.
+  사진은 0장: 검색어 AI 가 표지·정보 카드를 prefer=card 로 판단해 검색을 건너뜀(쇼츠 Resolver 규칙 그대로) → 그래픽 카드로 대체됨.
+  첫 렌더에서 발견해 고친 것: 말풍선과 캡션 겹침, 캡션 2줄 잘림, CTA 라벨 겹침, 이모지가 네모로 찍힘(📌), 비교 카드 글머리표만 남는 줄. 고친 뒤 같은 plan.json 으로 다시 렌더(추가 AI 호출 없음).
+- **알려진 한계:** 마스코트는 정면 상반신 1종(옆모습·전신 없음). 클로즈업 컷에서 말풍선이 얼굴 일부를 가릴 수 있다. 캐러셀 재렌더 명령(plan.json 수정 후 다시 그리기)은 아직 없다. 웹 UI 에는 캐러셀 화면이 없다(CLI 전용).
+
 ## 2026-10-05 (저녁) — Source Resolver · Clip Analyzer · Rights Guard 변경
 
 `make` 가 기본으로(`--visuals auto`) 장면마다 공개 영상·사진을 찾아 권리를 판정하고, 사용 근거가 확인된 자료만 화면에 쓴다.

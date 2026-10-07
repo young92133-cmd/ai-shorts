@@ -4,9 +4,10 @@
 **이 채팅이 메인 화면**이다. Codex와 Claude Code는 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
 
-**현재 범위(2026-10-01): V1 기능과 실사용 검증.** 영상 품질 고도화(2E 모션·고급 자막, BGM/효과음 추천, 레퍼런스 복제, Shot 세분화, AI 영상, 스타일팩)는 V2로 미룬다. 최신 완료 상태·실제 산출물은 `HANDOFF.md` 맨 위를 읽는다. V2는 사용자의 별도 요청 전에는 시작하지 않는다.
-
-2026-10-01 V1 검증 기록: 기존 95개 포함 자동 테스트 132개, Claude 실제 제작 10편·직접 대본 2편, 입력 6종과 두 편 순차 검토/resume 통과. 유료 OpenAI 실호출은 하지 않았다. 새 변경의 GitHub push는 별도 요청 전에는 하지 않는다.
+**현재 상태(2026-10-08):** V1 제작 엔진 + Benchmark 8개 구조 자동 선택(`--benchmark auto`) + Source Resolver(`--visuals auto`)
++ Clip Analyzer + 인용·재가공 모드(transformative_quote, `--quote`) + 자막 정렬 + 카드뉴스·인스타툰 캐러셀(`--format`).
+최신 완료 상태·실제 검증·한계는 `HANDOFF.md` 맨 위, benchmark 현황은 `docs/BENCHMARKS.md` 맨 위가 기준이다.
+새 대형 기능(Global Trend Radar·Localization·Vision Clip Analyzer·성과 학습·자동 게시)은 사용자의 별도 요청 전에는 시작하지 않는다.
 
 ```
 Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline (제작 엔진) ←─ Web UI (보조)
@@ -20,11 +21,14 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | 명령 | 하는 일 |
 |---|---|
 | `make --topic "주제" [--seconds 45]` | 주제로 조사 → 대본 → 장면 → 음성 → 화면 → 자막 → MP4 |
-| `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 참고해 새 대본으로 제작 (원본 영상·글은 화면에 안 씀) |
+| `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 분석해 새 대본으로 제작 (원본은 자동 다운로드하지 않음. 화면 인용은 `--quote` 로 준 파일) |
+| `make --url "링크" --quote 영상·캡처 [--quote …]` | 분석·비평·비교·해설용 인용(transformative_quote). 출처는 링크에서 자동 기록 |
 | `make --auto` | 요즘 화제 소재를 AI가 골라 제작 |
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
-| `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (원본은 화면에 쓰지 않음) |
-| `make ... --format information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 |
+| `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
+| `make ... --format card_news\|insta_toon\|hybrid\|all` | 카드뉴스·인스타툰·하이브리드 PNG(1080x1350) / all = 쇼츠+하이브리드 (아래 '카드뉴스 · 인스타툰' 절) |
+| `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
+| `characters [list\|show ID\|add --file]` | 인스타툰 캐릭터(Character Bible) 목록·보기·등록 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
 | `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
@@ -70,8 +74,20 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "그중 2번, 4번으로 각각 만들어줘" | `batch --select 2 4 --candidates <대화에서 선택한 목록 id>` |
 | "이 주제로 쇼츠 3개 만들어줘" | `batch --topic "…" --count 3` |
 | "이 참고 영상 파일로 만들어줘" | `make --reference-video "파일"` |
+| "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" (파일·캡처 있음) | `make --url "URL" --quote 파일 …` 또는 `make --reference-video 파일 --quote-reference` (라이선스를 묻지 않음) |
 | "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
 | "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |
+
+## 작업 요청 규칙 (벤치마킹 · 반영 · 저장)
+
+| 사용자 말 | 할 일 |
+|---|---|
+| "이 채널 벤치마킹해줘" | ① 실제 영상·목록 분석 ② `benchmarks/sources/<id>.json` 으로 구조화(채널명은 source 로만) ③ 기존 8개 profile 과 비교해 같은 구조인지·variation 인지·새 profile 이 필요한지 판단 ④ `docs/BENCHMARKS.md` 현황판에 analyzed/registered/profile/pipeline/tests/real video 상태와 다음 작업 기록. 분석만으로 코드를 바꾸지 않는다 |
+| "프로그램에 반영해줘" | 기존 profile 의 variation 으로 통합하는 것을 먼저 검토하고, 정말 다른 구조일 때만 새 profile. `benchmarks/v1/integration.yaml`(beats·research_needs·source_strategy·evidence_roles) 갱신 → router·대본·장면 연결 → 테스트 → 현황판 상태 갱신. source 마다 profile 을 하나씩 만들지 않는다 |
+| "저장해줘" | 전체 테스트 → `git status`·`git diff` 확인 → 비밀정보·output·미디어 제외 확인 → 새 commit → 현재 브랜치 일반 push. amend·rebase·squash·force push 금지 |
+
+- 새 benchmark 를 분석·반영하면 `docs/BENCHMARKS.md` 맨 위 현황판을 반드시 같이 갱신한다. "분석됨"을 "구현됨"으로 적지 않는다.
+- 실제 영상 검증 결과는 output 의 `project_state.json`·`verify_factory_v1.py --verify` 로 확인된 것만 기록한다.
 
 ## 기본 흐름과 멈추는 때
 
@@ -80,7 +96,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 확인 없이 **자동으로 계속해도 되는 것**: 재시도 가능한 실패 후 `resume` 제안, 조회(`status`/`inspect`/`styles`), 사용자가 요청한 `rerender`.
 - **반드시 먼저 물어볼 것**:
   - 유료 API로 바꾸기(OpenAI·ElevenLabs·Typecast·이미지 생성 등)
-  - 권리가 불분명한 파일을 화면에 쓰기
+  - 해설 없이 외부 영상을 그대로 보여 주는(재업로드에 가까운) 구성 요청 — 인용·해설 중심으로 바꾸자고 제안한다
   - 여러 편 연속 제작
   - 업로드·게시
   - 기존 결과 삭제
@@ -88,19 +104,39 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 여러 편은 **명시적 요청이 있을 때만**, 한 편씩 순차로 만든다(한 번에 최대 10편). 한 편 실패해도 성공한 영상은 보존한다. 후보 번호는 사용자가 보고 고른 `candidates_id`에 연결한다. 다른 검색의 최근 목록으로 바꾸지 않는다.
 - `resume`에서 id를 생략하면 가장 최근의 이어 만들 수 있는 대기 프로젝트를 선택한다. 대화에서 id가 알려져 있으면 항상 지정한다. 직접 대본도 Factory에서는 `--review`를 지정했을 때만 멈춘다(기존 웹 UI의 강제 검토는 별도).
 
-## 자료 권리 규칙 (꼭 지킨다, 2026-10-05 Source Resolver 반영)
+## 자료 권리 규칙 (꼭 지킨다, 2026-10-07 transformative_quote 반영)
 
-**원칙: 프로그램은 visual source 를 적극적으로 찾는다. 단, 최종 영상에 직접 쓰는 source 는 사용 근거·재사용 가능성이 확인된 자료만이다.**
-검색 금지 아님 · 분석 금지 아님 · 자동 탐색 금지 아님. 권리 불명 영상이 자동으로 화면에 올라가지 않을 뿐이다.
+**원칙: 외부 자료의 직접 재업로드를 기본 동작으로 하지 않는다. 다만 분석·비평·비교·해설 목적의 필요한 인용은
+transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적, 사용 범위 및 source 정보를 기록한다.**
+재사용 라이선스가 없다는 이유만으로 외부 영상·캡처를 막지 않는다. 원본을 감상하게 하는 것이 아니라 우리 분석을 이해시키는 것이 목적이다.
 
-- `make` 는 기본 `--visuals auto`: Source Resolver 가 장면마다 공개 자료를 찾아 권리를 판정하고 usable 만 화면에 쓴다. `--visuals cards` 는 자체 카드만.
-- 우선순위: ① 사용자 업로드(권리 확인) ② 라이선스로 재사용이 확인된 공개 자료 — CC0 · 퍼블릭 도메인 · CC BY(화면·설명란 출처 표기) · NASA 제작 자료 · Pexels/Pixabay(키 있을 때) ③ AI 이미지(켜져 있을 때) ④ 자체 카드.
-- 자동으로 **reference_only**(분석·참고만): YouTube 영상(라이선스 표기와 무관하게 — YouTube 약관상 자동 다운로드 미지원), CC BY-SA(동일조건이 영상 전체에 걸림), NC(비상업), ND(변경 금지), 사용 제한 표기, 표기 없음(**unknown**).
-- 처리 순서: discover → inspect → rights classify → usable 일 때만 ingest(다운로드) → Clip Analyzer. 발견했다고 내려받지 않는다.
-- 권리가 애매하고 다른 usable 자료로 대체할 수 있으면 **사용자에게 묻지 말고 자동 대체**한다. 특정 영상이 꼭 필요한데 권리 근거가 없을 때만 사용자에게 원본 파일과 권리 근거를 요청한다(`--asset 파일 --note … --confirm-rights`).
-- 사용자 본인 영상/사진, 직접 만든 자료, AI 생성 이미지, 앱 카드, 공공누리 1유형은 기존처럼 화면에 쓸 수 있다. 사용자가 준 파일은 권리 근거(`--note`)와 `--confirm-rights` 를 확인한다.
-- 렌더 전 권리 검사(`sources.json`)는 엔진이 강제한다. 우회하지 않는다. `sources.json` 에는 화면에 쓴 자료(usage=visual, rights_status, rights_basis, scene_ids, clip_ranges)와 참고만 한 자료(usage=reference_only/research)가 모두 남는다.
-- 결과를 알릴 때: 어느 장면에 어떤 공개 자료(제공처·라이선스·구간)를 썼는지, 카드로 대체된 장면과 이유를 쉬운 말로 전한다. `source_plan.json` 에 검색어·후보 점수·제외 이유가 있다.
+- 화면 자료 상태: `licensed`(재사용 라이선스·권리 확인) · `public_domain`(CC0·퍼블릭 도메인·NASA 제작) ·
+  `transformative_quote`(라이선스는 확인되지 않았지만 비평·분석·비교·해설·뉴스/근황·장면 관찰·사실 검증을 위한 인용 후보) ·
+  `reference_only`(사용 제한 표기 등으로 현재 구성에서 화면 사용이 부적절) · `unknown`.
+- 사용자가 "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" 라고 하면
+  **재사용 라이선스를 묻지 않고** 인용 제작 의도로 처리한다: `make --url "URL" --quote 영상또는캡처 [--quote 캡처2]`.
+  출처는 `--url` 에서 자동으로 채운다(제목·채널). URL 없이 파일만 주면 `--quote-source "제목 | 채널 | URL"`.
+  참고 영상 파일 자체를 인용하려면 `make --reference-video 파일 --quote-reference`.
+- 인용 사용 방식(엔진이 강제): 근거 역할 장면(profile `evidence_roles`)에만 배치, 훅·마지막 질문은 자체 카드,
+  필요한 최소 구간만 재생하고 장면 나머지는 정지 화면 + 우리 해설(나레이션·자막), 원본 소리 없음, 화면 하단 `인용: 채널 · 제목`.
+  캡처 2장이 비교 장면에 오면 전/후 비교 레이아웃. 같은 원본 구간 반복 금지.
+- **고정 초 규칙("3초면 안전")을 만들거나 말하지 않는다.** 엔진의 한도는 상대 비율이다:
+  장면 길이의 60%까지 재생 · 완성 영상에서 인용 영상 비중 40% 이하 · 한 원본의 30% 이하 사용 · 인용 장면 75% 이하.
+- 렌더 전 `quote.guard` 가 해설 존재·출처 표기·비중·중복·viewer_question 연결을 검사하고, 문제가 있으면 구간을 줄이거나(정지 화면) 카드로 바꾼다. 결과는 `quote_plan.json`.
+- **권리 판단과 다운로드 기술 제한은 별개다.** YouTube 는 약관상 자동 다운로드를 하지 않는다(`media_status: not_downloaded_platform_terms`).
+  링크 분석(메타데이터·자막·benchmark·viewer_question·근거 구간 타임스탬프)은 그대로 하고, 화면 인용은 사용자가 준 로컬 영상·캡처로 한다.
+  링크만 받았고 화면에 원본 장면이 꼭 필요하면 "해당 구간 영상이나 캡처 파일을 주시면 인용으로 넣겠다"고만 안내한다(권리 질문은 하지 않는다).
+- Source Resolver(`make` 기본 `--visuals auto`)는 공개 자료를 찾아 상태를 판정한다. profile `source_strategy` 순서로 검토:
+  실제 장면이 근거인 구조(K-pop·근황·사건·발언·순위·실험) = licensed → public_domain → transformative_quote → generated → card,
+  정보 설명형(mechanism·illustrated) = licensed → public_domain → generated → transformative_quote → card.
+  자동 탐색 결과의 인용 후보는 근거 장면이고 장면 주장을 실제로 보여 줄 때(evidence_fit ≥ 7)만 쓴다.
+- 처리 순서: discover → inspect → rights classify → 화면 후보(licensed/public_domain/transformative_quote)일 때만 ingest → Clip Analyzer. reference_only·unknown 은 내려받지 않는다.
+- 사용자 본인 영상/사진, 직접 만든 자료, AI 생성 이미지, 앱 카드, 공공누리 1유형은 기존처럼 `--asset 파일 --note … --confirm-rights` 로 쓴다.
+- 렌더 전 권리 검사(`sources.json`)는 엔진이 강제한다. 우회하지 않는다. `sources.json` 에는 화면에 쓴 자료
+  (usage=visual/transformative_quote, rights_status, rights_basis, purpose, attribution{title, channel, url}, scene_ids, clip_ranges, media_status)와
+  참고만 한 자료(usage=reference_only/research)가 모두 남는다.
+- 결과를 알릴 때: 장면별로 어떤 자료를 어떤 상태(licensed/public_domain/transformative_quote)로 썼는지, 인용 구간과 정지 화면 처리, `quote_plan.json` 의 조정 내용을 쉬운 말로 전한다.
+  인용은 법적 판단(공정이용·정당한 인용)을 대신하지 않으므로, 게시 전 사용자가 최종 확인한다는 점도 한 줄로 알린다.
 
 ## 무료·유료 API
 
@@ -141,14 +177,16 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 웹 UI와 factory는 같은 엔진을 쓴다. 엔진은 UI(`app/main.py`, `app/jobs.py`)를 import하지 않는다.
 - 개발 중에는 유료 API·실제 샘플 제작을 하지 않는다. 테스트는 가짜(mock)로 돈다. 실제 제작은 사용자가 요청할 때만 한다.
 - `make` 를 부르는 테스트는 `run.bench_auto.ask_structured` 와 `run.source_resolver.resolve` 도 반드시 가짜로 막는다(`tests/test_factory.py` FactoryTestCase 참고). 막지 않으면 기본 benchmark auto·visuals auto 가 실제 Claude·공개 API 를 호출한다.
-- 2026-10-01 V1 요청은 서로 다른 실제 영상 최소 5편 검증을 허용한다. 유료 API는 여전히 미승인이다. 모든 실사용·회귀 테스트가 통과한 뒤에만 V1 완료 로컬 커밋을 만든다. 새 변경의 push는 하지 않는다(시작 시 `c6cd645` 백업 push만 승인됨).
+- 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
+- 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 통합 `tests/test_benchmark_auto.py`·Source Resolver `tests/test_source_resolver.py` 포함 247개).
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 `tests/test_benchmark_auto.py`·Source Resolver `tests/test_source_resolver.py`·인용 모드 `tests/test_quote_mode.py`·자막 정렬 `tests/test_word_align.py`·캐러셀 `tests/test_carousel.py` 포함 308개).
+- 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.
   - 비밀정보는 커밋하지 않는다.
-  - push는 사용자가 요청할 때만 한다.
+  - push는 사용자가 요청할 때만 한다("저장해줘" 포함, 위 작업 요청 규칙).
 - 진행 기록은 `IMPLEMENTATION_PLAN.md`(계획)와 `HANDOFF.md`(작업 인계)에 남긴다.
 
 ## Benchmark × V1 자동 통합 (2026-10-05, 기본값)
@@ -157,7 +195,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 "○○ 주제로 쇼츠 만들어줘", "이 유튜브 참고해서 만들어줘: URL" → 그냥 `make --topic …` / `make --url …` 를 실행한다.
 
 내부 흐름: 조사 → **Content Brief(AI 1회)**: verified_facts / inference 분리, 시청 질문 후보 2~3개(View Potential 5항목×20점), 8개 profile 9기준 점수
-→ **Auto Router**(가중합 0~100 + 게이트: 권리 확인 영상이 필요한 kpop_observation_clip·physics_comparison_simulation·ranked_moments 는 그런 영상이 없으면 제외, 필수 근거 슬롯 부족 시 제외, 기준 45점 미만이면 `illustrated_fact_explainer` fallback)
+→ **Auto Router**(가중합 0~100 + 게이트: 근거 영상이 필요한 kpop_observation_clip·physics_comparison_simulation·ranked_moments 는 권리 확인 영상이나 사용자가 준 인용 영상(`--quote`)이 없으면 제외, 필수 근거 슬롯 부족 시 제외, 기준 45점 미만이면 `illustrated_fact_explainer` fallback)
 → 선택 profile 에 맞는 보충 조사 1회 → **구조 주입 대본**(장면별 beat_role·시간·글자 예산·훅/결론/마지막 질문, 사실·추론·창작 분리) → 기존 장면 설계 + `apply_scene_plan`(장면 역할·카드 성격·강조 길이) → 기존 Edge TTS·자막·카드·렌더.
 기존 구성 분석(`make_plan`)은 benchmark 가 켜지면 건너뛰므로 AI 호출 수는 그대로 3회(brief·대본·장면)다.
 
@@ -165,7 +203,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 결과: `project_state.json` 의 `benchmark`(mode, selected_profile, candidate_scores, top3, viewer_question, reason_to_watch, claim, view_potential_score, selection_reason, fallback_used, narration_mode, scene_roles, quality) + 전체 기록 `benchmark_decision.json`(사실·추론·후보·원본 분석). `inspect --part benchmark` 로 본다.
 - `resume`·`rerender`·`batch-resume` 은 저장된 결정을 그대로 쓰고 다시 고르지 않는다. 완성 대본(`--script`)은 `not_applicable`, 스타일 지정(`--style`)은 auto 일 때 스타일을 따른다.
 - 사용자에게 결과를 알릴 때: 고른 구조 이름, 시청 질문, 선택 이유, 상위 3개 점수, fallback 여부와 quality 경고를 쉬운 말로 전한다.
-- 유튜브·기사 URL 은 분석 참고용이다(`source_analysis`). 원본 문장·장면 순서를 복제하지 않고, 타인 영상을 내려받아 화면에 쓰지 않는다.
+- 유튜브·기사 URL 은 분석한다(`source_analysis`, 유튜브는 타임스탬프 자막으로 `evidence_moments` 근거 구간까지). 원본 문장·장면 순서를 복제하지 않는다.
+  YouTube 미디어는 자동으로 내려받지 않는다. 사용자가 준 영상·캡처는 transformative_quote 로 근거 장면에 인용한다(자료 권리 규칙).
 - Source Resolver·Clip Analyzer 는 아래 자료 권리 규칙 참고. 아직 없음: 자동 게시, 채널 크롤링, Global Trend Radar, 조회수 예측, 성과 학습.
 
 | 사용자 말 | 실행 |
@@ -177,9 +216,41 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "예전 방식(구조 선택 없이)으로 만들어줘" | `make --topic "…" --benchmark off` |
 | "왜 이 구성으로 만들었어?" | `inspect <id> --part benchmark` |
 
+## 카드뉴스 · 인스타툰 · 하이브리드 (2026-10-07)
+
+`make` 에 출력 형식이 생겼다. `--format shorts`(기본) | `card_news` | `insta_toon` | `hybrid` | `all`.
+예전 톤 값(`--format information|story|issue`)도 그대로 받는다(새 이름은 `--tone`).
+결과는 `output/<id>/<format>/card_01.png …`(1080x1350 PNG), `manifest.json`(페이지별 타입·문구·이미지·캐릭터·출처·대체 여부),
+`sources.json`(이 형식에 쓴 자료), `plan.json`, `master.json`, `caption.txt`(인스타 본문·해시태그·출처).
+
+흐름: 입력 수집(쇼츠와 같은 research/article/youtube 모듈) → **Master Content(AI 1회)** → **Format Planner(AI 1회, 규칙으로 보정)**
+→ 카드 사진(쇼츠 Source Resolver 그대로: AI 2회, usable 만) → 만화 컷(업로드 `toon_NN_*` → Bible 참고 이미지 → AI(설정 시) → 앱 마스코트)
+→ Pillow 렌더러(글자·말풍선은 전부 앱이 합성). 페이지 하나가 실패해도 대체 레이아웃으로 계속한다.
+`hybrid` 비율은 Master 의 story_score 로 자동: 정보형 80/20, 일반 50/50, 스토리형 20/80(카드/만화).
+`all` = 쇼츠(기존 엔진 그대로) + 같은 대본으로 하이브리드. 쇼츠가 실패해도 카드는 만든다(`partial_failure`, 쇼츠는 `resume`).
+
+| 사용자 말 | 실행 |
+|---|---|
+| "이 주제로 카드뉴스 만들어줘" | `make --topic "…" --format card_news` |
+| "이 기사로 인스타툰 만들어줘: URL" | `make --url "URL" --format insta_toon` |
+| "카드뉴스랑 인스타툰 섞어서 만들어줘", "카드뉴스랑 만화를 섞어서" | `make --topic "…" --format hybrid` |
+| "이 원고로 하이브리드 만들어줘" | `make --script "원고" --format hybrid` |
+| "쇼츠와 하이브리드 카드뉴스 둘 다", "전부 만들어줘" | `make --topic "…" --format all` |
+| "이 조사 자료로 카드뉴스" (JSON) | `make --research-file 파일.json --format card_news` |
+| 형식이 애매한 문장 | `make --topic "…" --request "사용자 문장 원문"` (형식 자동 인식, `app/factory/intent.py`) |
+| "캐릭터 있는 카드뉴스로" | `make … --format card_news --template character_info` |
+| "토리 말고 다른 캐릭터로" | `characters list` → `make … --character <id>` |
+
+- 템플릿: `clean_info`(정보형 카드뉴스 기본), `character_info`(카드에 안내 캐릭터), `comic_hybrid`(인스타툰·하이브리드 기본). `app/carousel/templates/*.yaml` 추가만으로 새 템플릿.
+- 캐릭터: `characters/<id>/bible.json`(Character Bible, id 는 ASCII). `characters add --file bible.json`. 기본 `tory_01` 토리.
+- 캐릭터 그림 기본은 **무료 마스코트**(앱이 Bible 색으로 직접 그림). `config.yaml` `carousel.image_provider` 를 바꾸면 유료 AI 생성 — 사용자 허락 없이 바꾸지 않는다.
+  Flow 등에서 만든 그림을 `--asset toon_03_이름.png --note "Flow 생성" --confirm-rights --license ai_generated` 로 넣으면 그 페이지 첫 컷에 쓴다.
+- 캐러셀은 `--review`·`--reference-video` 를 받지 않는다. `resume`·`rerender` 대상이 아니다(다시 `make`). `inspect <id> --part carousel` 로 페이지 요약.
+- 결과를 알릴 때: 장수, 카드/만화 비율, 사진을 쓴 페이지와 출처, 대체 레이아웃이 된 페이지(`fallback_pages`)를 전한다.
+
 ## Benchmark 인벤토리와 오프라인 경로 (2026-10-05)
 
-현재 기준은 shorts-ai의 오프라인 Benchmark Engine이다. `docs/BENCHMARKS.md`와 `benchmark sources/profiles`를 먼저 확인한다.
+benchmark 현황의 기준은 `docs/BENCHMARKS.md` 맨 위 현황판이다(source 6개·profile 8개·상태·실제 검증). 아래는 오프라인 `benchmark plan/render` 경로 규칙이다.
 별도 shorts-ai-benchmark-v2는 별도 컨셉 작업이므로 사용자가 그쪽 구현을 요청하지 않으면 임의로 합치지 않는다.
 
 사용자가 "이 채널 벤치마킹해줘"라고 하면 최소한 source 분석을 구조화하고, 기존 profile 중복/variation/새 profile 필요성을 판단해
@@ -194,7 +265,7 @@ source와 profile은 양방향 연결하며 채널 수와 profile 수를 구분�
 | 사용자 요청 | 처리 |
 |---|---|
 | "이 주제로 curiosity_update_story 적용해서 만들어줘" | 기본: `make --topic "…" --benchmark curiosity_update_story` (조사·나레이션 포함). 사용자가 근거 JSON을 직접 준 경우에만 오프라인 `benchmark plan --profile … --input …` → `benchmark render ID` |
-| "이 영상으로 kpop_observation_clip 방식으로 만들어줘" | 권리 확인 로컬 영상의 관찰/타임코드를 기존 kpop JSON으로 기록 → 같은 plan/render |
+| "이 영상으로 kpop_observation_clip 방식으로 만들어줘" | 기본: `make --url "URL" --quote 직캠·캡처 --benchmark kpop_observation_clip` (해설 나레이션 + 인용 구간). 관찰/타임코드 JSON을 직접 준 경우에만 오프라인 plan/render |
 | "physics_comparison_simulation 방식으로 제작해줘" | 직접 만든 실험 영상/조건/고정 환경을 확인 → physics 양식 → plan/render; 시뮬레이션 영상 생성은 미지원임을 알려준다 |
 | "레스기처럼 순위로 묶어줘" | 채널 복제 대신 ranked_moments, N위부터1위 근거 클립과 순위 기준을 기록 |
 | "건축 원리 설명/발언 맥락/숫자 정보/사건 시간 순서" | 각각 mechanism_explainer / quote_context_story / illustrated_fact_explainer / event_timeline_story의 근거 JSON → plan/render |
