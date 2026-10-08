@@ -1,5 +1,46 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-08 (밤) — Topic Strategy V1 실운영 검증·안정화 (미커밋)
+
+상세: `docs/OPS_VALIDATION_2026-10-08.md`. 실제 뉴스 수집 32건(고유 25, 중복 병합 8), 검증 통과 1건(9월 소비자물가 — 국가데이터처 공식 원문 5문장),
+그 주제로 8장 하이브리드 실제 제작 `output/20261008_214102_85f2/hybrid/`(AI 0회). 실데이터에서 발견한 수집·중복·점수·스토리·캘린더 결함을
+`app/topics/{discovery,dedup,scoring,story,calendar}.py` 에서 수정하고 회귀 테스트 6개 추가. 전체 364개 통과·skip 0(이 PC 는 .venv·ffmpeg 정상).
+아래 "355통과·ffmpeg 3 skip"은 ffmpeg 없는 이전 PC 기준이다.
+
+## 2026-10-08 — Topic Strategy Engine V1 (미커밋)
+
+기존 쇼츠·캐러셀 코드 위에 전략 계층을 추가했다. 아래의 기존 브랜치/커밋 기록은 **이번 변경 전 상태**다.
+
+- 신규: `app/topics/`(schema/store/discovery/verification/scoring/dedup/semantic/story/business/calendar/engine/config),
+  `app/factory/topics.py`, `tests/test_topics.py`, `scripts/demo_topic_strategy.py`, `docs/TOPIC_STRATEGY*.md`.
+- 수정: CLI에 `topics` 추가, 기존 intent 확장, `core.make_planned_carousel` 추가,
+  캐러셀 `run_carousel`에 optional `prepared_master/prepared_plan` 주입(기존 경로 기본값 유지), `config.yaml` 전략 설정.
+- 뉴스/공식/통계: 기존 Naver/DDG 검색과 article 추출 사용, 확인된 공개 RSS 사용자 설정, robots·네트워크/리다이렉트 검사.
+  후보의 발행일·수집일·사건일 구분. 출처는 기존 SourceRegistry에 연구용으로 등록하며 사진 사용 권한으로 승격하지 않음.
+- 검증: 주요 주장에 원문 인용 일치·공식 1차 출처 또는 독립 신뢰 보도·기준일/단위·적용 대상·원통계를 요구.
+  충돌/오래된 사건/근거 없는 제목 수치/과장/권한 문제는 자동 승인 불가. 캐시 재평가로 기한 연장하지 않음.
+  뉴스 발행일 재수집 실패 또는 원문 변경은 보류·재승인. 복잡한 의미/법률 판단은 사람 보완 필요.
+- 점수: 관심30/스토리25/실용25/사업20, 0~100, 기본80우선/65검토. 내부 추정값. `rank --ai`만 기존 LLM 호출(개발 중 미실행).
+  의미 중복 AI는 사람 검토용 제안이며 자동 병합하지 않음. 동일 사건/주장 병합과 30/90일 발행 중복은 규칙으로 처리.
+- 제작: 사용자 승인 fingerprint가 있는 주제만 8페이지 story → 기존 CarouselPlan/Renderer.
+  기본 자체 그래픽·마스코트, 이미지 API/자료 검색 없음. 쇼츠 파생은 검증 원고를 기존 `make`로 넘김.
+  원래 score/근거/plan은 audit 및 결과 `topic_strategy.json`에 보존. `--dry-run`은 전달 JSON만 내고 generated 아님.
+- 승인 운영: `collect → rank → inspect/edit/verify → approve → plan/create → review → published`.
+  `published`는 외부 게시가 아니라 사람의 발행 이력 기록. exclude/hold/release/schedule/명시적 followup 지원.
+  번호는 사용자에게 보여준 selection_id에 묶음; 자연어 번호 제작 요청은 선택 승인으로 처리하되 사실 게이트 유지.
+- 캘린더: 주3편/1~4주, 최근20슬롯9:7:4, 적격 부족 시 비움, 예약 주제 중복 방지, 분야 부족 우선·B2B 주간 후보.
+- 단계별 확인: 수집7개 → 검증/평가16개 → 기존 Factory/Carousel 포함73개·86개 → B2B/캘린더+회귀64개 모두 통과.
+- 최종 전체 회귀: **358개 중 355개 통과, 실패0, 기존 ffmpeg 테스트3개 skip**. 전략 신규50개 모두 통과.
+  마지막 검증 로그: `final-topic-tests-complete.log`(Git 제외). 기존 기준308개도 동일 환경에서 실패0/skip3이었다.
+- 비용/샘플: Claude·외부 뉴스 API·유료 이미지 호출0회, 비용0원. 실제 PNG 샘플 미실행.
+  최종 `output/topic_strategy_v1_demo/`에는 가상 `.example` 근거로 생성한 10후보/상위3/1주3슬롯/4주12슬롯/8장 계획/전달JSON이 있다.
+  실 뉴스가 아님을 모든 데모 문서에 명시하고 운영 저장소와 격리했다.
+- 환경: 기존 `.venv/Scripts/python.exe`는 이전 PC 경로를 가리켜 실행 불가.
+  제공된 Python 3.12 + 기존 `.venv/Lib/site-packages`를 PYTHONPATH에 넣어 검사했다. ffmpeg CLI 부재로 기존 실 ffmpeg 테스트3개는 skip.
+  `scripts/factory.ps1`는 정상 가상환경 우선/현재 제공된 Python 대체 실행을 지원하며 `topics --help` 실제 실행 확인.
+  실패 후 재제작에서는 현재 제작 결과만 발행 검사에 사용하고 이전 실패 기록은 보존한다. 기존 계획은 plan_history로 보존한다.
+- 사용자 요청대로 commit/push하지 않았다. 초기 미커밋 파일 없었고 기존 output는 삭제하지 않았다.
+
 ## ★ 현재 상태 요약 (2026-10-08, 다른 PC 는 여기부터 읽는다)
 
 - **브랜치:** `feature/agent-content-factory` (origin 과 동기화). 받기: `git clone --branch feature/agent-content-factory https://github.com/young92133-cmd/ai-shorts.git` 또는 `git pull`.

@@ -1,5 +1,19 @@
 # 개발 계획 — 참고 영상의 좋은 기능을 내 AI 쇼츠 제작기에 맞게 적용
 
+## 2026-10-08 — Topic Strategy Engine V1
+
+요구사항 분석·재사용 비교 및 단계별 계획: `docs/TOPIC_STRATEGY_PLAN.md`. 운영 방법·검증 한계: `docs/TOPIC_STRATEGY.md`.
+
+- Phase 1: `app/topics` 후보·주장·출처 스키마/원자적 JSON/audit, 기존 뉴스 검색·기사 추출·SourceRegistry, RSS/직접 주제/URL/기존 discovery import.
+- Phase 2: 4항목 100점 계산·옵션 LLM 평가, 근거 원문·단위·기준일·적용 대상·원통계·충돌·기한 게이트, 사건 병합·30/90일 이력·옵션 의미 검토.
+- Phase 3: 8장 스토리·Character Registry, 저장된 Master/CarouselPlan을 기존 run_carousel에 주입. 승인 주제만 `make_planned_carousel`로 전달.
+- Phase 4: B2B 업종·교육용 납품물·컴플라이언스 리스크 및 주간 샘플 후보.
+- Phase 5: 최근 20슬롯 9:7:4, 1~4주 캘린더/예약중복 방지, 승인·수정·보류·검토·발행 기록, topics CLI/기존 intent 확장.
+
+실제 API/Claude 호출 없이 단계별 mock 테스트와 기존 Factory·Carousel 회귀 수행. 별도 가상 자료 데모가
+`output/topic_strategy_v1_demo/REPORT.md`에 10후보·상위3·1/4주·스토리·전달 패킷을 남긴다. 실제 운영 출처 수집·실제 PNG 샘플은 미실행.
+최종 전체 회귀 358개 중 355개 통과, 실패0, 기존 ffmpeg 테스트3개 skip. 신규 전략 테스트50개 통과.
+
 ## 2026-10-08 — 통합 정리 (캐러셀 · 인용 모드 · 문서/상태 일치)
 
 | 항목 | 결과 |

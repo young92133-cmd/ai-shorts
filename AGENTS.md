@@ -15,6 +15,11 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 
 ## 명령 (프로젝트 폴더에서, 가상환경 파이썬으로)
 
+Topic Strategy V1: `topics collect/rank/recommend/calendar/approve/plan/create`가 추가됐다.
+상세 CLI·검증 조건·원문/승인 보존은 `docs/TOPIC_STRATEGY.md`. 발행 API는 없고 `topics published`는 사람이 게시한 이력 기록이다.
+번호 선택은 결과의 `selection_id`를 유지한다. `topics rank --ai` 외에는 전략 평가에 LLM을 호출하지 않는다.
+개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/PNG 샘플은 사용자 요청 없이 반복하지 않는다.
+
 `.venv\Scripts\python.exe -m app.factory <명령>` 을 실행한다. 결과는 stdout JSON 한 덩어리이고, 진행 로그는 stderr로 나온다.
 종료 코드는 0 성공, 1 제작 실패, 2 요청 오류(없는 프로젝트·잘못된 값·아직 할 수 없는 단계)다.
 
@@ -180,7 +185,7 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
 - 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Benchmark×V1 `tests/test_benchmark_auto.py`·Source Resolver `tests/test_source_resolver.py`·인용 모드 `tests/test_quote_mode.py`·자막 정렬 `tests/test_word_align.py`·캐러셀 `tests/test_carousel.py` 포함 308개).
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Source Resolver·인용 모드·캐러셀·전략 `tests/test_topics.py` 포함 364개). 2026-10-08 기준 364개 통과·skip 0. ffmpeg 가 없는 PC 에서는 실제 ffmpeg 테스트 3개가 skip 된다(`test_quote_mode`, `test_source_resolver` 2개).
 - 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.
