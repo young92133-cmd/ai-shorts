@@ -23,7 +23,7 @@ import json
 import sys
 from typing import Any
 
-from . import core, batch, benchmark
+from . import core, batch, benchmark, topics
 from ..carousel import characters as charmod
 from ..carousel.schema import OUTPUT_FORMATS
 from ..carousel.templates import list_templates
@@ -48,6 +48,7 @@ def _log(msg: str) -> None:
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m app.factory", description="AI 쇼츠 콘텐츠팩토리")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    topics.add_parser(sub)
 
     mk = sub.add_parser("make", help="쇼츠 한 편 만들기 (기본: MP4 까지 자동)")
     src = mk.add_mutually_exclusive_group(required=True)
@@ -189,6 +190,8 @@ def _characters(a: argparse.Namespace) -> dict[str, Any]:
 
 
 async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
+    if a.cmd == 'topics':
+        return await topics.dispatch(a, log=_log)
     if a.cmd == "benchmark":
         if a.benchmark_cmd == "profiles":
             return benchmark.profiles()

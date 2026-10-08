@@ -18,7 +18,7 @@ from . import characters as charmod
 from .master import build_master
 from .planner import plan_pages
 from .render import PageAssets, render_page
-from .schema import CAROUSEL_FORMATS, CardPage, ComicPage, MasterContent
+from .schema import CAROUSEL_FORMATS, CardPage, ComicPage, MasterContent, CarouselPlan
 from .templates import load_template
 from .visuals import CharacterArtist, find_card_images, guard_image, pinned_uploads
 
@@ -135,10 +135,21 @@ def _caption_text(master: MasterContent, used_credits: list[str]) -> str:
 async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: dict[str, Any],
                        progress: Progress = _noop, template: str | None = None, character: str | None = None,
                        n_pages: int | None = None, instructions: str = "", image_search: bool = True,
-                       inputs: dict[str, Any] | None = None, character_root: Path | None = None) -> dict[str, Any]:
+                       inputs: dict[str, Any] | None = None, character_root: Path | None = None,
+                       prepared_master: MasterContent | None = None,
+                       prepared_plan: CarouselPlan | None = None) -> dict[str, Any]:
     """카드뉴스/인스타툰/하이브리드 한 벌을 만든다. inputs 를 주면 자료 수집을 건너뛴다(all 모드)."""
     if fmt not in CAROUSEL_FORMATS:
         raise ValueError(f"캐러셀 형식이 아닙니다: {fmt}")
+    if (prepared_master is None) != (prepared_plan is None):
+        raise ValueError('저장된 Master와 페이지 계획은 함께 전달해야 합니다')
+    if prepared_plan is not None:
+        if prepared_plan.format != fmt or not 6 <= len(prepared_plan.pages) <= 10:
+            raise ValueError('저장된 페이지 계획의 형식·장수가 올바르지 않습니다')
+        for page in prepared_plan.pages:
+            if isinstance(page, ComicPage):
+                for beat in page.panels:
+                    charmod.get_character(beat.character_id, character_root)
     cs = carousel_settings(cfg)
     llm = cfg["llm"]
     out_dir = job_dir / fmt
@@ -147,7 +158,7 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
         old.unlink()
     registry = SourceRegistry(job_dir)
     registry.save()
-    tpl = load_template(template or (cs.get("templates") or {}).get(fmt), fmt)
+    tpl = load_template(template or (prepared_plan.template if prepared_plan else None) or (cs.get("templates") or {}).get(fmt), fmt)
 
     # 1. 입력
     if inputs is None:
@@ -156,8 +167,11 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
 
     # 2. Master Content
     progress("script", 10, "핵심 내용(Master Content) 정리 중")
-    master, master_method = await build_master(llm, topic, docs, script_text=inputs.get("script_text", ""),
-                                               instructions=instructions, source_info=inputs.get("source_info", ""))
+    if prepared_master is not None:
+        master, master_method = prepared_master, 'topic_strategy_saved'
+    else:
+        master, master_method = await build_master(llm, topic, docs, script_text=inputs.get("script_text", ""),
+                                                   instructions=instructions, source_info=inputs.get("source_info", ""))
     (job_dir / "master.json").write_text(master.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 40, f"Master Content ({master_method}) · 성격 점수 {master.story_score:.2f}")
 
@@ -170,7 +184,7 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
             bible = charmod.ensure_default(character_root)
     valid = {c.id for c in charmod.list_characters(character_root)}
     progress("script", 50, "페이지 구성 중")
-    plan = await plan_pages(llm, master, fmt, template=tpl.id, character=bible, valid_chars=valid,
+    plan = prepared_plan if prepared_plan is not None else await plan_pages(llm, master, fmt, template=tpl.id, character=bible, valid_chars=valid,
                             n_pages=n_pages or int(cs["pages"]), instructions=instructions)
     (out_dir / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 100, f"{len(plan.pages)}장 구성 ({plan.method}) · 카드 {plan.mix.get('card')}% / 만화 {plan.mix.get('comic')}%")

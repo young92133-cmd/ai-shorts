@@ -32,3 +32,19 @@ def detect_output_format(text: str) -> str:
     if card:
         return "card_news"
     return "shorts"
+
+
+def detect_topic_request(text: str) -> dict:
+    """Strategy intents use the same format detector. Selection numbers need a saved list ID."""
+    t = re.sub(r'\s+', ' ', text.lower()).strip()
+    match = re.search(r'(\d+)\s*개', t)
+    weeks = re.search(r'(\d+)\s*주', t)
+    select = re.search(r'(\d+)\s*번', t)
+    pages = re.search(r'(\d+)\s*장', t)
+    category = 'housing' if any(w in t for w in ('부동산', '주거', '전세', '월세')) else 'finance' if '재테크' in t else 'economy' if '경제 뉴스' in t else 'all'
+    action = ('calendar' if any(w in t for w in ('캘린더', '일정')) else 'create' if select and any(w in t for w in ('만들', '제작')) else
+              'recommend' if any(w in t for w in ('추천', '영업')) else 'list' if any(w in t for w in ('보여', '목록')) else 'unknown')
+    return {'action':action, 'category':category, 'limit':int(match[1]) if match else 3 if action=='recommend' else 10,
+            'weeks':int(weeks[1]) if weeks else 1, 'select':int(select[1]) if select else None,
+            'pages':int(pages[1]) if pages else 8, 'format':detect_output_format(t) if any(w in t for w in CARD+TOON+MIX+SHORTS) else 'hybrid',
+            'b2b':'b2b' in t or '영업' in t}

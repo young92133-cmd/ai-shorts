@@ -499,6 +499,45 @@ async def _make_carousel(*, output_format: str, topic: str | None, url: str | No
             "shorts_status": shorts_summary.get("status"), "carousel": carousel}
 
 
+async def make_planned_carousel(story, evidence, *, character_root=None, log: Log = print) -> dict[str, Any]:
+    """Render an approved Topic Strategy bundle with the shared carousel engine; no research/planning calls."""
+    from ..carousel.schema import MasterContent, CarouselPlan
+    from ..pipeline.models import ResearchDoc
+    from ..topics.store import write
+    master = MasterContent.model_validate(story.master)
+    plan = CarouselPlan.model_validate(story.carousel_plan)
+    request = {'mode': 'topic_strategy', 'input': master.topic, 'preset': 'daily',
+               'output_format': plan.format, 'review': False, 'instructions': story.dialogue_disclaimer,
+               'llm': 'claude', 'allow_openai': False, 'visuals': 'cards'}
+    cfg = _run_cfg(request)
+    # Approved factual plan renders with our graphics; keys alone cannot trigger image API spending.
+    cfg['carousel'] = {**cfg.get('carousel', {}), 'image_provider': 'none', 'image_search': False}
+    job_dir = output_root() / _new_id()
+    state = st.save(job_dir, st.new(job_dir.name, request))
+    write(job_dir / 'topic_strategy.json', story.model_dump())
+    registry = SourceRegistry(job_dir)
+    docs = [ResearchDoc(title=e.title, url=e.url, text=e.text, published=e.published_at) for e in evidence]
+    for e in evidence:
+        registry.add(kind='article', origin='url', url=e.url, title=e.title, usage='research', used_for='script_research')
+    try:
+        out = await carouselmod.run_carousel(job_dir, fmt=plan.format, mode='topic_strategy', text=master.topic,
+            cfg=cfg, progress=_progress(job_dir, state, log), character=story.character_id,
+            inputs={'topic': master.topic, 'docs': docs}, image_search=False, character_root=character_root,
+            prepared_master=master, prepared_plan=plan, instructions=story.dialogue_disclaimer)
+        manifest = Path(out['manifest'])
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        data['topic_strategy'] = {'topic_id': story.topic_id, 'provenance': story.provenance,
+                                  'dialogue_disclaimer': story.dialogue_disclaimer}
+        write(manifest, data)
+        caption = manifest.parent / 'caption.txt'
+        with caption.open('a', encoding='utf-8') as f:
+            f.write('\n' + story.dialogue_disclaimer + '\n')
+        state['topic_strategy'] = {'topic_id': story.topic_id, 'provenance_file': str(job_dir / 'topic_strategy.json')}
+        return _finish_carousel(job_dir, state, out)
+    except Exception as exc:
+        return _fail(job_dir, state, exc)
+
+
 def _finish_carousel(job_dir: Path, state: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
     pages = [Path(p) for p in out["pages"]]
     if not pages or not all(p.is_file() and p.stat().st_size for p in pages):

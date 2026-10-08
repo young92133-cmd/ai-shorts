@@ -65,6 +65,22 @@ sources:
   min_visual_fit: 7        # 장면과 화면이 맞는 정도(0~10) 최소값
   per_query: 4             # 제공처별 검색 결과 수
 
+topic_strategy:
+  # 후보 평가는 규칙 기반(0원)이 기본. topics rank --ai 로 기존 구독 LLM을 명시적으로 선택.
+  config_version: topic-strategy-v1
+  quota: {housing: 9, finance: 7, economy: 4}  # 최근 20개 발행 슬롯, 부족 분야를 다음 계획에서 우선
+  weekly_count: 3
+  weights: {interest: 30, story: 25, utility: 25, business: 20}
+  priority_threshold: 80
+  review_threshold: 65
+  news_recheck_hours: 24
+  news_max_age_days: 7
+  evergreen_recheck_days: 30
+  rss_sources: []  # 운영기관/사용자가 확인한 공개 RSS URL. 엔드포인트를 추측하지 않는다.
+  official_domains: [bok.or.kr, molit.go.kr, fsc.go.kr, fss.or.kr, kostat.go.kr, mods.go.kr, kosis.kr, reb.or.kr]  # mods.go.kr = 국가데이터처(통계청 후신, kostat.go.kr 는 이리로 이동)
+  character: tory_01
+  character_rights: owned  # 벤치마킹 계정 캐릭터 사용 금지
+
 carousel:
   # 카드뉴스 · 인스타툰 · 하이브리드 (make --format card_news|insta_toon|hybrid|all). 1080x1350 PNG
   pages: 8                 # 기본 장수 (6~10)
