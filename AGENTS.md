@@ -5,7 +5,7 @@
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
 
 **현재 상태(2026-10-08):** V1 제작 엔진 + Benchmark 8개 구조 자동 선택(`--benchmark auto`) + Source Resolver(`--visuals auto`)
-+ Clip Analyzer + 인용·재가공 모드(transformative_quote, `--quote`) + 자막 정렬 + 카드뉴스·인스타툰 캐러셀(`--format`).
++ Clip Analyzer + 인용·재가공 모드(transformative_quote, `--quote`) + 자막 정렬 + 카드뉴스·인스타툰 캐러셀(`--format`) + Topic Strategy V1.
 최신 완료 상태·실제 검증·한계는 `HANDOFF.md` 맨 위, benchmark 현황은 `docs/BENCHMARKS.md` 맨 위가 기준이다.
 새 대형 기능(Global Trend Radar·Localization·Vision Clip Analyzer·성과 학습·자동 게시)은 사용자의 별도 요청 전에는 시작하지 않는다.
 
@@ -21,6 +21,10 @@ Topic Strategy V1: `topics collect/rank/recommend/calendar/approve/plan/create`�
 개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/PNG 샘플은 사용자 요청 없이 반복하지 않는다.
 
 `.venv\Scripts\python.exe -m app.factory <명령>` 을 실행한다. 결과는 stdout JSON 한 덩어리이고, 진행 로그는 stderr로 나온다.
+현재 Codex 환경에서는 `./scripts/factory.ps1 <명령>`을 쓴다. 깨진 기존 `.venv`는 보존하고,
+저장소 밖 `../.codex-envs/ai-shorts-py312`의 Python 3.12가 기존 패키지를 재사용한다.
+래퍼는 정상 `.venv` → 복구 환경 → 제공된 Python 순으로 선택하고 `.pth`를 처리하며, 로컬 FFmpeg 경로는 실행 중에만 추가한다.
+복구 환경은 기존 `.venv/Lib/site-packages`에 의존하므로 이를 삭제하지 않는다. CLI import 성공은 Claude 로그인·실제 제작 검증과 구분한다.
 종료 코드는 0 성공, 1 제작 실패, 2 요청 오류(없는 프로젝트·잘못된 값·아직 할 수 없는 단계)다.
 
 | 명령 | 하는 일 |
@@ -185,7 +189,7 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
 - 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (V1·Benchmark·Source Resolver·인용 모드·캐러셀·전략 `tests/test_topics.py` 포함 364개). 2026-10-08 기준 364개 통과·skip 0. ffmpeg 가 없는 PC 에서는 실제 ffmpeg 테스트 3개가 skip 된다(`test_quote_mode`, `test_source_resolver` 2개).
+- 전체 테스트: `python -B -m unittest discover -s tests -q`. 정의 수는 Codex 저장 후보365개, 다른 세션의 햄토리치 미커밋 작업까지 포함한 현재 폴더368개다. 앞선 365개 사본 검증은 통과·실패/오류/skip 0이며 외부 호출·원본 쓰기 차단과 실제 FFmpeg 회귀3개를 포함했다. 가상 데모 안내·재실행 보존 회귀1개 추가. 최신 두 범위 검증 결과와 실행 환경은 `HANDOFF.md` 맨 위 참조. ffmpeg가 없는 환경에서는 기존 FFmpeg 테스트3개가 skip 된다.
 - 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.

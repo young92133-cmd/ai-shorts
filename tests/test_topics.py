@@ -706,6 +706,30 @@ class RealNewsDedupScoringTests(StoreCase):
         self.assertNotEqual(scores['worker'].reasons['story'], scores['macro'].reasons['story'])
 
 
+class OfflineDemoTests(unittest.IsolatedAsyncioTestCase):
+    async def test_demo_labels_synthetic_outputs_and_preserves_reruns(self):
+        from scripts.demo_topic_strategy import run, NOTICE
+        from app.topics import scoring
+        from app.factory import core
+        with tempfile.TemporaryDirectory() as d, \
+             patch.object(discovery, 'fetch_evidence', new=AsyncMock(side_effect=AssertionError('no network'))), \
+             patch.object(scoring, 'ask_structured', new=AsyncMock(side_effect=AssertionError('no AI'))), \
+             patch.object(core, 'make_planned_carousel', new=AsyncMock(side_effect=AssertionError('no rendering'))):
+            first = await run(Path(d))
+            original = Path(first['dir']) / 'recommendations.json'
+            saved = original.read_bytes()
+            second = await run(Path(d))
+            self.assertNotEqual(first['dir'], second['dir'])
+            self.assertEqual(original.read_bytes(), saved)
+            for result in (first, second):
+                self.assertEqual(result['story_pages'], 8)
+                self.assertEqual(result['cost'], 0)
+                for filename in ('recommendations.json', 'calendar_1week.json', 'calendar_4weeks.json',
+                                 'engine_delivery.json', 'story_plan.json'):
+                    data = json.loads((Path(result['dir']) / filename).read_text(encoding='utf-8'))
+                    self.assertEqual(data['notice'], NOTICE)
+
+
 class CalendarFreshnessTests(StoreCase):
     def test_news_not_scheduled_after_it_expires(self):
         import datetime as _dt

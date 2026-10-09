@@ -60,20 +60,20 @@ async def run(out: Path) -> dict:
     ingest(store, fixture_rows(at))
     engine = Engine(store, cfg)
     result = await engine.rank(limit=10, at=at)
-    write(out / 'recommendations.json', {'notice':NOTICE, **result})
+    write(out / 'recommendations.json', {**result, 'notice':NOTICE})
     weekly = make_calendar(store, cfg, weeks=1, at=at)
-    write(out / 'calendar_1week.json', {'notice':NOTICE, **weekly})
+    write(out / 'calendar_1week.json', {**weekly, 'notice':NOTICE})
     # Continue the same calendar rather than reusing reserved topics.
     start = (dt.date.fromisoformat(weekly['entries'][0]['scheduled_date']) + dt.timedelta(days=7)).isoformat()
     monthly = make_calendar(store, cfg, weeks=4, start=start, at=at)
-    write(out / 'calendar_4weeks.json', {'notice':NOTICE, **monthly})
+    write(out / 'calendar_4weeks.json', {**monthly, 'notice':NOTICE})
     selected = next(t for t in store.topics() if t.title == IDEAS[0][1])
     # Simulated user approval only in the isolated fixture store, never production.
     await engine.approve(selected.topic_id, at=at)
     packet = await engine.create(selected.topic_id, fmt='hybrid', dry_run=True, at=at)
-    write(out / 'engine_delivery.json', {'notice':NOTICE, **packet})
+    write(out / 'engine_delivery.json', {**packet, 'notice':NOTICE})
     plan = packet['delivery'][0]['story_plan']
-    write(out / 'story_plan.json', {'notice':NOTICE, **plan})
+    write(out / 'story_plan.json', {**plan, 'notice':NOTICE})
     lines = ['# Topic Strategy V1 오프라인 검증 예시', '', NOTICE, '', '모델 호출 0회 · 유료 API 0원 · PNG 렌더링 없음.', '',
              '## 추천 후보 10개', '', '|번호|카테고리|주제|점수|검증|', '|---|---|---|---:|---|']
     labels = {'housing':'부동산·주거','finance':'재테크·투자 기초','economy':'경제 뉴스 해설'}

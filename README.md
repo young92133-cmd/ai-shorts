@@ -17,6 +17,20 @@
 기본값은 `benchmark = auto`, `visuals = auto` 다. 구조를 직접 정하려면 `--benchmark <profile>`, 예전 방식은 `--benchmark off`, 자체 카드만 쓰려면 `--visuals cards`.
 명령 전체 목록과 자연어 대응표는 [CLAUDE.md](CLAUDE.md) 에 있다.
 
+## Topic Strategy V1과 현재 Codex 실행 환경
+
+후보 탐색 → 주장별 원문/기한 검증 → 100점 평가 → 중복·발행 이력 → 사람 승인 → 8장 스토리·캐러셀 제작 → 주간 캘린더가 구현됐다.
+운영 순서와 제한은 [docs/TOPIC_STRATEGY.md](docs/TOPIC_STRATEGY.md), 선행 실운영 기록은 [docs/OPS_VALIDATION_2026-10-08.md](docs/OPS_VALIDATION_2026-10-08.md).
+앞선 자동 테스트 365개 통과(외부 서비스 mock, 실제 FFmpeg 회귀 3개 포함). 기존 실제 8장 결과도 재확인했다.
+현재 폴더는 별도 미커밋 햄토리치 작업까지 포함해368개, Codex 마무리9파일만 반영한 저장 후보는365개다.
+두 범위의 최신 전체 검증 결과·저장 범위·백업은 HANDOFF 맨 위를 확인한다.
+이 결과를 모든 AI 제작/인용 방식의 실제 검증으로 보지 않는다. 공식 근거 보완·제작 승인·게시 확인은 여전히 필요하다.
+
+현재 Codex에서는 기존 `.venv`가 실행되지 않아 원본을 보존하고 외부 `../.codex-envs/ai-shorts-py312` 환경으로 패키지를 재사용한다.
+Factory는 `./scripts/factory.ps1 topics --help`로 시작한다. 아래 Factory 예시의 `.venv\Scripts\python.exe -m app.factory`를
+`./scripts/factory.ps1`로 바꿔 실행할 수 있다. 복구 환경은 기존 패키지에 의존하며 웹 UI 런처 복구까지 확인한 것은 아니다.
+기본 제작 AI는 Claude 구독, 음성은 Edge TTS로 유지한다. 환경 점검으로 실제 AI/TTS 서비스를 호출하지 않았다.
+
 ## Benchmark (8개 제작 구조)
 
 6개 분석 source(돌토리·짤잉·BKS Simulation·레스기·건축매니아·reference 제작 시스템)를 일반화한 8개 production profile:
@@ -69,11 +83,12 @@ Claude Code는 `CLAUDE.md`, Codex는 `AGENTS.md`에 따라 같은 제작 엔진�
 YouTube의 자막·오디오 수집, 로그인 필요한 웹페이지, 네트워크/Claude 구독 한도에 따라 실패할 수 있으며 상태와 원인을 저장합니다.
 외부 영상·기사·댓글은 내용 참고용입니다. 실제 화면은 내부 카드와 권리를 확인한 첨부만 사용합니다.
 
-**V1 기능·실사용 검증을 완료했습니다.** 기존 95개를 포함한 자동 테스트 132개와 Claude 구독 실제 영상 10편,
+**V1 초기 기능·실사용 검증 기록:** 당시 기존 95개를 포함한 자동 테스트 132개와 Claude 구독 실제 영상 10편,
 직접 대본 영상 2편을 확인했습니다. 지원 입력 6종과 두 편 순차 검토→이어 만들기도 실제 통과했습니다.
 자세한 검증 상태는 [HANDOFF.md](HANDOFF.md) 맨 위를 확인하세요. 기존 엔진 기능을 재사용하며,
 고급 자막·모션·BGM/효과음 추천·레퍼런스 복제·AI 영상·고급 스타일팩은 V2로 미룹니다.
-여러 URL 통합·자동 게시·자동 팩트체크는 V1에 없습니다. 뉴스의 날짜·주장·숫자는 게시 전에 출처를 확인하세요.
+여러 URL 통합·자동 게시 및 일반 `make`의 주장별 자동 검증 게이트는 없습니다. Topic Strategy의 보수적 근거 검증은 별도 경로입니다.
+뉴스의 날짜·주장·숫자는 게시 전에 출처를 확인하세요.
 
 ### 직접 실행할 때
 

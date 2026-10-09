@@ -7,10 +7,12 @@
 
 프로젝트에서 기존 가상환경 Python으로 실행한다.
 
-현재 PC에서는 기존 가상환경이 이전 PC 경로를 가리킨다. 설치/재구성 없이 제공된 Python과 기존 패키지를
-사용하는 실행 래퍼도 추가했다: `./scripts/factory.ps1 topics collect --category all`.
-가상환경이 정상인 PC에서는 래퍼가 기존 가상환경을 먼저 사용한다. 아래 `python -m app.factory`를
-`./scripts/factory.ps1`로 바꿔 같은 명령을 실행할 수 있다.
+현재 Codex에서는 기존 `.venv` 실행 파일이 삭제된 Python 경로를 가리킨다. 원본은 보존하고 저장소 밖
+`../.codex-envs/ai-shorts-py312/`에 Python 3.12.14를 구성해 기존 설치 패키지를 `.pth`로 재사용한다.
+`./scripts/factory.ps1 topics --help`로 안전하게 실행을 확인할 수 있다. 래퍼는 정상 `.venv`를 우선하고,
+복구 환경이 없으면 제공된 Python과 `site.addsitedir`를 사용한다(PYTHONPATH만으로는 pywin32 연결이 누락될 수 있다).
+로컬 FFmpeg/FFprobe PATH는 래퍼 실행 중에만 추가한다. 기존 `.venv/Lib/site-packages`를 삭제하면 재사용 환경도 깨진다.
+아래 `python -m app.factory`를 `./scripts/factory.ps1`로 바꿔 같은 명령을 실행할 수 있다.
 
 ```powershell
 python -m app.factory topics collect --category all
@@ -132,3 +134,16 @@ python -m app.factory topics request "1번 주제로 8장 하이브리드 인스
 calendar_1week.json, calendar_4weeks.json, story_plan.json, engine_delivery.json.
 공식 자료를 가장하지 않도록 `.example` 도메인의 **가상 자료**와 격리된 데모 설정을 사용한다.
 실제 운영의 공식 도메인 설정에서는 이 가상 자료가 verified가 되지 않는다. Claude/API/PNG 호출 0회.
+모든 배포용 데모 JSON의 notice는 가상 근거 안내로 고정한다. 재실행은 새 하위 폴더를 써 이전 데모를 보존한다.
+
+## 구현과 검증 상태 (2026-10-08 Codex)
+
+- V1 수집·주장/근거 검증·100점 평가·사건 중복/발행 이력·8장 스토리·기존 캐러셀 연결·1~4주 캘린더·CLI 구현 완료.
+- 의미 중복은 기본 규칙 병합과 `rank --ai`의 사람 검토용 LLM 제안이다. 의미 이해에 따른 자동 검증·자동 병합 완료로 해석하지 않는다.
+- 캐릭터 추가 전 전체 자동 테스트365개 통과·실패/오류/skip 0. 외부 서비스는 mock, 기존 FFmpeg 회귀3개는 임시 자료로 실행했다.
+  최신 정의 수는 Codex 저장 후보365개·별도 햄토리치 미커밋 작업 포함368개다. 각 전체 실행 결과는 HANDOFF 맨 위 참조.
+  소스 사본에서 실제 외부 호출과 원본 쓰기를 차단한 결과이며 실행 기록은 HANDOFF 맨 위의 백업 폴더에 있다.
+- 다른 세션이 만든 기존 8장 하이브리드 결과의 상태·PNG 규격·근거 manifest를 재확인했다. 이번에는 새 콘텐츠를 만들지 않았다.
+  실제 Claude 평가·의미 중복 AI·Topic→쇼츠 및 K-pop 인용 제작은 이번 검증 범위에 포함하지 않는다.
+- 실 뉴스 수집/캐러셀 선행 검증 기록과 알려진 한계는 `OPS_VALIDATION_2026-10-08.md`.
+  공식 원문 자동 연결·사건일·상시 주제 분류·JS 본문·제목/CTA 및 강조 숫자 맥락은 후속 개선 대상이다.

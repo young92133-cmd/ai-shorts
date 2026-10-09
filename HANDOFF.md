@@ -1,13 +1,72 @@
 # HANDOFF — 개발 인수인계 문서
 
-## 2026-10-08 (밤) — Topic Strategy V1 실운영 검증·안정화 (미커밋)
+## 2026-10-08 22:33 재개 — 저장 범위 분리 및 최종 검증
+
+- Claude 세션 22:28:51 종료, 22:28:55 마지막 로그 이후 약 1분간 소스/자산 해시·HEAD·로그가 안정된 것을 확인했다.
+  fetch 후 로컬/원격 작업 브랜치는 여전히 `365a810`, ahead/behind 0/0이다.
+- 현재 미커밋은 수정16 + 신규12. Codex 마무리9파일과 다른 세션 햄토리치 작업19항목을 별도 기능 단위로 보존한다.
+  Codex 저장 후보: AGENTS.md, CLAUDE.md, HANDOFF.md, README.md, docs/OPS_VALIDATION_2026-10-08.md,
+  docs/TOPIC_STRATEGY.md, scripts/demo_topic_strategy.py, scripts/factory.ps1, tests/test_topics.py.
+  별도 작업: app/carousel/{characters,pipeline,render,visuals}.py, app/topics/config.py, config.yaml, tests/test_carousel.py,
+  characters/hamtorich_01/ 12파일. 이 작업을 임의 수정/되돌림/커밋하지 않는다.
+- 새 백업: `../backups/ai-shorts-codex-20261008-223514/` 2,565파일, 1,367,634,686바이트.
+  새 캐릭터 자료12개 및 현재 변경28항목을 포함하고 복사 전후/원본/복사본 해시와 Git bundle을 검증했다.
+  이전 백업·중단 기록·Codex 변경 사본도 보존한다. 기존 환경을 다시 설치/삭제하지 않았다.
+- 실제 테스트 정의 수: 현재 폴더368개(햄토리치 회귀3개 포함), `365a810 + Codex 9파일` 저장 후보365개.
+  아래 365개 통과는 캐릭터 추가 전 완료된 검증이다. 최신 결과는 새 백업의 `working-tree/test-results.json`과
+  `commit-candidate/test-results.json`, 각 `unittest.log`에서 확인한다. 두 범위를 고정 사본으로 각각 전체 실행한다.
+  후보 사본은 Git에서 기본 소스를 읽고 Codex9파일만 적용한다. 원본 파일·Git index·working tree는 전환하지 않는다.
+  결과가 실패/차단/원본 변경을 보고하면 저장 승인을 요청하지 않고 원인을 구분한다.
+- 현재 로컬 기본 캐릭터는 햄토리치이며 토리는 계속 등록되어 있다. 이 변경은 별도 미커밋 작업이므로
+  Codex9파일만 저장한 후보의 기본 캐릭터는 기존 토리다. 캐릭터 기능까지 GitHub에 저장한 것으로 보고하지 않는다.
+- commit/push는 여전히 사용자 승인 전 대기. 환경·output·캐시·인증 정보·다운로드 자료는 저장 후보에서 제외한다.
+
+## 2026-10-08 — Codex 안전 마무리 / commit·push 승인 대기
+
+- 정확한 프로젝트: `C:\Users\young\OneDrive\Desktop\클로드코드\shorts-ai`.
+  저장소 `https://github.com/young92133-cmd/ai-shorts`, 브랜치 `feature/agent-content-factory`.
+  재개 시 로컬 HEAD와 fetch 후 origin 브랜치 모두 `365a810e3108086db09102826622e40b6398a3a9`, ahead/behind 0/0, 미커밋 0이었다.
+  이전 28개 작업 파일은 다른 세션이 `7a7e0a9`(엔진)·`365a810`(문서)로 이미 저장했다. 이를 다시 구현하거나 되돌리지 않았다.
+- 충돌 확인: 관련 Claude 세션 마지막 기록 21:54:24의 종료 이후 파일 해시·HEAD·세션 기록이 안정된 것을 확인하고 진행했다.
+  실행 중인 프로세스를 종료하지 않았다. 별도 `shorts-ai-benchmark-v2` worktree는 그대로 보존한다.
+- 백업: 저장소 밖 `../backups/ai-shorts-codex-20261008-220646/`.
+  소스·운영 output·참고 자료·기존 로그·환경 설정 2,552파일, 1,356,097,100바이트를 복사해 원본/복사본 SHA256 일치를 확인했다.
+  `repository.bundle` 전체 이력 검증 완료. 기존 기능 28파일 + Topic 운영 407파일을 임시 폴더에 복원해 435파일 해시 검증 완료.
+  캐시·설치 패키지는 삭제하지 않고 원위치 보존, 버전 목록은 백업의 `dependency-versions.json`에 기록한다.
+- 환경: 이 Codex에서 기존 `.venv` 실행은 여전히 불가(삭제된 Python312 경로). 원본은 변경하지 않았다.
+  외부 `../.codex-envs/ai-shorts-py312/` Python 3.12.14를 만들고 `.pth`의 `site.addsitedir`로 기존 패키지를 재사용했다.
+  직접 요구사항 17개 만족·`pip check` 정상, Claude SDK 0.2.157·Edge TTS 7.2.8·faster-whisper 1.2.1·PyAV 18.1.0 import 정상.
+  FFmpeg/FFprobe 9.0.2 정상. `scripts/factory.ps1`는 복구 환경 및 `.pth` 처리와 실행 중 FFmpeg PATH 추가를 지원한다.
+  도움말 성공 0·잘못된 명령 2·PATH/현재 폴더 복원 확인. Claude CLI 설치 위치만 확인했고 로그인/구독 호출은 검증하지 않았다.
+  복구 환경은 기존 패키지 경로에 의존한다. 독립 재설치 환경이나 웹 UI 실행 복구까지 검증한 것으로 보지 않는다.
+- 최소 수정: 데모 JSON의 가상 자료 안내를 결과의 일반 notice가 덮어쓰지 않도록 마지막에 기록한다.
+  격리된 가상 자료 데모를 두 번 실행해 안내문·8장 계획·기존 결과 보존을 확인하는 회귀 1개 추가.
+  엔진·운영 데이터·LLM 기본 공급자/모델·다운로드/인용 정책은 변경하지 않았다.
+- 최신 전체 테스트: **365개 통과, 실패0, 오류0, skip0, 미실행0**.
+  최신 소스를 저장소 밖 사본으로 고정하고 `.env`/사용자 settings 로딩·실제 HTTP/DNS·Claude 등 비FFmpeg subprocess·원본 쓰기를 차단했다.
+  Windows asyncio의 로컬 socket과 임시 FFmpeg 테스트만 허용. 실제 FFmpeg 회귀 3개 포함, 외부 호출 시도0·테스트 중 원본 파일 변경0.
+  최초 실행의 FFmpeg 3오류는 격리 실행기의 Windows executable=None 처리 오류였으며 실행기를 고쳐 전체 재실행했다.
+  최종 결과/소스 사본/실행 로그는 백업 폴더의 `test-results.json`, `unittest.log`, `isolated_tests.py`에 보존한다.
+- 실제 결과 재확인: 기존 `output/20261008_214102_85f2` 상태 render_complete, ai_calls=[];
+  hybrid/card_01~08.png 모두 정상 PNG·1080×1350, manifest와 페이지별 근거 기록 존재.
+  이번 작업에서는 실제 뉴스 재수집·Claude/OpenAI/Edge 서비스 호출·새 실제 콘텐츠 제작을 하지 않았다.
+  실 뉴스 진위 재검증과 Topic→쇼츠/K-pop 실제 인용 제작 검증은 별도 승인 후 진행한다.
+- 남은 한계: 공식 원문 자동 연결·사건일 추출·상시 주제 분류·JS 본문 수집·규칙 스토리 제목/숫자 맥락 개선.
+  YouTube source_info 타임스탬프 덮어쓰기(run.py), Quote Guard의 근거 역할/질문 누락 경고 처리(quote.py),
+  무자막 YouTube 오디오 다운로드와 문서 정책 불일치는 여전히 남아 있다. 이번에는 해당 정책/제작 코드를 수정하지 않았다.
+- 다음: 최종 diff·민감정보/생성물 제외 확인 → 사용자 commit/push 승인 → 새 일반 commit·현재 브랜치 push.
+  output·캐시·환경·외부 자료·인증 정보는 Git에 추가하지 않는다. reset/clean/stash/amend/rebase/force push 금지.
+
+아래 섹션의 테스트 수·환경·미커밋 표시는 당시 기록이다. 현재 Git·환경·검증 기준은 위 섹션이다.
+
+## 2026-10-08 (밤) — Topic Strategy V1 실운영 검증·안정화 (이후 7a7e0a9·365a810 저장)
 
 상세: `docs/OPS_VALIDATION_2026-10-08.md`. 실제 뉴스 수집 32건(고유 25, 중복 병합 8), 검증 통과 1건(9월 소비자물가 — 국가데이터처 공식 원문 5문장),
 그 주제로 8장 하이브리드 실제 제작 `output/20261008_214102_85f2/hybrid/`(AI 0회). 실데이터에서 발견한 수집·중복·점수·스토리·캘린더 결함을
-`app/topics/{discovery,dedup,scoring,story,calendar}.py` 에서 수정하고 회귀 테스트 6개 추가. 전체 364개 통과·skip 0(이 PC 는 .venv·ffmpeg 정상).
-아래 "355통과·ffmpeg 3 skip"은 ffmpeg 없는 이전 PC 기준이다.
+`app/topics/{discovery,dedup,scoring,story,calendar}.py` 에서 수정하고 회귀 테스트 6개 추가. 이전 세션 기록은 전체 364개 통과·skip 0이다.
+현재 Codex 환경 점검 및 최신 재검증은 위 섹션을 기준으로 한다.
 
-## 2026-10-08 — Topic Strategy Engine V1 (미커밋)
+## 2026-10-08 — Topic Strategy Engine V1 (구현 당시 기록, 이후 Git 저장)
 
 기존 쇼츠·캐러셀 코드 위에 전략 계층을 추가했다. 아래의 기존 브랜치/커밋 기록은 **이번 변경 전 상태**다.
 

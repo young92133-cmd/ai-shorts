@@ -111,7 +111,7 @@ KOSIS 메타 페이지, MSN(자바스크립트 본문 0자). 2차에서 기사 �
 
 | 날짜 | 분야 | 주제(실제 기사) | 필요한 검증 |
 |---|---|---|---|
-| 10/09(목) | 경제 | 9월 소비자물가 2.9%, 생활물가 2.5% | 완료 — 제작물 있음, 게시일 재검증 |
+| 10/09(금) | 경제 | 9월 소비자물가 2.9%, 생활물가 2.5% | 완료 — 제작물 있음, 게시일 재검증 |
 | 10/12 | 주거 | 노도강 집 살 때 대출 비중 30%대 (연합뉴스 10/04) | 국토부 자금조달계획서 원자료(의원실 자료라 공개 원문 없음) |
 | 10/14 | 금융 | 20대 직장인 월급 저축 계획 (fnnews Q&A) | 상시 주제(evergreen)로 재분류 + 수치를 공식 자료로 |
 | 10/16 | 주거 | 서울 빌라·원룸 월세화 가속 (09/29) | 한국부동산원 임대 통계 원자료 |
@@ -147,8 +147,16 @@ KOSIS 메타 페이지, MSN(자바스크립트 본문 0자). 2차에서 기사 �
 
 ## 8. 테스트·비용
 
-- 전체 테스트 364개 통과, 실패 0, skip 0 (이 PC 는 .venv·ffmpeg 정상). 이전 세션의 "ffmpeg 제외 3개"는 ffmpeg 가 없는 다른 PC 에서
-  `shutil.which("ffmpeg")` 조건으로 skip 된 것: `test_quote_mode.test_play_then_freeze_frame`,
+- 선행 세션의 전체 테스트 기록은 364개 통과, 실패 0, skip 0. 현재 Codex에서는 기존 `.venv` 실행 불가와 기본 PATH의 FFmpeg 부재를
+  실제 확인했으므로 이 기록을 현재 환경의 정상 증거로 사용하지 않는다. FFmpeg가 없는 실행 환경은 `shutil.which("ffmpeg")` 조건으로 skip:
+  `test_quote_mode.test_play_then_freeze_frame`,
   `test_source_resolver.test_real_ffmpeg_shot_detection`, `test_source_resolver.test_odd_size_source_video_and_image_concat`. 여기서는 모두 실행·통과.
 - 신규 회귀 테스트 6개: 비기사 판별·제목 복구·EUC-KR, 다매체 병합, 점수 변별력, 뉴스 만료 캘린더.
 - AI/API 비용: Claude 0회, OpenAI 0회, 이미지 생성 0회, 유료 API 0원. 무료 공개 검색(DuckDuckGo)과 공개 페이지 수집만 사용.
+
+Codex 후속 검증: 별도 Python 3.12.14 + 기존 패키지 재사용 + 로컬 FFmpeg/FFprobe 9.0.2에서
+데모 회귀 1개를 포함한 전체 365개 통과·실패/오류/skip 0. 외부 호출/원본 쓰기를 차단한 소스 사본에서 실행했다.
+기존 8장 결과의 정상 PNG·1080×1350·render_complete·ai_calls=[]·근거 manifest를 다시 확인했다.
+위 뉴스의 외부 원문을 다시 수집/검증하거나 새 실제 콘텐츠를 만든 것은 아니다. 자세한 환경·백업·Git 상태는 HANDOFF 맨 위 참조.
+이후 별도 햄토리치 작업으로 현재 테스트 정의는368개가 됐다. Codex9파일 저장 후보365개와 구분해
+최신 소스 사본 전체 검증을 수행하며 결과·백업·미커밋 구분은 HANDOFF 맨 위를 확인한다.
