@@ -1,0 +1,306 @@
+{
+  "format": "insta_toon",
+  "template": "hamtorich_toon",
+  "size": "1080x1350",
+  "pages": [
+    {
+      "page": 1,
+      "file": "card_01.png",
+      "type": "cover",
+      "kind": "card",
+      "headline": "몇 개 안 샀는데 계산대에서 얼어붙었다",
+      "fallback_used": false,
+      "label": "햄토리치 경제툰",
+      "body": "범인은 물가? 공식 자료로 추적!",
+      "items": [],
+      "emphasis": "얼어붙었다",
+      "layout": "character",
+      "visual_query": "",
+      "source": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "image": null
+    },
+    {
+      "page": 2,
+      "file": "card_02.png",
+      "type": "dialogue_scene",
+      "kind": "comic",
+      "headline": "퇴근길",
+      "fallback_used": false,
+      "caption": "",
+      "layout": "reference,reference",
+      "source": "",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "happy",
+          "pose": "phone",
+          "dialogue": "드디어 퇴근이다!",
+          "background": "퇴근길 골목 노을",
+          "camera": "wide",
+          "speech_bubble_position": "top_right",
+          "partner": "",
+          "partner_emotion": "neutral",
+          "partner_dialogue": "",
+          "sfx": "띠링!",
+          "art": "reference"
+        },
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "confident",
+          "pose": "thumbs_up",
+          "dialogue": "오늘은 먹고 싶은 거 다 산다!",
+          "background": "퇴근길 골목 노을",
+          "camera": "extreme_close_up",
+          "speech_bubble_position": "top_left",
+          "partner": "",
+          "partner_emotion": "neutral",
+          "partner_dialogue": "",
+          "sfx": "",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 3,
+      "file": "card_03.png",
+      "type": "reaction_scene",
+      "kind": "comic",
+      "headline": "마트 계산대",
+      "fallback_used": false,
+      "caption": "",
+      "layout": "reference",
+      "source": "",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "worried",
+          "pose": "standing",
+          "dialogue": "자, 잠깐… 이게 다 얼마라고요?!",
+          "background": "마트 계산대",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "tag:물가",
+          "partner_emotion": "confident",
+          "partner_dialogue": "반가워~ 나 요즘 좀 컸어!",
+          "sfx": "두둥",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 4,
+      "file": "card_04.png",
+      "type": "comic_scene",
+      "kind": "comic",
+      "headline": "그날 밤",
+      "fallback_used": false,
+      "caption": "",
+      "layout": "reference,reference,reference",
+      "source": "",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "angry",
+          "pose": "standing",
+          "dialogue": "월급아, 너는 왜 그대로야!",
+          "background": "원룸 밤",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "tag:월급",
+          "partner_emotion": "sad",
+          "partner_dialogue": "나도 억울해…",
+          "sfx": "",
+          "art": "reference"
+        },
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "worried",
+          "pose": "standing",
+          "dialogue": "이번 달도 빠듯하겠다…",
+          "background": "원룸 밤",
+          "camera": "extreme_close_up",
+          "speech_bubble_position": "top_left",
+          "partner": "",
+          "partner_emotion": "neutral",
+          "partner_dialogue": "",
+          "sfx": "털썩",
+          "art": "reference"
+        },
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "thinking",
+          "pose": "chin",
+          "dialogue": "근데… 정말 다 그런 걸까?",
+          "background": "원룸 밤",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "",
+          "partner_emotion": "neutral",
+          "partner_dialogue": "",
+          "sfx": "",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 5,
+      "file": "card_05.png",
+      "type": "explanation_scene",
+      "kind": "comic",
+      "headline": "",
+      "fallback_used": false,
+      "caption": "9월 소비자물가지수는 전월대비 0.3%, 전년동월대비 2.9% 각각 상승",
+      "layout": "reference",
+      "source": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "thinking",
+          "pose": "explaining",
+          "dialogue": "국가데이터처 발표 찾았다!",
+          "background": "원룸 밤 책상",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "",
+          "partner_emotion": "neutral",
+          "partner_dialogue": "",
+          "sfx": "찾았다",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 6,
+      "file": "card_06.png",
+      "type": "explanation_scene",
+      "kind": "comic",
+      "headline": "",
+      "fallback_used": false,
+      "caption": "생활물가지수는 전월대비 0.7%, 전년동월대비 2.5% 각각 상승",
+      "layout": "reference",
+      "source": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "happy",
+          "pose": "pointing",
+          "dialogue": "자세히 보면 이야기가 달라져요!",
+          "background": "편의점 밤",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "tag:물가",
+          "partner_emotion": "worried",
+          "partner_dialogue": "그, 그건…",
+          "sfx": "",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 7,
+      "file": "card_07.png",
+      "type": "explanation_scene",
+      "kind": "comic",
+      "headline": "주말 아침",
+      "fallback_used": false,
+      "caption": "신선식품지수는 전월대비 2.7% 상승, 전년동월대비 3.3% 하락",
+      "layout": "reference",
+      "source": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "characters": [
+        "hamtorich_01"
+      ],
+      "panels": [
+        {
+          "character_id": "hamtorich_01",
+          "scene": "",
+          "emotion": "happy",
+          "pose": "pointing",
+          "dialogue": "그럼 장보기 순서부터 바꿔 보자!",
+          "background": "마트 장보기",
+          "camera": "medium",
+          "speech_bubble_position": "top_right",
+          "partner": "tag:물가",
+          "partner_emotion": "surprised",
+          "partner_dialogue": "앗, 들켰다…",
+          "sfx": "반짝",
+          "art": "reference"
+        }
+      ],
+      "image": null
+    },
+    {
+      "page": 8,
+      "file": "card_08.png",
+      "type": "cta",
+      "kind": "card",
+      "headline": "다음 달엔 누가 이길까? 물가 vs 햄토리치",
+      "fallback_used": false,
+      "label": "",
+      "body": "여러분 장바구니에서 가장 크게 느낀 변화는? 댓글로 알려 주세요! (대사는 창작, 수치는 국가데이터처 원문)",
+      "items": [
+        "저장",
+        "공유",
+        "댓글"
+      ],
+      "emphasis": "",
+      "layout": "none",
+      "visual_query": "",
+      "source": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "image": null
+    }
+  ],
+  "page_count": 8,
+  "mix": {
+    "card": 25,
+    "comic": 75
+  },
+  "plan_method": "story_writer",
+  "master_method": "topic_strategy_saved",
+  "topic": "9월 소비자물가와 내 장바구니",
+  "title": "몇 개 안 샀는데 계산대에서 얼어붙었다",
+  "story_score": 0.75,
+  "characters": [
+    {
+      "id": "hamtorich_01",
+      "name": "햄토리치",
+      "role": "경제·부동산 안내 햄스터 (브랜드 공식 캐릭터)"
+    }
+  ],
+  "fallback_pages": [],
+  "image_search": {},
+  "sources": [
+    {
+      "title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    }
+  ],
+  "image_credits": []
+}

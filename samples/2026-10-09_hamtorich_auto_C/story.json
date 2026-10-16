@@ -1,0 +1,189 @@
+{
+  "draft": {
+    "title": "몇 개 안 샀는데 계산대에서 얼어붙었다",
+    "title_emphasis": "얼어붙었다",
+    "subtitle": "범인은 물가? 공식 자료로 추적!",
+    "rival_tag": "물가",
+    "second_tag": "월급",
+    "scenes": [
+      {
+        "role": "situation",
+        "place": "퇴근길 골목 노을",
+        "narration": "퇴근길",
+        "panels": [
+          {
+            "emotion": "happy",
+            "line": "드디어 퇴근이다!",
+            "partner_emotion": "neutral",
+            "partner_line": "",
+            "sfx": "띠링!",
+            "camera": "wide",
+            "with_partner": false
+          },
+          {
+            "emotion": "confident",
+            "line": "오늘은 먹고 싶은 거 다 산다!",
+            "partner_emotion": "neutral",
+            "partner_line": "",
+            "sfx": "",
+            "camera": "extreme_close_up",
+            "with_partner": false
+          }
+        ],
+        "fact_ids": []
+      },
+      {
+        "role": "opponent",
+        "place": "마트 계산대",
+        "narration": "마트 계산대",
+        "panels": [
+          {
+            "emotion": "worried",
+            "line": "자, 잠깐… 이게 다 얼마라고요?!",
+            "partner_emotion": "confident",
+            "partner_line": "반가워~ 나 요즘 좀 컸어!",
+            "sfx": "두둥",
+            "camera": "",
+            "with_partner": true
+          }
+        ],
+        "fact_ids": []
+      },
+      {
+        "role": "conflict",
+        "place": "원룸 밤",
+        "narration": "그날 밤",
+        "panels": [
+          {
+            "emotion": "angry",
+            "line": "월급아, 너는 왜 그대로야!",
+            "partner_emotion": "sad",
+            "partner_line": "나도 억울해…",
+            "sfx": "",
+            "camera": "",
+            "with_partner": true
+          },
+          {
+            "emotion": "worried",
+            "line": "이번 달도 빠듯하겠다…",
+            "partner_emotion": "neutral",
+            "partner_line": "",
+            "sfx": "털썩",
+            "camera": "extreme_close_up",
+            "with_partner": false
+          },
+          {
+            "emotion": "thinking",
+            "line": "근데… 정말 다 그런 걸까?",
+            "partner_emotion": "neutral",
+            "partner_line": "",
+            "sfx": "",
+            "camera": "",
+            "with_partner": false
+          }
+        ],
+        "fact_ids": []
+      },
+      {
+        "role": "discovery",
+        "place": "원룸 밤 책상",
+        "narration": "",
+        "panels": [
+          {
+            "emotion": "thinking",
+            "line": "국가데이터처 발표 찾았다!",
+            "partner_emotion": "neutral",
+            "partner_line": "",
+            "sfx": "찾았다",
+            "camera": "",
+            "with_partner": false
+          }
+        ],
+        "fact_ids": [
+          "f1"
+        ]
+      },
+      {
+        "role": "discovery2",
+        "place": "편의점 밤",
+        "narration": "",
+        "panels": [
+          {
+            "emotion": "happy",
+            "line": "자세히 보면 이야기가 달라져요!",
+            "partner_emotion": "worried",
+            "partner_line": "그, 그건…",
+            "sfx": "",
+            "camera": "",
+            "with_partner": true
+          }
+        ],
+        "fact_ids": [
+          "f2"
+        ]
+      },
+      {
+        "role": "resolution",
+        "place": "마트 장보기",
+        "narration": "주말 아침",
+        "panels": [
+          {
+            "emotion": "happy",
+            "line": "그럼 장보기 순서부터 바꿔 보자!",
+            "partner_emotion": "surprised",
+            "partner_line": "앗, 들켰다…",
+            "sfx": "반짝",
+            "camera": "",
+            "with_partner": true
+          }
+        ],
+        "fact_ids": [
+          "f4"
+        ]
+      }
+    ],
+    "ending_question": "다음 달엔 누가 이길까? 물가 vs 햄토리치",
+    "ending_body": "여러분 장바구니에서 가장 크게 느낀 변화는? 댓글로 알려 주세요!"
+  },
+  "report": {
+    "writer": "rules",
+    "validation": "passed",
+    "facts_used": [
+      "f1",
+      "f2",
+      "f4"
+    ]
+  },
+  "facts": [
+    {
+      "fact_id": "f1",
+      "claim": "9월 소비자물가지수는 전월대비 0.3%, 전년동월대비 2.9% 각각 상승",
+      "source_title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "source_url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    },
+    {
+      "fact_id": "f2",
+      "claim": "생활물가지수는 전월대비 0.7%, 전년동월대비 2.5% 각각 상승",
+      "source_title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "source_url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    },
+    {
+      "fact_id": "f3",
+      "claim": "전년동월대비 식품은 1.6%, 식품이외는 3.1% 각각 상승",
+      "source_title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "source_url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    },
+    {
+      "fact_id": "f4",
+      "claim": "신선식품지수는 전월대비 2.7% 상승, 전년동월대비 3.3% 하락",
+      "source_title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "source_url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    },
+    {
+      "fact_id": "f5",
+      "claim": "식료품및에너지제외지수는 전월대비 0.1% 하락, 전년동월대비 2.8% 상승",
+      "source_title": "국가데이터처 「2026년 9월 소비자물가동향」",
+      "source_url": "https://mods.go.kr/board.es?mid=a10301010000&bid=213&act=view&list_no=447322"
+    }
+  ]
+}
