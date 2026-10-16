@@ -38,6 +38,12 @@
 | 경제대부·경제뉴스·해외 콘텐츠 등 | 기능 예시로만 언급, 분석 URL 없음 | source 로 꾸며서 추가하지 않음 |
 | 2026-10-07 "오사카에서 생긴 일" 링크 (G) | benchmark 분석이 아니라 제작 실사용 | source 아님 (아래 실제 검증 G) |
 
+인스타툰(캐러셀) 벤치마크 — 쇼츠 영상 profile 과 별개라 `benchmarks/sources` 에 등록하지 않음 (2026-10-08)
+
+| 분석 | 상태 | 처리 |
+|---|---|---|
+| @greego_toon · @ssophi_hi · @hanna_toon_ · @basic_newsreader | 공개 프로필·표지 격자·캡션 관찰 (로그인 없이 본문 슬라이드 확인 불가) | `docs/BENCHMARK_INSTATOON_2026-10-08.md`. 햄토리치 훅 표지·대립 인물·장면/감정 연출 구현, 미커밋. 기존 A/B PNG 검수 및 격리 mock 테스트와 실제 유료 생성 검증을 구분한다. 저장 전 최신 전체 검증·사용자 승인 필요 |
+
 ## 2. Production profile (8개, 코드 기준)
 
 V1 자동 경로 정보는 `benchmarks/v1/integration.yaml`, 오프라인 profile 계약은 `benchmarks/profiles/*.yaml`·`benchmarks/kpop_observation_clip.yaml`.

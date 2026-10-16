@@ -37,7 +37,7 @@ Topic Strategy V1: `topics collect/rank/recommend/calendar/approve/plan/create`�
 | `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
 | `make ... --format card_news\|insta_toon\|hybrid\|all` | 카드뉴스·인스타툰·하이브리드 PNG(1080x1350) / all = 쇼츠+하이브리드 (아래 '카드뉴스 · 인스타툰' 절) |
 | `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
-| `characters [list\|show ID\|add --file]` | 인스타툰 캐릭터(Character Bible) 목록·보기·등록 |
+| `characters [list\|show ID\|add --file\|import\|generate\|approve]` | 캐릭터 목록·등록·그림 가져오기·생성 견적·포즈 승인. generate는 `--confirm-cost` 없으면 API 미호출 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
 | `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
@@ -250,9 +250,11 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 | "캐릭터 있는 카드뉴스로" | `make … --format card_news --template character_info` |
 | "토리 말고 다른 캐릭터로" | `characters list` → `make … --character <id>` |
 
-- 템플릿: `clean_info`(정보형 카드뉴스 기본), `character_info`(카드에 안내 캐릭터), `comic_hybrid`(인스타툰·하이브리드 기본). `app/carousel/templates/*.yaml` 추가만으로 새 템플릿.
-- 캐릭터: `characters/<id>/bible.json`(Character Bible, id 는 ASCII). `characters add --file bible.json`. 기본 `tory_01` 토리.
-- 캐릭터 그림 기본은 **무료 마스코트**(앱이 Bible 색으로 직접 그림). `config.yaml` `carousel.image_provider` 를 바꾸면 유료 AI 생성 — 사용자 허락 없이 바꾸지 않는다.
+- 템플릿: `clean_info`(정보형 카드뉴스 기본), `character_info`(카드에 안내 캐릭터), `hamtorich_toon`(인스타툰·하이브리드 기본), `comic_hybrid`(기존 선택형). `app/carousel/templates/*.yaml` 추가만으로 새 템플릿.
+- 캐릭터: `characters/<id>/bible.json`(Character Bible, id 는 ASCII). `characters add --file bible.json`. **기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`** — 최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 제작용 투명 포즈 8장 `poses/`, 새 포즈 규칙 `characters/hamtorich_01/README.md`. 토리 `tory_01` 은 `--character tory_01` 로 계속 사용.
+- 자동 인스타툰: `toon --topic "…" --facts-from-topic <topic_id> [--writer rules|claude]` — 훅→상황→상대역→갈등→정보 발견→해결·반전→결론 8장. 기본 `rules` 무료(AI 0회), `claude` 는 사용자가 고를 때만(구독 CLI). 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). 품질 기준 샘플은 `samples/`. 사용자 그림은 `assets/inbox/`(자동 등록), 장면 배경은 코드로 그린 11종(`app/carousel/scenes.py`).
+- 캐릭터 그림은 Bible 의 등록 포즈(햄토리치)를 컷의 감정·자세에 맞춰 고른다(무료). 등록 그림이 없는 토리는 앱 마스코트로 그린다. 햄토리치는 마스코트로 대체하지 않는다(mascot_fallback=false). `config.yaml` `carousel.image_provider` 를 바꾸면 유료 AI 생성 — 사용자 허락 없이 바꾸지 않는다.
+  `approved=false` 포즈는 기본 포즈와 reference_images 경로로도 사용하지 않는다. 받은편지함 원본은 같은 이름이어도 별도 이름으로 보존한다. 출처 상자는 공식 자료 여부를 단정하지 않는 '근거 자료' 배지를 쓴다.
   Flow 등에서 만든 그림을 `--asset toon_03_이름.png --note "Flow 생성" --confirm-rights --license ai_generated` 로 넣으면 그 페이지 첫 컷에 쓴다.
 - 캐러셀은 `--review`·`--reference-video` 를 받지 않는다. `resume`·`rerender` 대상이 아니다(다시 `make`). `inspect <id> --part carousel` 로 페이지 요약.
 - 결과를 알릴 때: 장수, 카드/만화 비율, 사진을 쓴 페이지와 출처, 대체 레이아웃이 된 페이지(`fallback_pages`)를 전한다.
