@@ -31,7 +31,7 @@ def _noop(stage: str, pct: int, msg: str) -> None:
 
 
 def carousel_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    base = {"pages": 8, "character": charmod.DEFAULT_CHARACTER, "image_search": True, "max_images": 4,
+    base = {"pages": 8, "character": charmod.BRAND_DEFAULT, "image_search": True, "max_images": 4,
             "image_provider": "none", "templates": {}}
     return {**base, **(cfg.get("carousel") or {})}
 
@@ -158,6 +158,13 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
         old.unlink()
     registry = SourceRegistry(job_dir)
     registry.save()
+    try:   # 받은편지함(assets/inbox)에 사용자가 넣은 그림을 먼저 등록한다 (무료, 실패해도 제작은 계속)
+        from .inbox import import_inbox
+        got = import_inbox()
+        if got["added"] or got["skipped"]:
+            progress("script", 2, f"받은편지함 그림 등록 {len(got['added'])}장, 보류 {len(got['skipped'])}장")
+    except Exception as e:  # noqa: BLE001
+        progress("script", 2, f"받은편지함 확인 실패 ({e})")
     tpl = load_template(template or (prepared_plan.template if prepared_plan else None) or (cs.get("templates") or {}).get(fmt), fmt)
 
     # 1. 입력
@@ -221,8 +228,12 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
                 art = await artist.art(beat, i, pinned.get(i) if k == 0 else None)
                 panels.append(art)
                 art_sources.append(art.source or art.kind)
+        page_guide = guide
+        if isinstance(page, CardPage) and page.character_emotion and guide is not None:
+            # 표지 등에서 지정한 감정·자세의 캐릭터 그림 (훅 표지의 과장된 표정)
+            page_guide = artist.guide(page.character_emotion, page.character_pose or "standing") or guide
         assets = PageAssets(image=Path(img["path"]) if img else None, credit=img.get("credit", "") if img else "",
-                            panels=panels, guide=guide, index=i, total=total)
+                            panels=panels, guide=page_guide, index=i, total=total)
         out = out_dir / f"card_{i:02d}.png"
         info = render_page(page, tpl, out, assets)
         registry.add(kind="image", origin="generated", path=str(out), title=f"{fmt} {i}장", used_for=f"page_{i:02d}")

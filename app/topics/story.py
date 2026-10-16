@@ -114,9 +114,11 @@ def build_story(topic: Topic, docs, *, fmt='hybrid', pages=8, character_root=Non
             emphasis = numbers.get(index, '')
             adapted.append(CardPage(type=row.page_type, headline=row.headline, body=row.body, layout=row.layout,
                                     source=source, items=master.checklist if row.page_type == 'checklist' else [],
-                                    emphasis=emphasis if emphasis and emphasis in row.body else ''))
+                                    emphasis=emphasis if emphasis and emphasis in row.body else '',
+                                    # 훅 표지: 캐릭터가 걱정하는 얼굴로 제목의 갈등을 거든다
+                                    character_emotion='worried' if row.page_type == 'cover' else ''))
     comics = sum(isinstance(p, ComicPage) for p in adapted)
-    plan = CarouselPlan(format=fmt, template='clean_info' if fmt == 'card_news' else 'comic_hybrid',
+    plan = CarouselPlan(format=fmt, template='clean_info' if fmt == 'card_news' else 'hamtorich_toon',
                         mix={'card': round((8-comics)/8*100), 'comic': round(comics/8*100)}, pages=adapted, method='topic_strategy_rules')
     return StoryPlan(topic_id=topic.topic_id, format=fmt, title=topic.title, character_id=bible.id,
                      style=STYLES[topic.category] if fmt == 'hybrid' else '스토리형 인스타툰' if fmt == 'insta_toon' else '교육형 카드뉴스',

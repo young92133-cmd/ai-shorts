@@ -14,6 +14,6 @@ DEFAULTS = {
     'evergreen_recheck_days': 30,
     'official_domains': list(OFFICIAL),
     'rss_sources': [],
-    'character': 'tory_01',
+    'character': 'hamtorich_01',   # 브랜드 기본 캐릭터
     'character_rights': 'owned',
 }

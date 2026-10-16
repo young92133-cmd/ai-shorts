@@ -15,9 +15,22 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 ROOT = Path(__file__).resolve().parents[2] / "characters"
+BRAND_DEFAULT = "hamtorich_01"     # 브랜드 기본 캐릭터 (config carousel.character 로 바꿀 수 있음)
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,39}$")
 BIBLE = "bible.json"
 DEFAULT_CHARACTER = "tory_01"
+
+
+class PoseAsset(BaseModel):
+    """완성된 캐릭터 그림 한 장 (투명 PNG). 컷의 감정·자세에 맞는 그림을 고를 때 쓴다."""
+    file: str = Field(description="캐릭터 폴더 기준 경로 (예: poses/happy_pointing.png)")
+    emotion: str = Field(description="대표 감정")
+    pose: str = Field(description="대표 자세")
+    also_emotions: list[str] = Field(default_factory=list, description="대신 쓸 수 있는 감정")
+    also_poses: list[str] = Field(default_factory=list, description="대신 쓸 수 있는 자세")
+    description: str = ""
+    differences: list[str] = Field(default_factory=list, description="마스터 레퍼런스와 다른 점")
+    approved: bool = Field(default=True, description="False 면 렌더에 쓰지 않는다 (AI 생성 후 시트 대조 전)")
 
 
 class CharacterBible(BaseModel):
@@ -36,6 +49,12 @@ class CharacterBible(BaseModel):
     mascot: dict[str, Any] = Field(default_factory=dict,
                                    description="AI 이미지가 없을 때 앱이 직접 그리는 마스코트의 색·머리 모양")
     prompt_lock: str = Field(default="", description="모든 생성 프롬프트 앞에 고정으로 붙는 외형 설명 (비우면 자동)")
+    master_reference: str = Field(default="", description="최상위 기준 디자인 시트 (캐릭터 폴더 기준 경로). 새 포즈는 이 시트에 맞춘다")
+    design_rules: list[str] = Field(default_factory=list, description="새 포즈 제작 때 반드시 지킬 외형 규칙")
+    poses: list[PoseAsset] = Field(default_factory=list, description="등록된 완성 포즈 그림")
+    default_pose: str = Field(default="", description="맞는 포즈가 없을 때 쓸 포즈 파일")
+    mascot_fallback: bool = Field(default=True, description="False 면 앱이 그리는 마스코트로 대체하지 않는다 (외형이 다른 캐릭터)")
+    rights: str = Field(default="owned", description="owned | licensed")
 
     @field_validator("id")
     @classmethod
@@ -86,7 +105,8 @@ def character_dir(char_id: str, root: Path | None = None) -> Path:
 def lock_text(bible: CharacterBible) -> str:
     """캐릭터 외형 고정 문구. 컷마다 똑같이 붙여 얼굴·머리·옷·소품·그림체를 유지한다."""
     if bible.prompt_lock.strip():
-        return bible.prompt_lock.strip()
+        rules = " ".join(bible.design_rules)
+        return f"{bible.prompt_lock.strip()} {rules}".strip()
     a, o = bible.appearance, bible.default_outfit
     parts = [
         bible.visual_style or "clean Korean webtoon style, thick clean outlines, flat pastel colors",
@@ -116,14 +136,37 @@ def cache_key(bible: CharacterBible, beat: Any) -> str:
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
+def pose_for(bible: CharacterBible, emotion: str, pose: str, root: Path | None = None) -> Path | None:
+    """등록된 포즈 중 감정·자세가 가장 잘 맞는 그림. 하나도 맞지 않으면 default_pose."""
+    folder = character_dir(bible.id, root)
+    best, best_score = None, 0
+    for p in bible.poses:
+        path = folder / p.file
+        if not p.approved or not path.is_file():
+            continue
+        score = (4 if emotion == p.emotion else 2 if emotion in p.also_emotions else 0)   # 감정이 자세보다 중요
+        score += (2 if pose == p.pose else 1 if pose in p.also_poses else 0)
+        if score > best_score:
+            best, best_score = path, score
+    default_approved = any(p.file == bible.default_pose and p.approved for p in bible.poses)
+    if best is None and default_approved and (folder / bible.default_pose).is_file():
+        best = folder / bible.default_pose
+    return best
+
+
 def reference_for(bible: CharacterBible, emotion: str, pose: str, root: Path | None = None) -> Path | None:
-    """Bible 의 reference_images 중 감정·자세가 맞는 파일. 둘 다 맞으면 우선, 감정만 맞아도 사용."""
+    """등록 포즈(poses) → Bible 의 reference_images(감정·자세가 파일명에 든 것) 순서로 찾는다."""
+    if bible.poses:
+        found = pose_for(bible, emotion, pose, root)
+        if found:
+            return found
     folder = character_dir(bible.id, root)
     files = []
+    unapproved = {(folder / asset.file).resolve() for asset in bible.poses if not asset.approved}
     for ref in bible.reference_images:
         p = Path(ref)
         p = p if p.is_absolute() else folder / p
-        if p.is_file():
+        if p.is_file() and p.resolve() not in unapproved:
             files.append(p)
     best = [p for p in files if emotion in p.stem.lower() and pose in p.stem.lower()]
     if best:
@@ -149,6 +192,14 @@ TORY = {
                "outfit": "#7FD1B9", "outfit_detail": "#FFFFFF", "accessory": "round_glasses",
                "hairpin": "#FFD43B", "cheek": "#FF9AA2"},
 }
+
+
+def master_reference(bible: CharacterBible, root: Path | None = None) -> Path | None:
+    """새 포즈를 만들 때 함께 넘길 마스터 디자인 시트 (이미지 참조를 받는 생성 도구용)."""
+    if not bible.master_reference:
+        return None
+    path = character_dir(bible.id, root) / bible.master_reference
+    return path if path.is_file() else None
 
 
 def ensure_default(root: Path | None = None) -> CharacterBible:

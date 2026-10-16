@@ -35,3 +35,6 @@ reference/*.mp4
 
 # 인스타툰 캐릭터 AI 생성 캐시 (Character Bible 은 저장소에 보존)
 characters/*/generated/
+
+# 받은편지함 원본 (등록본은 assets/carousel_backgrounds, characters/ 에 남는다)
+assets/inbox/_done/

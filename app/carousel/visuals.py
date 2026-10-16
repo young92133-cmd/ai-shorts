@@ -113,6 +113,36 @@ class CharacterArtist:
         return self.bibles[cid]
 
     async def art(self, beat: ComicBeat, page_no: int, pinned: Path | None = None) -> PanelArt:
+        main = await self._art(beat, page_no, pinned)
+        if beat.partner and main.kind == "cutout" and self._exists(beat.partner):
+            partner = await self._art(beat.model_copy(update={"character_id": beat.partner, "emotion": beat.partner_emotion,
+                                                              "pose": "standing", "partner": ""}), page_no, None)
+            if partner.kind == "cutout":
+                main.partner = partner
+        return main
+
+    def _exists(self, char_id: str) -> bool:
+        """상대 캐릭터가 실제로 있는가 (없는 id 를 기본 캐릭터로 바꿔 같은 인물이 둘 나오지 않게)."""
+        from .nametag import is_tag
+        if is_tag(char_id):
+            return True
+        try:
+            charmod.get_character(char_id, self.root)
+            return True
+        except KeyError:
+            return False
+
+    async def _art(self, beat: ComicBeat, page_no: int, pinned: Path | None = None) -> PanelArt:
+        from .nametag import draw_tag_character, is_tag, label_of
+        if is_tag(beat.character_id):
+            label = label_of(beat.character_id)
+            # 승인된 의인화 그림(햄토리치 그림체 생성본)이 있으면 그것, 없으면 앱이 그린 이름표 캐릭터
+            for persona in charmod.list_characters(self.root):
+                if persona.appearance.get("tag") == label:
+                    ref = charmod.reference_for(persona, beat.emotion, beat.pose, self.root)
+                    if ref:
+                        return PanelArt(kind="cutout", image=Image.open(ref).convert("RGBA"), source="persona")
+            return PanelArt(kind="cutout", image=draw_tag_character(label, beat.emotion), source="nametag")
         if pinned:
             try:
                 img = Image.open(pinned)
@@ -144,6 +174,10 @@ class CharacterArtist:
             except Exception as e:  # noqa: BLE001 - 유료 생성이 실패하면 이번 작업은 마스코트로
                 self.ai_failed = True
                 self.log(f"AI 캐릭터 생성 실패 - 마스코트로 그립니다 ({safe_error(e)})")
+        if not bible.mascot_fallback:
+            # 외형이 정해진 브랜드 캐릭터는 다른 모습(앱 마스코트)으로 대신 그리지 않는다
+            self.log(f"{bible.name}: 맞는 포즈 그림이 없어 글자 중심 컷으로 그립니다")
+            return PanelArt(kind="none")
         try:
             return PanelArt(kind="cutout", image=draw_mascot(bible.mascot, beat.emotion, beat.pose), source="mascot")
         except Exception as e:  # noqa: BLE001
@@ -153,6 +187,14 @@ class CharacterArtist:
     def guide(self, emotion: str = "happy", pose: str = "pointing") -> Image.Image | None:
         bible = self.bible(self.default_id)
         if not bible:
+            return None
+        ref = charmod.reference_for(bible, emotion, pose, self.root)
+        if ref:
+            try:
+                return Image.open(ref).convert("RGBA")
+            except Exception:  # noqa: BLE001
+                pass
+        if not bible.mascot_fallback:
             return None
         try:
             return draw_mascot(bible.mascot, emotion, pose)

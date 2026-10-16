@@ -1,0 +1,93 @@
+id: hamtorich_toon
+name: 햄토리치 경제툰
+description: 브랜드 전용. 크림 배경·네이비 테두리·민트 띠, 화면 절반 훅 제목 표지, 장면 배경과 만화 효과 (2026-10-08 벤치마크 반영).
+canvas: {width: 1080, height: 1350}
+palette:
+  bg: "#FFF8EC"
+  bg2: "#FBEDD4"
+  ink: "#2A2F3D"
+  sub: "#5A5F6E"
+  accent: "#3C4D65"
+  highlight: "#FFD36B"
+  hot: "#E5484D"
+  band: "#BFE0C8"
+  on_accent: "#FFFFFF"
+  panel: "#FFFFFF"
+  line: "#2A2F3D"
+  cover_bg: "#FFF3DC"
+  cover_bg2: "#FBE1B6"
+  cover_ink: "#2A2F3D"
+  bubble: "#FFFFFF"
+  bubble_line: "#2A2F3D"
+  scene_wall: "#F6EAD6"
+  scene_floor: "#E2CDA8"
+  scene_sky: "#CFE6FF"
+  scene_ground: "#C7DFA8"
+fonts:
+  title: 0.074
+  title_min: 0.046
+  cover_title: 0.096
+  hook_title: 0.135
+  body: 0.043
+  body_min: 0.031
+  item: 0.042
+  bubble: 0.043
+  bubble_min: 0.030
+  label: 0.032
+  footer: 0.021
+  big_number: 0.20
+style:
+  cover_style: hook
+  series_tag: 햄토리치 경제툰
+  radius: 0.03
+  title_align: left
+  texture: none
+  page_number: true
+  panel_border: 7
+  card_border: 12
+  title_lines: 3
+  body_lines: 6
+character:
+  on_cards: false
+boxes:
+  label:     [0.07, 0.055, 0.93, 0.10]
+  title:     [0.07, 0.11, 0.93, 0.29]
+  image:     [0.07, 0.31, 0.93, 0.64]
+  body:      [0.07, 0.67, 0.93, 0.89]
+  footer:    [0.07, 0.935, 0.93, 0.975]
+  character: [0.55, 0.50, 0.98, 0.92]
+  panel:     [0.045, 0.045, 0.955, 0.905]
+  caption:   [0.07, 0.76, 0.93, 0.885]
+pages:
+  cover:
+    background: cover
+    label:     [0.06, 0.045, 0.70, 0.095]
+    part:      [0.80, 0.035, 0.95, 0.155]
+    title:     [0.06, 0.12, 0.94, 0.44]
+    character: [0.30, 0.47, 1.0, 0.93]
+    body:      [0.06, 0.80, 0.50, 0.90]
+  hook:
+    title:  [0.07, 0.18, 0.93, 0.50]
+    image:  [0.07, 0.54, 0.93, 0.88]
+    body:   [0.07, 0.54, 0.93, 0.88]
+  checklist:
+    title: [0.07, 0.11, 0.93, 0.25]
+    items: [0.07, 0.28, 0.93, 0.90]
+  comparison:
+    title:   [0.07, 0.11, 0.93, 0.24]
+    compare: [0.07, 0.27, 0.93, 0.90]
+  quote:
+    title: [0.12, 0.26, 0.88, 0.62]
+    body:  [0.12, 0.66, 0.88, 0.74]
+  summary:
+    title: [0.07, 0.11, 0.93, 0.24]
+    items: [0.07, 0.27, 0.93, 0.90]
+  cta:
+    background: cover
+    title: [0.07, 0.10, 0.93, 0.34]
+    body:  [0.07, 0.35, 0.93, 0.45]
+    items: [0.07, 0.78, 0.62, 0.91]
+    character: [0.52, 0.42, 0.98, 0.92]
+  explanation_scene:
+    panel:   [0.045, 0.045, 0.955, 0.66]
+    caption: [0.07, 0.69, 0.93, 0.905]

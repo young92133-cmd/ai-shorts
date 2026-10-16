@@ -155,6 +155,8 @@ class DraftPage(BaseModel):
     source: str = Field(default="", description="근거 자료 제목 (사실을 담은 카드)")
     panels: list[ComicBeat] = Field(default_factory=list, description="만화 페이지의 컷 1~2개")
     caption: str = Field(default="", description="만화 페이지 하단 설명 (explanation_scene)")
+    part: str = Field(default="", description="표지 회차 (예: 1화). 시리즈일 때만")
+    character_emotion: str = Field(default="", description="표지 캐릭터 감정 (worried, surprised 처럼 갈등이 보이게)")
 
 
 class DraftPlan(BaseModel):
@@ -173,7 +175,12 @@ PLAN_SYSTEM = """당신은 인스타그램 캐러셀(카드뉴스·인스타툰)
   camera 는 close_up|medium|wide, speech_bubble_position 은 [BUBBLES]. scene·background 는 그림 지시(한국어).
 - cta 의 items 는 아이콘 아래 붙는 2~4글자 단어 2~4개 (예: 저장, 공유, 댓글). 이모지는 쓰지 않는다.
 - dialogue_scene 은 컷 2개, 나머지 만화는 컷 1개. explanation_scene 은 caption 에 정보 문장을 넣는다.
-- 만화는 정보를 이야기로 풀어 주는 역할: 상황 공감 → 궁금증 → 깨달음 흐름이 이어지게."""
+- 만화는 정보를 이야기로 풀어 주는 역할: 상황 공감 → 궁금증 → 깨달음 흐름이 이어지게.
+- 표지(cover)는 훅이다: headline 은 갈등·돈·숫자를 한 문장으로 던지는 질문/반전(25자 안팎), emphasis 는 그 안의 숫자나 핵심어,
+  character_emotion 은 worried/surprised 처럼 감정이 보이게.
+- 혼자 설명하지 말고 상대를 세운다: panels 의 partner 에 경제 주체를 'tag:물가', 'tag:금리', 'tag:월급', 'tag:대출', 'tag:집값'
+  처럼 의인화해 넣고 partner_emotion, partner_dialogue 로 맞받게 한다. 의인화 대사도 사실을 새로 만들지 않는다.
+- background 는 장소를 구체적으로 (원룸 밤, 마트 계산대, 은행 창구, 부동산 중개사무소, 퇴근길 골목, 회사 사무실, 뉴스 스튜디오)."""
 
 
 def _plan_prompt(master: MasterContent, types: list[str], fmt: str, bible: CharacterBible | None) -> str:
@@ -184,10 +191,15 @@ def _plan_prompt(master: MasterContent, types: list[str], fmt: str, bible: Chara
             f"[자료 제목] {', '.join(s.get('title', '') for s in master.sources[:5])}")
 
 
+def _card(d: DraftPage) -> CardPage:
+    return CardPage(type=d.type, label=d.label, headline=d.headline, body=d.body, items=d.items, compare=d.compare,
+                    visual_query=d.visual_query, emphasis=d.emphasis, source=d.source, part=d.part,
+                    character_emotion=d.character_emotion if d.character_emotion in EMOTIONS else "")
+
+
 def _to_page(d: DraftPage) -> Page | None:
     if d.type in CARD_TYPES:
-        return CardPage(type=d.type, label=d.label, headline=d.headline, body=d.body, items=d.items, compare=d.compare,
-                        visual_query=d.visual_query, emphasis=d.emphasis, source=d.source)
+        return _card(d)
     if d.type in COMIC_TYPES:
         return ComicPage(type=d.type, headline=d.headline, panels=d.panels, caption=d.caption, source=d.source,
                          emphasis=d.emphasis)
@@ -221,6 +233,12 @@ def normalize(pages: list[Page], fmt: str, master: MasterContent, char_id: str |
                 if b.speech_bubble_position not in BUBBLE_POSITIONS:
                     b.speech_bubble_position = ("top_right", "top_left")[k % 2]
                 b.dialogue = _short(b.dialogue, 60)
+                if b.partner and not (b.partner.startswith("tag:") or b.partner in valid_chars) or b.partner == b.character_id:
+                    b.partner = ""
+                if b.partner.startswith("tag:"):
+                    b.partner = "tag:" + b.partner[4:].strip()[:6]
+                b.partner_emotion = b.partner_emotion if b.partner_emotion in EMOTIONS else "neutral"
+                b.partner_dialogue = _short(b.partner_dialogue, 40)
             p.caption = _short(p.caption, 120)
             p.headline = _short(p.headline, 30)
         else:

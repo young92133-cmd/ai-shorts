@@ -78,21 +78,21 @@ topic_strategy:
   evergreen_recheck_days: 30
   rss_sources: []  # 운영기관/사용자가 확인한 공개 RSS URL. 엔드포인트를 추측하지 않는다.
   official_domains: [bok.or.kr, molit.go.kr, fsc.go.kr, fss.or.kr, kostat.go.kr, mods.go.kr, kosis.kr, reb.or.kr]  # mods.go.kr = 국가데이터처(통계청 후신, kostat.go.kr 는 이리로 이동)
-  character: tory_01
+  character: hamtorich_01  # 브랜드 기본 캐릭터 햄토리치 (토리 tory_01 도 등록되어 있음)
   character_rights: owned  # 벤치마킹 계정 캐릭터 사용 금지
 
 carousel:
   # 카드뉴스 · 인스타툰 · 하이브리드 (make --format card_news|insta_toon|hybrid|all). 1080x1350 PNG
   pages: 8                 # 기본 장수 (6~10)
-  character: tory_01       # 인스타툰 기본 캐릭터 (characters/<id>/bible.json)
+  character: hamtorich_01  # 기본 캐릭터 = 브랜드 캐릭터 햄토리치. 토리는 --character tory_01 (characters/<id>/bible.json)
   image_search: true       # 카드 사진을 Source Resolver 로 찾기 (권리 확인되는 공개 자료만). false 면 그래픽 카드
   max_images: 4            # 사진을 찾을 최대 페이지 수
-  # 캐릭터 컷 그림: none = 앱이 직접 그리는 마스코트(무료, 기본). gemini-lite 등을 넣으면 AI 생성(유료, 캐시됨)
+  # 캐릭터 컷 그림: none = 등록된 포즈 그림(햄토리치 poses/, 무료). 등록 그림이 없는 캐릭터(토리)는 앱 마스코트. gemini-lite 등은 AI 생성(유료, 캐시됨)
   image_provider: none
   templates:               # 형식별 기본 템플릿
     card_news: clean_info
-    insta_toon: comic_hybrid
-    hybrid: comic_hybrid
+    insta_toon: hamtorich_toon
+    hybrid: hamtorich_toon       # 브랜드 템플릿 (comic_hybrid 도 --template 으로 사용 가능)
 
 paths:
   output: output

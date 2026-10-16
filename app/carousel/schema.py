@@ -65,6 +65,10 @@ class ComicBeat(BaseModel):
     background: str = Field(default="", description="배경 설명 (예: 부동산 사무실, 거실)")
     camera: str = Field(default="medium", description="close_up | medium | wide")
     speech_bubble_position: str = Field(default="top_right", description=" | ".join(BUBBLE_POSITIONS))
+    partner: str = Field(default="", description="같은 컷의 상대 캐릭터 id (예: landlord_cat_01, 의인화는 'tag:물가'). 없으면 빈 문자열")
+    partner_emotion: str = Field(default="neutral", description="상대 캐릭터 감정")
+    partner_dialogue: str = Field(default="", description="상대 캐릭터 대사 (40자 이내)")
+    sfx: str = Field(default="", description="효과음 글자 (예: 띠링!, 두둥, 헉!, 털썩). 비우면 없음")
 
 
 class CardPage(BaseModel):
@@ -79,6 +83,9 @@ class CardPage(BaseModel):
     layout: str = Field(default="", description="템플릿 레이아웃 이름. 비우면 타입 기본값")
     source: str = Field(default="", description="이 페이지 내용의 출처 (자료 제목/URL)")
     emphasis: str = Field(default="", description="강조할 단어나 숫자 (headline/body 안의 일부)")
+    part: str = Field(default="", description="표지 회차 표시 (예: 1화, 2). 비우면 표시 안 함")
+    character_emotion: str = Field(default="", description="표지·안내 캐릭터 감정 (비우면 기본)")
+    character_pose: str = Field(default="", description="표지·안내 캐릭터 자세 (비우면 기본)")
 
 
 class ComicPage(BaseModel):

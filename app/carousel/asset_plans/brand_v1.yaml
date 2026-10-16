@@ -1,0 +1,121 @@
+# 햄토리치 브랜드 그림 1차 세트 (2026-10-08). `python -m app.factory characters generate --plan brand_v1`
+# 캐릭터는 순백 배경으로 만든 뒤 앱이 배경을 지워 투명 PNG 로 등록한다. 배경 그림에는 인물·글자를 넣지 않는다.
+# 모든 캐릭터 그림은 마스터 시트를 참조 이미지로 함께 보낸다. 결과는 사람이 시트와 대조한 뒤 쓴다.
+version: brand_v1
+style: >-
+  soft hand-drawn Korean character illustration, warm brown outlines, fluffy watercolor-like fur texture,
+  pastel palette (golden brown #DA9455, cream #FBEDD4, navy #3C4D65, mint #9FC4A6, peach #FBAC99)
+character_suffix: >-
+  Full body, centered, generous empty margin around the character, plain pure white background (#FFFFFF),
+  no shadow on the ground, no text, no letters, no speech bubbles, no frame.
+background_suffix: >-
+  Background scene only, no people, no animals, no characters, no text, no letters, no signs with writing,
+  no logos, slightly simplified shapes and soft lighting so a cartoon character can stand in front, portrait 4:5.
+
+poses:   # 햄토리치 추가 표정·자세 → characters/hamtorich_01/poses/
+  - {id: surprised_round_mouth, emotion: surprised, pose: standing, also_poses: [waving],
+     prompt: "eyes wide open and round, small round open 'O' mouth, both paws raised at shoulder height in shock"}
+  - {id: happy_eyes_closed, emotion: happy, pose: cheering, also_emotions: [confident],
+     prompt: "eyes closed in happy upward arcs (^ ^), big open smile, both paws at puffed cheeks, joyful"}
+  - {id: thinking_question, emotion: thinking, pose: chin, also_poses: [thinking],
+     prompt: "neutral closed mouth, eyes looking up and to the side, one paw on chin, pondering"}
+  - {id: sad_teary, emotion: sad, pose: standing,
+     prompt: "teary eyes with small tears, drooping ears, small frown, paws held together in front of belly"}
+  - {id: angry_puffed, emotion: angry, pose: arms_crossed,
+     prompt: "puffed cheeks, frowning eyebrows, arms crossed, annoyed but cute"}
+  - {id: shocked_scream, emotion: surprised, pose: shrug, also_emotions: [worried],
+     prompt: "screaming in shock with mouth wide open, both paws pressed on cheeks, ears straight up"}
+  - {id: happy_money, emotion: happy, pose: holding_money, also_emotions: [confident],
+     prompt: "holding a small stack of banknotes in both paws, proud happy smile"}
+  - {id: happy_house_key, emotion: happy, pose: holding_key,
+     prompt: "holding up a golden house key with a small house keychain, excited smile"}
+  - {id: thinking_calculator, emotion: thinking, pose: calculator, also_poses: [explaining],
+     prompt: "holding a calculator and pressing buttons, focused serious face"}
+  - {id: worried_receipt, emotion: worried, pose: receipt, also_emotions: [sad],
+     prompt: "holding a very long paper receipt that drapes to the floor, worried sweating face"}
+  - {id: worried_running, emotion: worried, pose: running,
+     prompt: "running in a hurry, leaning forward, one paw holding the tie, flustered face"}
+  - {id: sad_exhausted, emotion: sad, pose: slumped,
+     prompt: "slumped shoulders, half-closed tired eyes, exhausted after work"}
+  - {id: happy_satchel_book, emotion: happy, pose: waving, also_emotions: [neutral],
+     prompt: "the master sheet front pose: waving one paw, holding a green book, brown satchel with a gold house keychain across the body"}
+
+cast:   # 조연 캐릭터 (햄토리치와 같은 그림체) → characters/<id>/
+  - id: daram_01
+    name: 다람
+    role: 햄토리치의 친구. 충동구매·월급 탕진이 잦은 사회초년생 다람쥐
+    look: "a chubby red-brown squirrel with a big fluffy striped tail, wearing an oversized beige hoodie and white sneakers"
+    poses:
+      - {id: happy_shopping, emotion: happy, pose: holding_bags, prompt: "holding many shopping bags, very happy"}
+      - {id: worried_wallet, emotion: worried, pose: standing, prompt: "looking into an empty wallet, worried"}
+      - {id: surprised, emotion: surprised, pose: standing, prompt: "shocked with wide eyes and open mouth"}
+      - {id: sad_crying, emotion: sad, pose: standing, prompt: "crying with tears, paws on face"}
+  - id: landlord_cat_01
+    name: 냥주인
+    role: 집주인 고양이. 계약 조건을 깐깐하게 따지는 역할 (악역이 아니라 상대 입장)
+    look: "a plump grey tabby cat with round glasses, wearing a brown cardigan, holding a clipboard"
+    poses:
+      - {id: neutral_clipboard, emotion: neutral, pose: standing, prompt: "holding a clipboard, calm business face"}
+      - {id: confident_smug, emotion: confident, pose: arms_crossed, prompt: "arms crossed with a confident smug smile"}
+      - {id: angry, emotion: angry, pose: pointing, prompt: "annoyed, pointing one paw forward"}
+      - {id: happy, emotion: happy, pose: waving, prompt: "friendly smile, waving"}
+  - id: owl_banker_01
+    name: 부엉 대리
+    role: 은행원 부엉이. 금리·대출 조건을 설명하는 전문가
+    look: "a round white-and-brown owl with small round glasses, wearing a light grey suit vest and a navy tie"
+    poses:
+      - {id: explaining, emotion: confident, pose: explaining, prompt: "explaining with one wing raised like pointing"}
+      - {id: thinking, emotion: thinking, pose: chin, prompt: "thinking with a wing on the chin"}
+      - {id: happy, emotion: happy, pose: standing, prompt: "warm smile, wings together"}
+      - {id: surprised, emotion: surprised, pose: standing, prompt: "surprised with wide eyes, feathers puffed"}
+
+backgrounds:   # 장면 배경 → assets/carousel_backgrounds/ (tags 는 컷의 background 문구와 맞춘다)
+  - {id: studio_room_day, tags: [원룸, 자취방, 방, 집], mood: day, prompt: "a small cozy Korean studio apartment (one-room) in daytime, bed, desk, window with sunlight"}
+  - {id: studio_room_night, tags: [원룸 밤, 자취방 밤, 밤, 방 밤], mood: night, prompt: "a small Korean studio apartment at night, desk lamp on, city lights outside the window, blue tones"}
+  - {id: living_room_night, tags: [거실, 집 밤, 소파], mood: night, prompt: "a Korean apartment living room at night, sofa, TV, warm lamp light and dark blue window"}
+  - {id: apartment_complex, tags: [아파트, 아파트 단지, 단지], mood: day, prompt: "a Korean apartment complex with tall buildings and a small park, sunny day"}
+  - {id: neighborhood_sunset, tags: [골목, 동네, 거리, 퇴근길, 노을], mood: sunset, prompt: "a Korean residential alley street at sunset, low houses and villas, orange sky"}
+  - {id: realestate_office, tags: [부동산, 중개사무소, 공인중개사], mood: day, prompt: "a small Korean real estate agency office interior, desk, chairs, listing boards with only blank cards"}
+  - {id: contract_table, tags: [계약, 계약서, 상담], mood: day, prompt: "a close view of a table with blank contract papers, a pen and a stamp, warm light"}
+  - {id: bank_counter, tags: [은행, 창구, 대출 상담], mood: day, prompt: "a Korean bank counter interior, teller desk, waiting chairs, clean bright light"}
+  - {id: office_desk, tags: [회사, 사무실, 직장], mood: day, prompt: "a modern Korean office with desks and monitors, daytime"}
+  - {id: office_night, tags: [야근, 사무실 밤, 회사 밤], mood: night, prompt: "an empty office at night, one desk lamp and monitor glowing, dark windows"}
+  - {id: supermarket_checkout, tags: [마트, 장보기, 계산대, 장바구니], mood: day, prompt: "a Korean supermarket checkout counter with a shopping cart full of groceries"}
+  - {id: convenience_store, tags: [편의점], mood: night, prompt: "a Korean convenience store interior at night, bright shelves and fridge"}
+  - {id: cafe, tags: [카페, 커피], mood: day, prompt: "a cozy cafe interior with wooden tables and coffee cups, window light"}
+  - {id: subway_commute, tags: [지하철, 출근길, 출근], mood: day, prompt: "inside a Seoul subway car during morning commute, seats and handles, no people"}
+  - {id: news_studio, tags: [뉴스, 스튜디오, 발표, 브리핑], mood: day, prompt: "a TV news studio set with a desk and large blank screens, blue lighting"}
+  - {id: chart_screen_room, tags: [주식, 투자, 차트, 모니터], mood: night, prompt: "a dark room with multiple monitors showing abstract line charts without numbers"}
+  - {id: city_night, tags: [도시, 야경, 서울], mood: night, prompt: "Seoul city skyline at night with apartment lights, seen from a hill"}
+  - {id: moving_boxes, tags: [이사, 이삿짐, 새집], mood: day, prompt: "an empty new apartment room with moving boxes stacked, bright daylight"}
+  - {id: rainy_window, tags: [우울, 비, 걱정], mood: gloomy, prompt: "a window with rain drops, gloomy grey evening, small room interior"}
+  - {id: wallet_receipts, tags: [지갑, 영수증, 가계부, 지출], mood: day, prompt: "a top-down view of a desk with an open wallet, coins and blank receipts"}
+
+personas:   # 경제 의인화 캐릭터 (햄토리치 그림체). 컷에서 'tag:물가' 로 부르면 승인된 이 그림을 쓴다 (없으면 앱이 그린 이름표 캐릭터)
+  - id: persona_price_01
+    tag: 물가
+    name: 물가
+    role: 계속 오르려는 장난꾸러기 물가
+    look: "a round red price-tag shaped little creature with a small string loop on its head, tiny arms and legs, mischievous face, no text on the tag"
+    poses:
+      - {id: confident_smug, emotion: confident, pose: arms_crossed, prompt: "smug grin, arms crossed, floating slightly upward"}
+      - {id: happy_rising, emotion: happy, pose: cheering, prompt: "jumping up happily with both arms raised"}
+      - {id: surprised, emotion: surprised, pose: standing, prompt: "caught off guard, wide eyes"}
+  - id: persona_salary_01
+    tag: 월급
+    name: 월급
+    role: 늘 부족한 월급 봉투
+    look: "a cute pale-green paper pay envelope creature with a few banknotes peeking out of the top, tiny arms and legs, no text"
+    poses:
+      - {id: sad, emotion: sad, pose: standing, prompt: "thin and tired, apologetic sad face"}
+      - {id: happy, emotion: happy, pose: waving, prompt: "plump and happy on payday, waving"}
+      - {id: worried, emotion: worried, pose: shrug, prompt: "nervous, sweating, shrugging"}
+  - id: persona_rate_01
+    tag: 금리
+    name: 금리
+    role: 오르락내리락하는 금리
+    look: "a navy blue percent-sign shaped creature (the % symbol as a body with two round circles as cheeks), tiny arms and legs, wearing a small banker's bow tie"
+    poses:
+      - {id: confident, emotion: confident, pose: pointing, prompt: "pointing upward confidently, serious face"}
+      - {id: angry, emotion: angry, pose: arms_crossed, prompt: "stern frown, arms crossed"}
+      - {id: thinking, emotion: thinking, pose: chin, prompt: "thinking with a hand on the chin"}

@@ -115,10 +115,24 @@ def _parser() -> argparse.ArgumentParser:
     sv.add_argument("--confirm-rights", action="store_true")
 
     sub.add_parser("styles", help="프리셋·스타일·캐러셀 템플릿·캐릭터 목록")
+    tn = sub.add_parser("toon", help="주제 → 자동 스토리(무료 규칙 | 선택 Claude) → 무료 렌더 인스타툰")
+    tn.add_argument("--topic", required=True)
+    fx = tn.add_mutually_exclusive_group(required=True)
+    fx.add_argument("--facts-from-topic", help="Topic Strategy 의 주제 id (verified 사실만 사용)")
+    fx.add_argument("--facts", help="확인된 사실 JSON [{fact_id, claim, source_title, source_url}]")
+    tn.add_argument("--writer", default="rules", choices=("rules", "claude"), help="rules(무료, 기본) | claude(구독 Claude, 선택)")
+    tn.add_argument("--format", dest="toon_format", default="insta_toon", choices=("insta_toon", "hybrid"))
     ch = sub.add_parser("characters", help="인스타툰 캐릭터(Character Bible) 목록·보기·등록")
-    ch.add_argument("action", nargs="?", default="list", choices=("list", "show", "add"))
-    ch.add_argument("character_id", nargs="?")
+    ch.add_argument("action", nargs="?", default="list", choices=("list", "show", "add", "import", "generate", "approve"))
+    ch.add_argument("character_id", nargs="?", help="show: 캐릭터 id")
     ch.add_argument("--file", help="add: Character Bible JSON 파일")
+    ch.add_argument("--plan", default="brand_v1", help="generate: app/carousel/asset_plans/<이름>.yaml")
+    ch.add_argument("--only", default="all", choices=("all", "backgrounds", "poses", "cast", "personas"))
+    ch.add_argument("--pick", action="append", default=[], help="generate: 만들 그림 id 만 (시험 1장 등, 여러 번)")
+    ch.add_argument("--tier", default="lite", choices=("lite", "flash", "pro"), help="generate: Gemini 이미지 등급")
+    ch.add_argument("--limit", type=int, help="generate: 이번에 만들 최대 장수 (시험 생성은 1)")
+    ch.add_argument("--confirm-cost", action="store_true", help="generate: 유료 이미지 API 호출을 확인함 (없으면 비용 견적만)")
+    ch.add_argument("--item", action="append", default=[], help="approve: 'hamtorich_01/poses/x.png' 또는 'bg:<id>' (여러 번)")
     tr = sub.add_parser("trends", help="요즘 화제 키워드")
     tr.add_argument("--limit", type=int, default=10)
 
@@ -167,7 +181,7 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
-def _characters(a: argparse.Namespace) -> dict[str, Any]:
+async def _characters(a: argparse.Namespace) -> dict[str, Any]:
     charmod.ensure_default()
     if a.action == "list":
         return {"status": "ok", "characters": [{"id": c.id, "name": c.name, "role": c.role, "personality": c.personality}
@@ -179,6 +193,24 @@ def _characters(a: argparse.Namespace) -> dict[str, Any]:
         except KeyError as e:
             raise core.FactoryError("not_found", str(e).strip("'\""),
                                     characters=[c.id for c in charmod.list_characters()]) from e
+    if a.action == "import":
+        from ..carousel.inbox import import_inbox
+        return import_inbox()
+    if a.action in ("generate", "approve"):
+        from ..carousel import asset_gen
+        if a.action == "approve":
+            if not a.item:
+                raise core.FactoryError("invalid", "approve 에는 --item 이 필요합니다.")
+            return {"status": "ok", "approved": asset_gen.approve(a.item)}
+        try:
+            todo = asset_gen.select(asset_gen.jobs(asset_gen.load_plan(a.plan), only=a.only), a.pick, a.limit)
+        except ValueError as e:
+            raise core.FactoryError("invalid", str(e)) from e
+        quote = asset_gen.estimate(todo, a.tier)
+        if not a.confirm_cost:
+            return {"status": "estimate", **quote, "items": [j["id"] for j in todo],
+                    "message": "유료 이미지 API 견적입니다. 실행하려면 --confirm-cost 를 붙이세요."}
+        return await asset_gen.generate(a.plan, tier=a.tier, only=a.only, limit=a.limit, items=a.pick or None, log=_log)
     if not a.file:
         raise core.FactoryError("invalid", "add 에는 --file bible.json 이 필요합니다.")
     try:
@@ -248,8 +280,15 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await core.rerender(a.project_id, log=_log)
     if a.cmd == "styles":
         return core.styles()
+    if a.cmd == "toon":
+        from . import toon
+        if a.facts_from_topic:
+            facts, warnings = toon.facts_from_topic(a.facts_from_topic)
+        else:
+            facts, warnings = toon.facts_from_file(a.facts), []
+        return await toon.run(a.topic, facts=facts, writer=a.writer, fmt=a.toon_format, warnings=warnings, log=_log)
     if a.cmd == "characters":
-        return _characters(a)
+        return await _characters(a)
     if a.cmd == "trends":
         return await core.trends(a.limit, log=_log)
     if a.cmd == "export":
@@ -264,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         out = asyncio.run(_dispatch(args))
-        code = 1 if out.get("status") in ("failed", "partial_failure") or out.get("rerender") == "failed" else 0
+        code = 1 if out.get("status") in ("failed", "partial_failure", "rejected") or out.get("rerender") == "failed" else 0
     except core.FactoryError as e:
         out, code = e.as_dict(), 2
     except Exception as e:  # noqa: BLE001 - 예상 못 한 오류도 JSON 으로 알린다

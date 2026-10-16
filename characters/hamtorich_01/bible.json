@@ -1,0 +1,179 @@
+{
+  "id": "hamtorich_01",
+  "name": "햄토리치",
+  "role": "경제·부동산 안내 햄스터 (브랜드 공식 캐릭터)",
+  "appearance": {
+    "species": "chubby golden hamster, chibi proportions (head about half of body)",
+    "face": "round puffy cheeks, two small cream spots on forehead, small fluffy tuft on top",
+    "ears": "large round ears, light pink inside with white fur at the base",
+    "eyes": "big round dark-brown eyes with two white highlights",
+    "fur": "golden brown #DA9455 back and head, cream #FBEDD4 muzzle and belly, peach #FBAC99 blush",
+    "nose": "small pink nose, w-shaped mouth"
+  },
+  "default_outfit": {
+    "top": "navy #3C4D65 jacket with small gold buttons",
+    "shirt": "white collared shirt",
+    "tie": "mint #9FC4A6 necktie"
+  },
+  "accessories": [
+    "brown satchel with gold house keychain (signature)",
+    "acorn wallet (signature)",
+    "house key (signature)"
+  ],
+  "personality": "작지만 똑똑한 금융 친구. 귀엽고 믿음직하게, 어려운 돈과 집 이야기를 쉽게 풀어 준다.",
+  "speech_style": "~요 체, 다정하고 짧게. 응원하는 말투",
+  "visual_style": "soft hand-drawn Korean character illustration, warm brown outlines, fluffy watercolor-like fur texture, pastel palette",
+  "reference_images": [],
+  "mascot": {},
+  "prompt_lock": "Hamtorich, the brand mascot: a chubby golden-brown hamster in chibi proportions, round puffy cheeks with peach blush, two cream spots on the forehead, large round pink-lined ears, big dark-brown eyes with two highlights, cream muzzle and belly, wearing a navy jacket with gold buttons, white collared shirt and a mint necktie. Soft hand-drawn style with warm brown outlines and fluffy fur texture.",
+  "master_reference": "master/design_sheet.png",
+  "design_rules": [
+    "최상위 기준은 master/design_sheet.png 다. 새 포즈는 이 시트와 함께 참조해 만든다.",
+    "얼굴형·볼·이마 크림색 반점 2개·정수리 털 뭉치를 유지한다.",
+    "귀는 크고 둥글며 안쪽 연분홍, 귀 아래 흰 털.",
+    "눈은 크고 동그란 짙은 갈색, 하이라이트 2개.",
+    "털 색 골드브라운 #DA9455 / 크림 #FBEDD4 / 볼 피치 #FBAC99.",
+    "네이비 #3C4D65 상의 + 흰 셔츠 깃 + 민트 #9FC4A6 넥타이를 항상 입는다.",
+    "머리가 몸의 절반쯤인 2등신 비율, 짧은 다리, 따뜻한 갈색 외곽선과 부드러운 털 질감.",
+    "투명 배경 PNG, 그림 안에 글자·말풍선을 넣지 않는다 (대사는 렌더러가 합성)."
+  ],
+  "poses": [
+    {
+      "file": "poses/happy_front.png",
+      "emotion": "happy",
+      "pose": "standing",
+      "also_emotions": [
+        "neutral"
+      ],
+      "also_poses": [
+        "waving",
+        "greeting"
+      ],
+      "description": "정면, 두 손을 가슴 앞에 모으고 활짝 웃음 (기본)",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트 정면은 한 손을 들고 책·가방을 든 모습, 이 PNG는 소품 없이 두 손 모음"
+      ]
+    },
+    {
+      "file": "poses/happy_pointing.png",
+      "emotion": "happy",
+      "pose": "pointing",
+      "also_emotions": [
+        "confident"
+      ],
+      "also_poses": [
+        "explaining"
+      ],
+      "description": "검지를 들어 설명, 반짝 효과",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트의 고유 소품(갈색 가방+집 열쇠고리, '돈도 아는 햄토리치' 책) 없음"
+      ]
+    },
+    {
+      "file": "poses/happy_thumbs_up.png",
+      "emotion": "confident",
+      "pose": "thumbs_up",
+      "also_emotions": [
+        "happy"
+      ],
+      "also_poses": [
+        "arms_crossed",
+        "confident"
+      ],
+      "description": "엄지 척 + 주먹, 응원",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트에 없는 새 포즈"
+      ]
+    },
+    {
+      "file": "poses/happy_cheering.png",
+      "emotion": "happy",
+      "pose": "cheering",
+      "also_emotions": [
+        "surprised"
+      ],
+      "also_poses": [
+        "both_hands_up"
+      ],
+      "description": "두 주먹을 들고 신나서 입을 크게 벌림",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트 '행복'은 눈을 감고 웃는 표정(^^)+하트, 이 PNG는 눈을 뜬 흥분 표정",
+        "시트 '놀람'(동그란 눈·O자 입·!!) 전용 PNG가 없어 surprised 컷에 대신 쓰인다"
+      ]
+    },
+    {
+      "file": "poses/happy_phone.png",
+      "emotion": "happy",
+      "pose": "phone",
+      "also_emotions": [
+        "neutral"
+      ],
+      "also_poses": [
+        "checking"
+      ],
+      "description": "휴대폰을 들고 확인하며 웃음",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트의 고유 소품(갈색 가방+집 열쇠고리, '돈도 아는 햄토리치' 책) 없음"
+      ]
+    },
+    {
+      "file": "poses/thinking_document.png",
+      "emotion": "thinking",
+      "pose": "explaining",
+      "also_emotions": [
+        "neutral",
+        "confident"
+      ],
+      "also_poses": [
+        "reading",
+        "document"
+      ],
+      "description": "서류를 들고 턱에 손, 차분한 미소",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트 설명 포즈는 지시봉+태블릿, 이 PNG는 서류"
+      ]
+    },
+    {
+      "file": "poses/thinking_chin.png",
+      "emotion": "thinking",
+      "pose": "thinking",
+      "also_emotions": [],
+      "also_poses": [
+        "chin"
+      ],
+      "description": "턱에 손을 대고 생각",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트 '생각'은 '?' 기호와 다문 입(무표정), 이 PNG는 미소 띤 표정"
+      ]
+    },
+    {
+      "file": "poses/worried_hands.png",
+      "emotion": "worried",
+      "pose": "standing",
+      "also_emotions": [
+        "sad",
+        "surprised",
+        "angry"
+      ],
+      "also_poses": [
+        "shrug"
+      ],
+      "description": "두 손을 입가에 모으고 걱정",
+      "differences": [
+        "상의: 시트 정면은 니트 질감 네이비 가디건형(골지 소매·금단추 3개), 이 PNG는 라펠 있는 테일러드 재킷(금단추 2개·주머니 덮개)",
+        "시트 '걱정'은 한쪽 눈을 찡그리고 머리 위 낙서 구름, 이 PNG는 눈썹을 올리고 입을 벌린 걱정",
+        "sad·angry 전용 PNG가 없어 이 그림으로 대신 쓰인다"
+      ]
+    }
+  ],
+  "default_pose": "poses/happy_front.png",
+  "mascot_fallback": false,
+  "rights": "owned"
+}

@@ -60,18 +60,27 @@ class GeminiImages(ImageProvider):
         self.model = model
         self.image_size = image_size
 
-    async def generate(self, prompt: str, out_path: Path, width: int, height: int) -> None:
+    async def generate(self, prompt: str, out_path: Path, width: int, height: int, *,
+                       references: list[Path] | None = None, aspect_ratio: str = "9:16",
+                       mime_type: str = "image/jpeg", resize: bool = True) -> None:
+        """references: 함께 보낼 참조 이미지(캐릭터 마스터 시트·기존 포즈). 쇼츠 기본 호출은 지금과 같다."""
         key = env("GEMINI_API_KEY")
         if not key:
             raise RuntimeError("GEMINI_API_KEY 가 .env 에 없습니다. https://aistudio.google.com/apikey 에서 발급하세요.")
 
+        inputs: list[dict[str, Any]] = []
+        for ref in references or []:
+            ref = Path(ref)
+            mime = "image/png" if ref.suffix.lower() == ".png" else "image/webp" if ref.suffix.lower() == ".webp" else "image/jpeg"
+            inputs.append({"type": "image", "mime_type": mime, "data": base64.b64encode(ref.read_bytes()).decode()})
+        inputs.append({"type": "text", "text": prompt[:4000]})
         body = {
             "model": self.model,
-            "input": [{"type": "text", "text": prompt[:4000]}],
+            "input": inputs,
             "response_format": {
                 "type": "image",
-                "mime_type": "image/jpeg",
-                "aspect_ratio": "9:16",   # 쇼츠 비율 그대로
+                "mime_type": mime_type,
+                "aspect_ratio": aspect_ratio,   # 쇼츠 기본 9:16, 캐러셀 4:5, 캐릭터 1:1
                 "image_size": self.image_size,
             },
         }
@@ -97,7 +106,8 @@ class GeminiImages(ImageProvider):
         if not b64:
             raise RuntimeError(f"Gemini 응답에 이미지가 없습니다: {r.text[:200]}")
         out_path.write_bytes(base64.b64decode(b64))
-        resize_cover(out_path, width, height)
+        if resize:
+            resize_cover(out_path, width, height)
 
 
 class GeminiImagesLite(GeminiImages):

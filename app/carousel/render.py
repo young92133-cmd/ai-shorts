@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from ..pipeline.cards import wrap_to_width
 from .schema import CardPage, ComicBeat, ComicPage, Page
+from .effects import draw_effects
 from .templates import Template
 
 BOLD = ("malgunbd.ttf", "NanumGothicBold.ttf", "AppleSDGothicNeo.ttc", "arialbd.ttf", "arial.ttf")
@@ -42,7 +43,8 @@ class PanelArt:
     """컷 하나의 그림. cutout = 투명 배경 캐릭터(앱이 배경을 그림), scene = 배경까지 있는 완성 그림(AI·업로드)."""
     kind: str                      # cutout | scene | none
     image: Image.Image | None = None
-    source: str = ""               # mascot | reference | ai_generated | upload
+    source: str = ""               # mascot | reference | ai_generated | upload | nametag
+    partner: "PanelArt | None" = None   # 같은 컷의 상대 캐릭터
 
 
 @dataclass
@@ -92,7 +94,8 @@ def fit(draw, text: str, max_w: float, max_h: float, start: int, min_size: int, 
 
 
 def draw_text(draw, lines: list[str], fnt, line_h: int, box, *, align: str = "left", fill=(0, 0, 0),
-              valign: str = "top", emphasis: str = "", highlight=None) -> int:
+              valign: str = "top", emphasis: str = "", highlight=None, stroke: int = 0, stroke_fill=None,
+              emphasis_fill=None) -> int:
     """줄 목록을 상자 안에 그린다. emphasis 가 들어간 부분은 형광펜으로 칠한다. 마지막 y 를 돌려준다."""
     x0, y0, x1, y1 = box
     total = line_h * len(lines)
@@ -107,7 +110,16 @@ def draw_text(draw, lines: list[str], fnt, line_h: int, box, *, align: str = "le
             hw = draw.textlength(emph, font=fnt)
             size = fnt.size if hasattr(fnt, "size") else line_h
             draw.rectangle([hx - 4, y + size * 0.55, hx + hw + 4, y + size * 1.12], fill=highlight)
-        draw.text((x, y), line, font=fnt, fill=fill)
+        if emph and emphasis_fill and emph in line:
+            k = line.index(emph)
+            parts = [(line[:k], fill), (emph, emphasis_fill), (line[k + len(emph):], fill)]
+            cx = x
+            for part, color in parts:
+                if part:
+                    draw.text((cx, y), part, font=fnt, fill=color, stroke_width=stroke, stroke_fill=stroke_fill)
+                    cx += draw.textlength(part, font=fnt)
+        else:
+            draw.text((x, y), line, font=fnt, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
         y += line_h
     return int(y)
 
@@ -272,7 +284,63 @@ def _guide(canvas: Image.Image, tpl: Template, page: CardPage, assets: PageAsset
     return True
 
 
+def r_cover_hook(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
+    """훅 표지 (벤치마크 2026-10-08): 화면 절반을 차지하는 제목, 고정 태그, 회차 배지, 감정 큰 캐릭터, 연출 효과."""
+    from .effects import speed_lines
+    d = ImageDraw.Draw(canvas)
+    W, H = tpl.width, tpl.height
+    band = tpl.color("band", "#9FC4A6")
+    scene = page.layout[6:].strip() if (page.layout or "").startswith("scene:") else ""
+    if scene:
+        # 표지 뒤에 실제 장면을 깔고, 제목 영역은 밝게 덮어 읽히게 한다
+        from .scenes import draw_scene
+        canvas.paste(draw_scene((W, H), scene))
+        fade = Image.new("L", (W, H), 0)
+        fd = ImageDraw.Draw(fade)
+        for y in range(H):
+            fd.line([(0, y), (W, y)], fill=int(235 * max(0.0, 1 - y / (H * 0.62)) ** 0.8))
+        canvas.paste(Image.new("RGB", (W, H), tpl.color("cover_bg")), (0, 0), fade)
+        d = ImageDraw.Draw(canvas)
+    else:
+        d.polygon([(0, H * 0.58), (W, H * 0.40), (W, H * 0.62), (0, H * 0.80)], fill=band)
+    cbox = tpl.box("cover", "character")
+    used = "graphic"
+    if assets.guide is not None:
+        burst = speed_lines((W, H), ((cbox[0] + cbox[2]) / 2, (cbox[1] + cbox[3]) / 2), color=tpl.color("accent"), alpha=34)
+        canvas.paste(burst, (0, 0), burst)
+        head = paste_cutout(canvas, assets.guide, cbox, anchor="bottom", clip=(0, 0, W, H))
+        # 효과는 제목 아래 영역에만 (제목 글자와 겹치지 않게)
+        draw_effects(canvas, (0, tpl.box("cover", "title")[3], W, H), head, page.character_emotion or "happy", seed=page.headline)
+        used = "character"
+    elif assets.image and Path(assets.image).is_file():
+        paste_image(canvas, Path(assets.image), cbox, _radius(tpl))
+        used = "image"
+    tag = page.label or str(tpl.style.get("series_tag", ""))
+    pill(d, tpl, tag, tpl.box("cover", "label"), fill=tpl.color("accent"), ink=tpl.color("on_accent"))
+    if _clean(page.part) and tpl.has_box("cover", "part"):
+        x0, y0, x1, y1 = tpl.box("cover", "part")
+        d.ellipse([x0, y0, x1, y1], fill=tpl.color("highlight"), outline=tpl.color("ink"), width=6)
+        f = font(int((y1 - y0) * (0.42 if len(_clean(page.part)) > 2 else 0.5)))
+        d.text(((x0 + x1) / 2, (y0 + y1) / 2), _clean(page.part), font=f, fill=tpl.color("ink"), anchor="mm")
+    x0, y0, x1, y1 = tpl.box("cover", "title")
+    fnt, lines, lh = fit(d, page.headline, x1 - x0, y1 - y0, tpl.font_px("hook_title", 0.13), tpl.font_px("title_min", 0.06), 3,
+                         bold=True, spacing=1.15)
+    draw_text(d, lines, fnt, lh, (x0, y0, x1, y1), align="left", valign="middle", fill=tpl.color("cover_ink"),
+              stroke=max(4, int(fnt.size * 0.09)) if hasattr(fnt, "size") else 4, stroke_fill=(255, 255, 255),
+              emphasis=page.emphasis, emphasis_fill=tpl.color("hot", "#E5484D"))
+    if tpl.has_box("cover", "body") and _clean(page.body):
+        bx0, by0, bx1, by1 = tpl.box("cover", "body")
+        if scene:   # 장면 위에서는 흰 받침을 깔아 읽히게
+            d.rounded_rectangle([bx0 - 14, by0 - 12, bx1 + 14, by1 + 12], radius=18, fill=(255, 255, 255),
+                                outline=tpl.color("line"), width=4)
+        text_in(d, tpl, page.body, (bx0, by0, bx1, by1), kind="body", bold=True, fill=tpl.color("cover_ink"), max_lines=2)
+    footer(canvas, tpl, page, assets, dark=False)
+    return {"image_use": used}
+
+
 def r_cover(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
+    if tpl.style.get("cover_style") == "hook":
+        return r_cover_hook(canvas, tpl, page, assets)
     d = ImageDraw.Draw(canvas)
     used = "none"
     if tpl.has_box("cover", "image"):
@@ -540,7 +608,7 @@ def r_cta(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
         draw_text(d, lines, lf, lh, (cx - slot * 0.46, ty, cx + slot * 0.46, ty + lh * 2), align="center", fill=ink)
     if assets.guide is not None:
         gb = tpl.box("cta", "character") if tpl.has_box("cta", "character") else None
-        if gb and tpl.character.get("on_cards"):
+        if gb and (tpl.character.get("on_cards") or "character" in (tpl._pages.get("cta") or {})):
             paste_cutout(canvas, assets.guide, gb, anchor="bottom")
     footer(canvas, tpl, page, assets, dark=True)
     return {"image_use": "none"}
@@ -549,7 +617,7 @@ def r_cta(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
 # ---------- 만화 페이지 ----------
 
 def paste_cutout(canvas: Image.Image, art: Image.Image, box, *, anchor: str = "bottom", scale: float = 1.0,
-                 align: str = "center") -> tuple[float, float]:
+                 align: str = "center", clip=None) -> tuple[float, float]:
     """투명 배경 캐릭터를 상자에 맞춰 붙인다. 머리 위치(x, y)를 돌려준다 (말풍선 꼬리 방향용)."""
     x0, y0, x1, y1 = box
     h = (y1 - y0) * scale
@@ -563,60 +631,44 @@ def paste_cutout(canvas: Image.Image, art: Image.Image, box, *, anchor: str = "b
     # 상자 밖으로 나간 부분은 잘라 낸다
     region = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     region.paste(img, (int(x), int(y)), img)
+    clip_box = clip or box
     clip = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(clip).rectangle(box, fill=255)
+    ImageDraw.Draw(clip).rectangle(clip_box, fill=255)
     alpha = Image.composite(region.getchannel("A"), Image.new("L", canvas.size, 0), clip)
     canvas.paste(region.convert("RGB"), (0, 0), alpha)
     return x + w / 2, y + h * 0.33
 
 
-INDOOR = ("사무실", "집", "거실", "방", "카페", "회사", "은행", "교실", "부엌", "실내", "office", "room", "home", "cafe")
-OUTDOOR = ("거리", "공원", "밖", "길", "아파트 단지", "동네", "야외", "street", "park", "outside")
 
 
 def scene_background(tpl: Template, size: tuple[int, int], beat: ComicBeat, reaction: bool) -> Image.Image:
-    """AI 배경이 없을 때 앱이 그리는 단순한 배경 (실내/야외/집중선)."""
+    """배경 라이브러리(승인된 장면 그림) → 없으면 앱이 그리는 단순 배경. 감정·장소에 맞춰 분위기 조명을 입힌다."""
+    from .backgrounds import pick
+    from .effects import apply_mood, mood_for, speed_lines
     w, h = size
-    bg = beat.background or ""
+    lib = pick(beat.background)
+    if lib:
+        img = cover_fit(Image.open(lib).convert("RGB"), w, h)
+        img = apply_mood(img, mood_for(beat.background, beat.emotion))
+        if reaction or beat.emotion in ("surprised", "angry"):
+            lines = speed_lines(size, (w / 2, h * 0.42), color=(255, 255, 255), alpha=110)
+            img.paste(lines, (0, 0), lines)
+        return img
+    from .scenes import draw_scene
+    mood = mood_for(beat.background, beat.emotion)
+    img = draw_scene(size, beat.background or "방", mood=mood if mood in ("night", "sunset", "gloomy") else "")
+    if mood in ("crisis", "gloomy"):
+        img = apply_mood(img, mood)
     if reaction or beat.emotion in ("surprised", "angry"):
-        img = Image.new("RGB", size, tpl.color("bg"))
-        d = ImageDraw.Draw(img)
-        cx, cy = w / 2, h * 0.45
-        ink = tuple(int(c * 0.85) for c in tpl.color("bg2"))
-        for k in range(48):
-            a = k / 48 * 2 * math.pi
-            a2 = a + 0.035
-            r0, r1 = min(w, h) * 0.32, max(w, h)
-            d.polygon([(cx + r0 * math.cos(a), cy + r0 * math.sin(a)), (cx + r1 * math.cos(a), cy + r1 * math.sin(a)),
-                       (cx + r1 * math.cos(a2), cy + r1 * math.sin(a2))], fill=ink)
-        return img
-    if any(k in bg for k in OUTDOOR):
-        img = _gradient(w, h, tpl.color("scene_sky", "#CFE6FF"), (255, 255, 255))
-        d = ImageDraw.Draw(img)
-        ground = int(h * 0.74)
-        for k in range(6):
-            bx = int(w * (k * 0.18 - 0.04))
-            bh = int(h * (0.28 + 0.12 * ((k * 37) % 3)))
-            d.rectangle([bx, ground - bh, bx + int(w * 0.15), ground], fill=(225, 232, 242))
-        d.rectangle([0, ground, w, h], fill=tpl.color("scene_ground", "#BFD9A8"))
-        return img
-    img = Image.new("RGB", size, tpl.color("scene_wall", "#F3E9D7"))
-    d = ImageDraw.Draw(img)
-    floor = int(h * 0.76)
-    d.rectangle([0, floor, w, h], fill=tpl.color("scene_floor", "#D9C7A8"))
-    d.line([(0, floor), (w, floor)], fill=tuple(int(c * 0.8) for c in tpl.color("scene_floor", "#D9C7A8")), width=4)
-    if any(k in bg for k in INDOOR) or not bg:
-        wx0, wy0, wx1, wy1 = int(w * 0.08), int(h * 0.12), int(w * 0.36), int(h * 0.48)
-        d.rectangle([wx0, wy0, wx1, wy1], fill=(214, 236, 255), outline=(255, 255, 255), width=10)
-        d.line([((wx0 + wx1) / 2, wy0), ((wx0 + wx1) / 2, wy1)], fill=(255, 255, 255), width=8)
-        d.line([(wx0, (wy0 + wy1) / 2), (wx1, (wy0 + wy1) / 2)], fill=(255, 255, 255), width=8)
+        lines = speed_lines(size, (w / 2, h * 0.42), color=(255, 255, 255), alpha=150)
+        img.paste(lines, (0, 0), lines)
     return img
 
 
-def _bubble_box(panel, position: str, text_h_ratio: float = 0.30):
+def _bubble_box(panel, position: str, text_h_ratio: float = 0.30, width_ratio: float = 0.56):
     x0, y0, x1, y1 = panel
     w, h = x1 - x0, y1 - y0
-    bw, bh = w * 0.56, h * text_h_ratio
+    bw, bh = w * width_ratio, h * text_h_ratio
     m = w * 0.045
     pos = position if position in ("top_left", "top_right", "bottom_left", "bottom_right", "top", "bottom") else "top_right"
     bx = x0 + m if "left" in pos else x1 - m - bw if "right" in pos else x0 + (w - bw) / 2
@@ -685,38 +737,99 @@ def narration_box(canvas, tpl: Template, text: str, box, *, top: bool) -> None:
     draw_text(d, lines, fnt, lh, (rect[0] + pad, rect[1] + pad, rect[2] - pad, rect[3] - pad), fill=tpl.color("ink"))
 
 
+def _face_close_up(canvas: Image.Image, art: Image.Image, box, side: str) -> tuple[float, float]:
+    """얼굴 클로즈업: 그림의 위쪽(머리) 부분만 잘라 컷을 가득 채운다."""
+    x0, y0, x1, y1 = box
+    bb = art.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox() or (0, 0, art.width, art.height)
+    face = art.crop((bb[0], bb[1], bb[2], bb[1] + int((bb[3] - bb[1]) * 0.55)))
+    w, h = x1 - x0, y1 - y0
+    k = max(w * 0.95 / face.width, h * 1.05 / face.height)
+    face = face.resize((max(1, int(face.width * k)), max(1, int(face.height * k))), Image.LANCZOS)
+    px = x0 + (w - face.width) // 2 + int(w * (0.12 if side == "right" else -0.12 if side == "left" else 0))
+    py = y1 - face.height + int(h * 0.12)
+    layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    layer.paste(face, (px, py), face)
+    clip = Image.new("L", canvas.size, 0)
+    ImageDraw.Draw(clip).rectangle(box, fill=255)
+    alpha = Image.composite(layer.getchannel("A"), Image.new("L", canvas.size, 0), clip)
+    canvas.paste(layer.convert("RGB"), (0, 0), alpha)
+    return px + face.width / 2, py + face.height * 0.35
+
+
+def sfx_text(canvas: Image.Image, tpl: Template, text: str, box, *, right: bool = True, center: bool = False) -> None:
+    """효과음 글자 (띠링!, 두둥 …): 굵은 외곽선 + 살짝 기울인 큰 글자. 말풍선 아래, 얼굴을 덮지 않는 쪽."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    size = int(min(w, h) * (0.11 if center else 0.14))
+    f = font(size, bold=True)
+    tw = ImageDraw.Draw(canvas).textlength(_clean(text), font=f)
+    tmp = Image.new("RGBA", (int(tw + size * 0.8), int(size * 1.8)), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tmp)
+    td.text((tmp.width / 2, tmp.height / 2), _clean(text), font=f, fill=tpl.color("hot", "#E5484D"), anchor="mm",
+            stroke_width=max(4, size // 9), stroke_fill=(255, 255, 255))
+    tmp = tmp.rotate(-8 if right else 8, resample=Image.BICUBIC, expand=True)
+    px = int((x0 + x1 - tmp.width) / 2) if center else int(x1 - tmp.width - w * 0.02) if right else int(x0 + w * 0.02)
+    py = int(y0 + h * (0.30 if center else 0.34))
+    canvas.paste(tmp, (px, py), tmp)
+
+
 def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: PanelArt, *, reaction: bool,
                headline: str = "", caption: str = "") -> str:
     x0, y0, x1, y1 = [int(v) for v in box]
     w, h = x1 - x0, y1 - y0
     bubble_pos = beat.speech_bubble_position or "top_right"
     used = art.source or "none"
+    partner = None
     if art.kind == "scene" and art.image is not None:
         canvas.paste(cover_fit(art.image.convert("RGB"), w, h), (x0, y0))
         head = (x0 + w * (0.3 if "right" in bubble_pos else 0.7), y0 + h * 0.4)
     else:
         canvas.paste(scene_background(tpl, (w, h), beat, reaction), (x0, y0))
         head = (x0 + w / 2, y0 + h * 0.4)
-        if art.kind == "cutout" and art.image is not None:
+        partner = art.partner if art.partner and art.partner.image is not None else None
+        if art.kind == "cutout" and art.image is not None and partner:
+            # 두 인물 대치: 주인공 왼쪽, 상대 오른쪽, 말풍선은 각자 머리 위
+            bubble_pos = "top_left"
+            head = paste_cutout(canvas, art.image, (x0 + int(w * 0.0), y0 + int(h * 0.12), x0 + int(w * 0.56), y1),
+                                anchor="bottom", clip=(x0, y0, x1, y1))
+            # 의인화 캐릭터는 그림 여백이 없어 같은 상자면 커 보인다 → 조금 작게
+            top = 0.42 if partner.source == "nametag" else 0.2
+            p_head = paste_cutout(canvas, partner.image, (x0 + int(w * 0.50), y0 + int(h * top), x1 - int(w * 0.03), y1),
+                                  anchor="bottom", clip=(x0, y0, x1, y1))
+            draw_effects(canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
+            draw_effects(canvas, (x0, y0, x1, y1), p_head, beat.partner_emotion, seed=beat.partner_dialogue)
+            speech_bubble(canvas, tpl, beat.partner_dialogue, _bubble_box((x0, y0, x1, y1), "top_right", 0.26, 0.44),
+                          tail_to=p_head, shout=beat.partner_emotion in ("surprised", "angry"))
+        elif art.kind == "cutout" and art.image is not None:
             cam = (beat.camera or "medium").lower()
-            scale = {"close_up": 1.55, "closeup": 1.55, "wide": 0.62}.get(cam, 0.92)
+            scale = {"close_up": 1.55, "closeup": 1.55, "wide": 0.55}.get(cam, 0.92)
             side = "left" if "right" in bubble_pos else "right" if "left" in bubble_pos else "center"
             area = (x0 + int(w * (0.02 if side == "left" else 0.30 if side == "right" else 0.16)), y0,
                     x0 + int(w * (0.70 if side == "left" else 0.98 if side == "right" else 0.84)), y1)
+            if cam in ("wide", "establishing"):
+                # 원경: 캐릭터를 작게 3분할 지점에 두고 장소를 보여 준다
+                area = (x0 + int(w * (0.04 if side != "right" else 0.50)), y0, x0 + int(w * (0.50 if side != "right" else 0.96)), y1)
+            if cam in ("extreme_close_up", "face"):
+                head = _face_close_up(canvas, art.image, (x0, y0, x1, y1), side)
             # 클로즈업은 아래로 내려 얼굴 위주로 보이게 한다
-            if scale > 1.2:
+            elif scale > 1.2:
                 ah = (area[3] - area[1]) * scale
                 area2 = (area[0], int(y1 - ah * 0.62), area[2], int(y1 - ah * 0.62 + ah))
-                head = paste_cutout(canvas, art.image, area2, anchor="top", scale=1.0)
+                head = paste_cutout(canvas, art.image, area2, anchor="top", scale=1.0, clip=(x0, y0, x1, y1))
                 head = (head[0], min(y1 - h * 0.2, head[1]))
             else:
                 top_y = y1 - (y1 - y0) * scale
                 head = paste_cutout(canvas, art.image, (area[0], int(top_y), area[2], y1), anchor="bottom")
-    speech_bubble(canvas, tpl, beat.dialogue, _bubble_box((x0, y0, x1, y1), bubble_pos), tail_to=head,
+            draw_effects(canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
+    if _clean(beat.sfx):
+        # 캐릭터는 말풍선 반대쪽에 서므로 효과음은 말풍선 쪽(아래)에, 두 인물 컷은 가운데 위에
+        sfx_text(canvas, tpl, beat.sfx, (x0, y0, x1, y1), right=bubble_pos.endswith("right"), center=bool(partner))
+    speech_bubble(canvas, tpl, beat.dialogue, _bubble_box((x0, y0, x1, y1), bubble_pos, 0.30, 0.44 if partner else 0.56), tail_to=head,
                   shout=reaction and beat.emotion in ("surprised", "angry"))
     # 상단/하단 캡션은 말풍선 반대쪽에 하나로 모아 겹치지 않게 한다
     note = " ".join(t for t in (_clean(headline), _clean(caption)) if t)
-    narration_box(canvas, tpl, note, (x0, y0, x1, y1), top=bubble_pos.startswith("bottom"))
+    # 장면 캡션은 말풍선과 겹치지 않는 위쪽 모서리 → 아니면 아래 (원경 컷의 작은 캐릭터를 가리지 않게)
+    narration_box(canvas, tpl, note, (x0, y0, x1, y1), top=bubble_pos.startswith("bottom") or bubble_pos.endswith("right"))
     border = int(tpl.style.get("panel_border", 6))
     ImageDraw.Draw(canvas).rectangle([x0, y0, x1, y1], outline=tpl.color("line", "#151515"), width=border)
     return used
@@ -726,18 +839,22 @@ def r_comic(canvas, tpl, page: ComicPage, assets: PageAssets) -> dict:
     d = ImageDraw.Draw(canvas)
     t = page.type
     panel = tpl.box(t, "panel")
-    beats = page.panels[:2] or [ComicBeat(character_id="", dialogue=page.headline)]
+    beats = page.panels[:3] or [ComicBeat(character_id="", dialogue=page.headline)]
     arts = assets.panels + [PanelArt(kind="none")] * (len(beats) - len(assets.panels))
     reaction = t == "reaction_scene"
     used = []
     explanation = t == "explanation_scene"
+    x0, y0, x1, y1 = panel
+    gap = int(tpl.height * 0.018)
     if len(beats) == 1:
         boxes = [panel]
-    else:
-        x0, y0, x1, y1 = panel
-        gap = int(tpl.height * 0.018)
+    elif len(beats) == 2:
         mid = (y0 + y1) // 2
         boxes = [(x0, y0, x1, mid - gap // 2), (x0, mid + gap // 2, x1, y1)]
+    else:
+        # 위 큰 컷 + 아래 두 컷 (장면 전환·반응을 한 장에)
+        mid, cx = y0 + int((y1 - y0) * 0.52), (x0 + x1) // 2
+        boxes = [(x0, y0, x1, mid - gap // 2), (x0, mid + gap // 2, cx - gap // 2, y1), (cx + gap // 2, mid + gap // 2, x1, y1)]
     for k, (beat, art, box) in enumerate(zip(beats, arts, boxes)):
         used.append(draw_panel(canvas, tpl, box, beat, art, reaction=reaction,
                                headline=page.headline if k == 0 else "",
@@ -747,6 +864,11 @@ def r_comic(canvas, tpl, page: ComicPage, assets: PageAssets) -> dict:
         d.rounded_rectangle([cx0, cy0, cx1, cy1], radius=_radius(tpl), fill=tpl.color("panel"),
                             outline=tpl.color("line"), width=int(tpl.style.get("card_border", 4)) or 4)
         pad = int((cx1 - cx0) * 0.05)
+        if _clean(page.source):
+            # 출처 이름만으로 공식 자료 또는 원문임을 단정하지 않는다.
+            bh = int(tpl.height * 0.034)
+            pill(d, tpl, "근거 자료", (cx0 + pad, cy0 - bh // 2, cx1, cy0 + bh // 2), fill=tpl.color("accent"),
+                 ink=tpl.color("on_accent"))
         text_in(d, tpl, page.caption, (cx0 + pad, cy0 + pad, cx1 - pad, cy1 - pad), kind="body", bold=False,
                 valign="middle", emphasis=page.emphasis, max_lines=5)
     footer(canvas, tpl, page, assets)
