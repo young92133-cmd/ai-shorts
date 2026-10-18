@@ -1,24 +1,38 @@
 # AI 콘텐츠팩토리 — Codex / Claude Code 공통 작업 규칙
 
-이 프로젝트는 한국어 9:16 유튜브 쇼츠를 만드는 **범용 AI 콘텐츠팩토리**다.
-**이 채팅이 메인 화면**이다. Codex와 Claude Code는 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
+이 파일이 **두 AI 의 공통 규칙 원본**이다. CLAUDE.md 는 이 파일을 가져오고(`@AGENTS.md`) Claude 전용 내용만 둔다. 규칙은 여기만 고친다.
+이 프로젝트는 한국어 9:16 유튜브 쇼츠와 인스타그램 캐러셀(카드뉴스·인스타툰)을 만드는 **범용 AI 콘텐츠팩토리**다.
+**이 채팅이 메인 화면**이다. 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
-
-**현재 상태(2026-10-08):** V1 제작 엔진 + Benchmark 8개 구조 자동 선택(`--benchmark auto`) + Source Resolver(`--visuals auto`)
-+ Clip Analyzer + 인용·재가공 모드(transformative_quote, `--quote`) + 자막 정렬 + 카드뉴스·인스타툰 캐러셀(`--format`) + Topic Strategy V1.
-최신 완료 상태·실제 검증·한계는 `HANDOFF.md` 맨 위, benchmark 현황은 `docs/BENCHMARKS.md` 맨 위가 기준이다.
 새 대형 기능(Global Trend Radar·Localization·Vision Clip Analyzer·성과 학습·자동 게시)은 사용자의 별도 요청 전에는 시작하지 않는다.
 
 ```
 Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline (제작 엔진) ←─ Web UI (보조)
+                                            └─→ app/carousel (카드뉴스·인스타툰) · app/topics (주제 전략)
 ```
 
-## 명령 (프로젝트 폴더에서, 가상환경 파이썬으로)
+## 작업 시작 · 종료 (두 AI 공통, 자동 인수인계)
 
-Topic Strategy V1: `topics collect/rank/recommend/calendar/approve/plan/create`가 추가됐다.
-상세 CLI·검증 조건·원문/승인 보존은 `docs/TOPIC_STRATEGY.md`. 발행 API는 없고 `topics published`는 사람이 게시한 이력 기록이다.
-번호 선택은 결과의 `selection_id`를 유지한다. `topics rank --ai` 외에는 전략 평가에 LLM을 호출하지 않는다.
-개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/PNG 샘플은 사용자 요청 없이 반복하지 않는다.
+1. **시작**: `git status --short` → `git log --oneline -5` → `HANDOFF.md` 맨 위 '현재 상태'만 읽는다. 전체 저장소를 다시 훑지 않는다.
+2. 다른 세션의 미커밋 변경은 덮어쓰거나 되돌리지 않는다. 같은 파일을 고쳐야 하면 먼저 `git diff <파일>` 로 확인한다.
+3. **종료·AI 전환 전**: `HANDOFF.md` 맨 위 '현재 상태'를 갱신한다 — 현재 작업 / 완료 / 남은 작업 / 수정 파일 / 테스트 결과 / 다음 작업 / 주의.
+   '현재 상태'는 80줄 이내로 유지하고, 끝난 기록은 `docs/history/` 로 옮긴다(지우지 않는다).
+4. 위험한 파일 삭제, 대규모 구조 변경, 사용자 데이터(output·reference·samples) 정리, commit/push 는 사용자 승인 후에만.
+
+## 개발 원칙 (기능 추가·수정마다)
+
+기존 코드 확인 → 최대한 재사용 → 중복 방지 → 불필요한 코드 정리 → 테스트 → HANDOFF.md 갱신.
+- 새 함수를 쓰기 전에 `rg "def 이름|비슷한 단어" app` 로 같은 기능이 있는지 찾는다. 공통 도구: 글꼴 `app/pipeline/fonts.py`,
+  글자 맞춤 `app/pipeline/cards.py`(wrap_to_width·fit_text), LLM `app/pipeline/llm.ask_structured`, 권리 대장 `app/pipeline/sources.SourceRegistry`.
+- 안 쓰는 코드는 참조(`rg -w 이름 app scripts tests app/static app/templates`)를 확인한 뒤 지운다. 줄 수보다 실행 안정성과 유지보수성이 먼저다.
+
+## 토큰 절약
+
+- 필요한 파일만 `rg` 로 찾아 해당 부분만 읽는다. 큰 문서(HANDOFF 기록, docs/history, docs/AGENT_REFERENCE.md)는 필요할 때만 연다.
+- 출력은 결과 요약 위주로 짧게. 긴 로그·파일 전체 출력·같은 설명 반복을 하지 않는다.
+- 이미 끝난 작업·테스트를 같은 코드 상태에서 반복하지 않는다. 코드를 바꿨으면 관련 테스트는 반드시 다시 돈다(커밋 전에는 전체 테스트).
+
+## 명령 (프로젝트 폴더에서, 가상환경 파이썬으로)
 
 `.venv\Scripts\python.exe -m app.factory <명령>` 을 실행한다. 결과는 stdout JSON 한 덩어리이고, 진행 로그는 stderr로 나온다.
 현재 Codex 환경에서는 `./scripts/factory.ps1 <명령>`을 쓴다. 깨진 기존 `.venv`는 보존하고,
@@ -58,7 +72,8 @@ Topic Strategy V1: `topics collect/rank/recommend/calendar/approve/plan/create`�
 | `batch --topic "첫 주제" --topic "둘째" [--review]` | 여러 주제 순차 제작 (검토 옵션이면 편마다 대본 저장 후 멈춤) |
 | `batch-status [ID]` / `batch-resume [ID]` | 순차 제작 조회 / 저장 대본을 한 편씩 이어서 완성 |
 | `export [id] [--pack] [--capcut]` | 완성 파일 목록 / 편집 재료 zip / CapCut 프로젝트 |
-
+| `toon --topic "…" --facts-from-topic <topic_id> [--writer rules\|claude]` | 자동 인스타툰 8장 (훅→상황→상대역→갈등→정보 발견→해결·반전→결론). 기본 rules 무료, claude 는 선택 |
+| `topics collect\|rank\|recommend\|calendar\|approve\|plan\|create …` | 주제 수집·검증·추천·캘린더 (상세 `docs/TOPIC_STRATEGY.md`) |
 장면 번호는 사용자에게 보이는 대로 1부터 센다. 카드 종류: hook_card, statement_card, focus_card, quote_card, number_card, trend_card, compare_card, summary_card.
 
 ## 자연어 → 명령
@@ -189,32 +204,26 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
 - 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `python -B -m unittest discover -s tests -q`. 정의 수는 Codex 저장 후보365개, 다른 세션의 햄토리치 미커밋 작업까지 포함한 현재 폴더368개다. 앞선 365개 사본 검증은 통과·실패/오류/skip 0이며 외부 호출·원본 쓰기 차단과 실제 FFmpeg 회귀3개를 포함했다. 가상 데모 안내·재실행 보존 회귀1개 추가. 최신 두 범위 검증 결과와 실행 환경은 `HANDOFF.md` 맨 위 참조. ffmpeg가 없는 환경에서는 기존 FFmpeg 테스트3개가 skip 된다.
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (Codex 환경은 `scripts/factory.ps1` 과 같은 Python). 2026-10-16 기준 385개. ffmpeg 가 없는 환경에서는 실제 FFmpeg 테스트 3개가 skip 된다. 최신 결과는 `HANDOFF.md` 맨 위.
 - 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.
   - 비밀정보는 커밋하지 않는다.
   - push는 사용자가 요청할 때만 한다("저장해줘" 포함, 위 작업 요청 규칙).
-- 진행 기록은 `IMPLEMENTATION_PLAN.md`(계획)와 `HANDOFF.md`(작업 인계)에 남긴다.
+- 진행 기록: `HANDOFF.md`(현재 상태, 위 인수인계 규칙) · 진행 중 계획 `docs/OPTIMIZATION_PLAN_2026-10-14.md` · 지난 기록·옛 계획 `docs/history/`.
 
-## Benchmark × V1 자동 통합 (2026-10-05, 기본값)
+## 주제 전략 (Topic Strategy V1)
 
-`make`(topic·url·auto·reference-video)는 **기본으로 `--benchmark auto`** 다. 사용자는 profile 이름을 몰라도 된다.
-"○○ 주제로 쇼츠 만들어줘", "이 유튜브 참고해서 만들어줘: URL" → 그냥 `make --topic …` / `make --url …` 를 실행한다.
+상세 CLI·검증 조건·원문/승인 보존은 `docs/TOPIC_STRATEGY.md`. 발행 API는 없고 `topics published`는 사람이 게시한 이력 기록이다.
+번호 선택은 결과의 `selection_id`를 유지한다. `topics rank --ai` 외에는 전략 평가에 LLM을 호출하지 않는다.
+개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/PNG 샘플은 사용자 요청 없이 반복하지 않는다.
 
-내부 흐름: 조사 → **Content Brief(AI 1회)**: verified_facts / inference 분리, 시청 질문 후보 2~3개(View Potential 5항목×20점), 8개 profile 9기준 점수
-→ **Auto Router**(가중합 0~100 + 게이트: 근거 영상이 필요한 kpop_observation_clip·physics_comparison_simulation·ranked_moments 는 권리 확인 영상이나 사용자가 준 인용 영상(`--quote`)이 없으면 제외, 필수 근거 슬롯 부족 시 제외, 기준 45점 미만이면 `illustrated_fact_explainer` fallback)
-→ 선택 profile 에 맞는 보충 조사 1회 → **구조 주입 대본**(장면별 beat_role·시간·글자 예산·훅/결론/마지막 질문, 사실·추론·창작 분리) → 기존 장면 설계 + `apply_scene_plan`(장면 역할·카드 성격·강조 길이) → 기존 Edge TTS·자막·카드·렌더.
-기존 구성 분석(`make_plan`)은 benchmark 가 켜지면 건너뛰므로 AI 호출 수는 그대로 3회(brief·대본·장면)다.
+## Benchmark × V1 자동 통합 (기본값)
 
-- 점수는 **현재 자료로 어떤 구조가 경쟁력 있는지 고르는 내부 판단값**이다. 사용자에게 조회수·성공 확률이라고 말하지 않는다.
-- 결과: `project_state.json` 의 `benchmark`(mode, selected_profile, candidate_scores, top3, viewer_question, reason_to_watch, claim, view_potential_score, selection_reason, fallback_used, narration_mode, scene_roles, quality) + 전체 기록 `benchmark_decision.json`(사실·추론·후보·원본 분석). `inspect --part benchmark` 로 본다.
-- `resume`·`rerender`·`batch-resume` 은 저장된 결정을 그대로 쓰고 다시 고르지 않는다. 완성 대본(`--script`)은 `not_applicable`, 스타일 지정(`--style`)은 auto 일 때 스타일을 따른다.
-- 사용자에게 결과를 알릴 때: 고른 구조 이름, 시청 질문, 선택 이유, 상위 3개 점수, fallback 여부와 quality 경고를 쉬운 말로 전한다.
-- 유튜브·기사 URL 은 분석한다(`source_analysis`, 유튜브는 타임스탬프 자막으로 `evidence_moments` 근거 구간까지). 원본 문장·장면 순서를 복제하지 않는다.
-  YouTube 미디어는 자동으로 내려받지 않는다. 사용자가 준 영상·캡처는 transformative_quote 로 근거 장면에 인용한다(자료 권리 규칙).
-- Source Resolver·Clip Analyzer 는 아래 자료 권리 규칙 참고. 아직 없음: 자동 게시, 채널 크롤링, Global Trend Radar, 조회수 예측, 성과 학습.
+`make`(topic·url·auto·reference-video)는 **기본으로 `--benchmark auto`** 다. 사용자는 profile 이름을 몰라도 된다. 내부 흐름·결과 필드는 `docs/AGENT_REFERENCE.md`.
+점수는 **현재 자료로 어떤 구조가 경쟁력 있는지 고르는 내부 판단값**이다. 사용자에게 조회수·성공 확률이라고 말하지 않는다.
+`resume`·`rerender`·`batch-resume` 은 저장된 결정을 그대로 쓴다. 결과를 알릴 때: 고른 구조 이름, 시청 질문, 선택 이유, 상위 3개 점수, fallback 여부와 quality 경고.
 
 | 사용자 말 | 실행 |
 |---|---|
@@ -225,18 +234,12 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 | "예전 방식(구조 선택 없이)으로 만들어줘" | `make --topic "…" --benchmark off` |
 | "왜 이 구성으로 만들었어?" | `inspect <id> --part benchmark` |
 
-## 카드뉴스 · 인스타툰 · 하이브리드 (2026-10-07)
+벤치마킹 분석·오프라인 `benchmark plan/render` 경로 규칙은 `docs/AGENT_REFERENCE.md` 와 `docs/BENCHMARKS.md`(현황판 기준).
 
-`make` 에 출력 형식이 생겼다. `--format shorts`(기본) | `card_news` | `insta_toon` | `hybrid` | `all`.
-예전 톤 값(`--format information|story|issue`)도 그대로 받는다(새 이름은 `--tone`).
-결과는 `output/<id>/<format>/card_01.png …`(1080x1350 PNG), `manifest.json`(페이지별 타입·문구·이미지·캐릭터·출처·대체 여부),
-`sources.json`(이 형식에 쓴 자료), `plan.json`, `master.json`, `caption.txt`(인스타 본문·해시태그·출처).
+## 카드뉴스 · 인스타툰 · 하이브리드
 
-흐름: 입력 수집(쇼츠와 같은 research/article/youtube 모듈) → **Master Content(AI 1회)** → **Format Planner(AI 1회, 규칙으로 보정)**
-→ 카드 사진(쇼츠 Source Resolver 그대로: AI 2회, usable 만) → 만화 컷(업로드 `toon_NN_*` → Bible 참고 이미지 → AI(설정 시) → 앱 마스코트)
-→ Pillow 렌더러(글자·말풍선은 전부 앱이 합성). 페이지 하나가 실패해도 대체 레이아웃으로 계속한다.
-`hybrid` 비율은 Master 의 story_score 로 자동: 정보형 80/20, 일반 50/50, 스토리형 20/80(카드/만화).
-`all` = 쇼츠(기존 엔진 그대로) + 같은 대본으로 하이브리드. 쇼츠가 실패해도 카드는 만든다(`partial_failure`, 쇼츠는 `resume`).
+`make --format shorts`(기본) | `card_news` | `insta_toon` | `hybrid` | `all`. 결과 `output/<id>/<format>/card_NN.png`(1080x1350) + `manifest.json`·`sources.json`·`caption.txt`.
+내부 흐름·템플릿·캐릭터 세부는 `docs/AGENT_REFERENCE.md`. 품질 기준 샘플은 `samples/`.
 
 | 사용자 말 | 실행 |
 |---|---|
@@ -250,39 +253,7 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 | "캐릭터 있는 카드뉴스로" | `make … --format card_news --template character_info` |
 | "토리 말고 다른 캐릭터로" | `characters list` → `make … --character <id>` |
 
-- 템플릿: `clean_info`(정보형 카드뉴스 기본), `character_info`(카드에 안내 캐릭터), `hamtorich_toon`(인스타툰·하이브리드 기본), `comic_hybrid`(기존 선택형). `app/carousel/templates/*.yaml` 추가만으로 새 템플릿.
-- 캐릭터: `characters/<id>/bible.json`(Character Bible, id 는 ASCII). `characters add --file bible.json`. **기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`** — 최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 제작용 투명 포즈 8장 `poses/`, 새 포즈 규칙 `characters/hamtorich_01/README.md`. 토리 `tory_01` 은 `--character tory_01` 로 계속 사용.
-- 자동 인스타툰: `toon --topic "…" --facts-from-topic <topic_id> [--writer rules|claude]` — 훅→상황→상대역→갈등→정보 발견→해결·반전→결론 8장. 기본 `rules` 무료(AI 0회), `claude` 는 사용자가 고를 때만(구독 CLI). 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). 품질 기준 샘플은 `samples/`. 사용자 그림은 `assets/inbox/`(자동 등록), 장면 배경은 코드로 그린 11종(`app/carousel/scenes.py`).
-- 캐릭터 그림은 Bible 의 등록 포즈(햄토리치)를 컷의 감정·자세에 맞춰 고른다(무료). 등록 그림이 없는 토리는 앱 마스코트로 그린다. 햄토리치는 마스코트로 대체하지 않는다(mascot_fallback=false). `config.yaml` `carousel.image_provider` 를 바꾸면 유료 AI 생성 — 사용자 허락 없이 바꾸지 않는다.
-  `approved=false` 포즈는 기본 포즈와 reference_images 경로로도 사용하지 않는다. 받은편지함 원본은 같은 이름이어도 별도 이름으로 보존한다. 출처 상자는 공식 자료 여부를 단정하지 않는 '근거 자료' 배지를 쓴다.
-  Flow 등에서 만든 그림을 `--asset toon_03_이름.png --note "Flow 생성" --confirm-rights --license ai_generated` 로 넣으면 그 페이지 첫 컷에 쓴다.
-- 캐러셀은 `--review`·`--reference-video` 를 받지 않는다. `resume`·`rerender` 대상이 아니다(다시 `make`). `inspect <id> --part carousel` 로 페이지 요약.
-- 결과를 알릴 때: 장수, 카드/만화 비율, 사진을 쓴 페이지와 출처, 대체 레이아웃이 된 페이지(`fallback_pages`)를 전한다.
-
-## Benchmark 인벤토리와 오프라인 경로 (2026-10-05)
-
-benchmark 현황의 기준은 `docs/BENCHMARKS.md` 맨 위 현황판이다(source 6개·profile 8개·상태·실제 검증). 아래는 오프라인 `benchmark plan/render` 경로 규칙이다.
-별도 shorts-ai-benchmark-v2는 별도 컨셉 작업이므로 사용자가 그쪽 구현을 요청하지 않으면 임의로 합치지 않는다.
-
-사용자가 "이 채널 벤치마킹해줘"라고 하면 최소한 source 분석을 구조화하고, 기존 profile 중복/variation/새 profile 필요성을 판단해
-`benchmarks/sources`와 `docs/BENCHMARKS.md`에 관찰 깊이/상태/다음 작업을 기록한다. 말로만 분석을 끝내지 않는다.
-새 production 코드는 분석 요청만으로 자동 변경하지 않는다. "반영/업데이트/구현" 요청이 있으면 load/선택/실제 pipeline/테스트를 검증해 연결한다.
-source와 profile은 양방향 연결하며 채널 수와 profile 수를 구분한다. 사례별 시청 이유/질문/hook/claim/근거/payoff/길이/리듬/음성/자막/반복/후속/시각 전략을 추출한다.
-관찰한 사실, 목록만 나온 스타일, 제안한 제작 변형, 실제 검증한 경로를 구분하고 미확인 성과/날짜/인물/반응을 추측하지 않는다.
-타 채널 로고/워터마크/정확한 폰트/색상/그래픽/원문 대본/장면을 복제하거나 원본을 자동 다운로드하지 않는다.
-
-자연어 요청과 실행:
-
-| 사용자 요청 | 처리 |
-|---|---|
-| "이 주제로 curiosity_update_story 적용해서 만들어줘" | 기본: `make --topic "…" --benchmark curiosity_update_story` (조사·나레이션 포함). 사용자가 근거 JSON을 직접 준 경우에만 오프라인 `benchmark plan --profile … --input …` → `benchmark render ID` |
-| "이 영상으로 kpop_observation_clip 방식으로 만들어줘" | 기본: `make --url "URL" --quote 직캠·캡처 --benchmark kpop_observation_clip` (해설 나레이션 + 인용 구간). 관찰/타임코드 JSON을 직접 준 경우에만 오프라인 plan/render |
-| "physics_comparison_simulation 방식으로 제작해줘" | 직접 만든 실험 영상/조건/고정 환경을 확인 → physics 양식 → plan/render; 시뮬레이션 영상 생성은 미지원임을 알려준다 |
-| "레스기처럼 순위로 묶어줘" | 채널 복제 대신 ranked_moments, N위부터1위 근거 클립과 순위 기준을 기록 |
-| "건축 원리 설명/발언 맥락/숫자 정보/사건 시간 순서" | 각각 mechanism_explainer / quote_context_story / illustrated_fact_explainer / event_timeline_story의 근거 JSON → plan/render |
-| "계획만 먼저 보여줘" | plan/inspect 결과를 보여주고 멈춘다 |
-| "벤치마크 계속/다시 렌더" | 대화에 알려진 benchmark ID로 `benchmark render ID`; V1 resume를 사용하지 않는다 |
-
-Benchmark 입력 양식은 예시이며 실제 분석/사실이 아니다. 사용자의 사실/영상 입력으로 교체한다. URL(reference)은 provenance 문자열이고 엔진은 접속하지 않는다.
-오프라인 `benchmark plan/render` 경로의 이야기 profile은 narration 없는 자체 카드 adapter다(위 V1 자동 통합은 나레이션 포함). 번역/Blender/고급 지도 생성/Global Trend Radar는 아직 없다.
-source/profile/코드/문서를 함께 갱신하고 기존 V1 전체 테스트와 Benchmark 회귀 테스트를 실행한다. 테스트/실렌더/흥행 확인을 서로 대신 보고하지 않는다.
+- 기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`(최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 규칙 `characters/hamtorich_01/README.md`). 토리 `tory_01` 은 선택.
+- 무료가 기본: 등록 포즈 + 코드로 그린 장면 11종 + 효과. 사용자 그림은 `assets/inbox/`(자동 등록). `carousel.image_provider`·`characters generate --confirm-cost` 같은 유료 생성은 사용자 허락 없이 쓰지 않는다.
+- 자동 인스타툰 `toon`: 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). `--writer claude` 는 사용자가 고를 때만(구독 CLI).
+- 캐러셀은 `--review`·`--reference-video` 를 받지 않고 `resume`·`rerender` 대상이 아니다(다시 `make`). 결과를 알릴 때: 장수, 카드/만화 비율, 사진 출처, `fallback_pages`.

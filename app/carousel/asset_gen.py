@@ -6,7 +6,6 @@ asset_plans/<plan>.yaml → Gemini(마스터 시트 참조) → 캐릭터는 흰
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -210,7 +209,3 @@ def approve(items: list[str], *, root: Path | None = None, bg_root: Path | None 
     if index is not None:
         save_index(index, bg_root)
     return ok
-
-
-def report_json(result: dict[str, Any]) -> str:
-    return json.dumps(result, ensure_ascii=False, indent=2, default=str)

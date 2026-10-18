@@ -17,6 +17,8 @@ from typing import Any, Callable
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from .fonts import font
+
 from . import clip_analyzer
 from .assets import kind_of, pinned_scene
 from .models import Word
@@ -97,12 +99,7 @@ def target_scenes(script: Any, spec: dict[str, Any] | None) -> list[int]:
 # ---------- 비교 레이아웃 ----------
 
 def _font(size: int) -> ImageFont.ImageFont:
-    for name in ("malgunbd.ttf", "malgun.ttf", "arial.ttf"):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+    return font(size)
 
 
 def compose_compare(a: Path, b: Path, out: Path, *, labels: tuple[str, str] = ("A", "B"),

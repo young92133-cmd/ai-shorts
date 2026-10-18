@@ -234,13 +234,3 @@ async def fetch_articles(urls: list[str], out_dir: Path, with_images: bool = Tru
         images.extend(imgs)
         log(f"  본문 {len(doc.text)}자, 이미지 {len(imgs)}장")
     return docs, images
-
-
-def credit_line(images: list[SourcedImage]) -> str:
-    """영상에 넣을 출처 문구. 여러 매체면 묶어서."""
-    sites = sorted({i.site for i in images if i.site})
-    if not sites:
-        return ""
-    if len(sites) <= 2:
-        return "출처: " + ", ".join(sites)
-    return f"출처: {sites[0]} 외 {len(sites) - 1}곳"

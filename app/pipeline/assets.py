@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .media import extract_frames, probe_duration
-from .models import Asset, Scene, SceneVisual, SourcedImage
+from .models import Asset, Scene, SourcedImage
 from .vision import describe_all, match_assets_to_scenes, vision_available
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -148,46 +148,6 @@ def plan_sourced(images: list[SourcedImage], scenes: list[Scene],
         if i in taken or not pool:
             continue
         out[i] = pool.pop(0)
-    return out
-
-
-async def resolve_visuals(llm: dict[str, Any], scenes: list[Scene], assets: list[Asset],
-                          sourced: list[SourcedImage], log=print) -> list[SceneVisual]:
-    """장면마다 어떤 비주얼을 쓸지 정한다. 생성이 필요한 장면은 kind='generated' 로 남긴다."""
-    by_scene = await plan_assets(llm, assets, scenes, log=log)
-    src_map = plan_sourced(sourced, scenes, set(by_scene))
-
-    visuals: list[SceneVisual] = []
-    for i in range(len(scenes)):
-        if i in by_scene:
-            a = by_scene[i]
-            visuals.append(SceneVisual(scene_index=i, kind="upload", path=a.path,
-                                       note=f"첨부 {a.name}"))
-        elif i in src_map:
-            s = src_map[i]
-            visuals.append(SceneVisual(scene_index=i, kind="sourced", path=s.path,
-                                       credit=s.credit(), note=f"{s.site} 기사 이미지"))
-        else:
-            visuals.append(SceneVisual(scene_index=i, kind="generated", note="AI 생성 예정"))
-
-    counts = {k: sum(1 for v in visuals if v.kind == k) for k in ("upload", "sourced", "generated")}
-    log(f"비주얼 배치 - 첨부 {counts['upload']} / 기사 {counts['sourced']} / 생성 {counts['generated']}")
-    return visuals
-
-
-def save_upload(job_dir: Path, filename: str, data: bytes) -> Path | None:
-    """업로드 파일 1개 저장. 지원하지 않는 형식이면 None."""
-    safe = Path(filename).name.replace("\\", "_")
-    if kind_of(Path(safe)) is None:
-        return None
-    d = job_dir / "uploads"
-    d.mkdir(parents=True, exist_ok=True)
-    out = d / safe
-    n = 2
-    while out.exists():
-        out = d / f"{Path(safe).stem}_{n}{Path(safe).suffix}"
-        n += 1
-    out.write_bytes(data)
     return out
 
 

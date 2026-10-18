@@ -9,6 +9,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ..fonts import font
+
 
 class ImageProvider(ABC):
     name: str = "base"
@@ -20,12 +22,7 @@ class ImageProvider(ABC):
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
-    for name in ("malgunbd.ttf", "malgun.ttf", "NanumGothicBold.ttf", "arial.ttf"):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+    return font(size)
 
 
 def make_fallback_card(text: str, out_path: Path, width: int, height: int, seed: str = "") -> None:

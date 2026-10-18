@@ -15,6 +15,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from .fonts import font
+
 CARD_KINDS = ("hook_card", "statement_card", "focus_card", "quote_card", "number_card", "trend_card",
               "compare_card", "summary_card", "safe_card")
 TEXT_CARDS = ("statement_card", "focus_card", "quote_card")   # 같은 문구를 다른 모양으로 보여 주는 카드
@@ -28,12 +30,7 @@ HUES = {"hook_card": 0.02, "statement_card": 0.60, "focus_card": 0.08, "quote_ca
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
-    for name in ("malgunbd.ttf", "malgun.ttf", "NanumGothicBold.ttf", "arial.ttf"):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+    return font(size)
 
 
 def _width(draw: ImageDraw.ImageDraw, text: str, font) -> float:

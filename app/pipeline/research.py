@@ -9,13 +9,10 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from ..config import env
+from .article import _strip_tags
 from .models import ResearchDoc
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-
-
-def _strip_tags(s: str) -> str:
-    return html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
 
 
 async def naver_news(query: str, n: int = 8) -> list[ResearchDoc]:

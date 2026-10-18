@@ -12,30 +12,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
 from ..pipeline.cards import wrap_to_width
+from ..pipeline.fonts import font
 from .schema import CardPage, ComicBeat, ComicPage, Page
 from .effects import draw_effects
 from .templates import Template
-
-BOLD = ("malgunbd.ttf", "NanumGothicBold.ttf", "AppleSDGothicNeo.ttc", "arialbd.ttf", "arial.ttf")
-REGULAR = ("malgun.ttf", "NanumGothic.ttf", "AppleSDGothicNeo.ttc", "arial.ttf")
-_FONT_CACHE: dict[tuple[int, bool], Any] = {}
-
-
-def font(size: int, bold: bool = True):
-    key = (size, bold)
-    if key not in _FONT_CACHE:
-        for name in (BOLD if bold else REGULAR):
-            try:
-                _FONT_CACHE[key] = ImageFont.truetype(name, size)
-                break
-            except OSError:
-                continue
-        else:
-            _FONT_CACHE[key] = ImageFont.load_default()
-    return _FONT_CACHE[key]
 
 
 @dataclass

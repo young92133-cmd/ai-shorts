@@ -117,13 +117,3 @@ def speed_lines(size: tuple[int, int], center: tuple[float, float], color=(0, 0,
         d.polygon([(cx + r0 * math.cos(a), cy + r0 * math.sin(a)), (cx + r1 * math.cos(a - da), cy + r1 * math.sin(a - da)),
                    (cx + r1 * math.cos(a + da), cy + r1 * math.sin(a + da))], fill=(*color, alpha))
     return layer
-
-
-def screentone(size: tuple[int, int], color=(0, 0, 0), alpha=28, step=14) -> Image.Image:
-    """만화 망점 (투명 레이어)."""
-    layer = Image.new("RGBA", size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    for y in range(0, size[1], step):
-        for x in range((y // step % 2) * step // 2, size[0], step):
-            d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=(*color, alpha))
-    return layer

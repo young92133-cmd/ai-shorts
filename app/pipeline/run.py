@@ -43,15 +43,6 @@ def _noop_progress(stage: str, pct: int, msg: str) -> None:
     print(f"[{stage:8s} {pct:3d}%] {msg}", flush=True)
 
 
-def _find_bgm(cfg: dict[str, Any]) -> Path | None:
-    name = (cfg.get("preset") or {}).get("bgm")
-    bgm_dir = Path(cfg["paths"]["assets"]) / "bgm"
-    if name and (bgm_dir / name).exists():
-        return bgm_dir / name
-    cands = sorted(bgm_dir.glob("*.mp3")) if bgm_dir.exists() else []
-    return cands[0] if cands else None
-
-
 def _write_meta(job_dir: Path, titles: list[str], description: str, hashtags: list[str], sources: list[str]) -> None:
     tags = " ".join(f"#{h.lstrip('#')}" for h in hashtags)
     text = "\n".join([
