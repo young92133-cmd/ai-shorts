@@ -81,6 +81,7 @@ class StudioTests(FactoryTestCase):
         varied = studio.load(pid)["pages"][n - 1]["data"]["panels"][0]
         self.assertNotEqual((varied["emotion"], varied["background"]), (new["emotion"], new["background"]))
         self.assertEqual(rec["page"], n)
+        self.assertIsInstance(studio.load(pid)["pose_gaps"], list)
 
     async def test_export_zip(self):
         pid = await self._make()

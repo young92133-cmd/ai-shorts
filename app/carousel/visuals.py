@@ -158,7 +158,8 @@ class CharacterArtist:
         if ref:
             try:
                 img = Image.open(ref).convert("RGBA")
-                return PanelArt(kind="cutout" if _has_alpha(img) else "scene", image=img, source="reference")
+                return PanelArt(kind="cutout" if _has_alpha(img) else "scene", image=img, source="reference",
+                                match=charmod.pose_match(bible, beat.emotion, ref, self.root))
             except Exception:  # noqa: BLE001
                 pass
         if self.provider and not self.ai_failed:

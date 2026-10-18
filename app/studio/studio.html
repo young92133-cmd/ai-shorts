@@ -159,7 +159,11 @@ async function openProject(pid, page = 1) {
   try { P = await api(`/api/studio/projects/${pid}`); }
   catch (e) { alert(e.message); return; }
   $("v-create").hidden = true; $("v-project").hidden = false;
-  $("p-title").textContent = P.title || P.topic; $("p-msg").textContent = "";
+  $("p-title").textContent = P.title || P.topic;
+  const EMO = {sad: "슬픔", surprised: "놀람", angry: "화남", worried: "걱정", thinking: "생각", neutral: "무표정", happy: "기쁨", confident: "자신감"};
+  $("p-msg").textContent = (P.pose_gaps || []).length ? "맞는 표정 그림이 없어 비슷한 그림으로 그린 컷: "
+    + P.pose_gaps.map(g => `${EMO[g.emotion] || g.emotion}(${g.pages.join("·")}장)`).join(", ")
+    + " — 새 포즈 그림을 추가하면 좋아집니다 (characters/<캐릭터>/README.md)" : "";
   cur = Math.min(page, P.pages.length); drawStrip(); select(cur); loadProjects();
 }
 

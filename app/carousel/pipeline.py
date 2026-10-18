@@ -103,7 +103,8 @@ async def gather_inputs(mode: str, text: str, cfg: dict[str, Any], job_dir: Path
     return {"topic": topic, "docs": docs, "script_text": script_text, "source_info": source_info}
 
 
-def _page_record(i: int, page, info: dict[str, Any], img: dict[str, Any] | None, art_sources: list[str]) -> dict:
+def _page_record(i: int, page, info: dict[str, Any], img: dict[str, Any] | None, art_sources: list[str],
+                 matches: list[str] | None = None) -> dict:
     rec: dict[str, Any] = {"page": i, "file": Path(info["path"]).name, "type": page.type, "kind": page.kind,
                            "headline": page.headline, "fallback_used": info.get("fallback_used", False)}
     if info.get("fallback_reason"):
@@ -116,7 +117,8 @@ def _page_record(i: int, page, info: dict[str, Any], img: dict[str, Any] | None,
     else:
         rec.update(caption=page.caption, layout=info.get("image_use"), source=page.source,
                    characters=sorted({b.character_id for b in page.panels if b.character_id}),
-                   panels=[{**b.model_dump(), "art": art_sources[k] if k < len(art_sources) else "none"}
+                   panels=[{**b.model_dump(), "art": art_sources[k] if k < len(art_sources) else "none",
+                            "pose_match": (matches or [])[k] if k < len(matches or []) else ""}
                            for k, b in enumerate(page.panels)])
     rec["image"] = ({"path": img["path"], "credit": img.get("credit", ""), "page_url": img.get("page_url", ""),
                      "reason": img.get("reason", "")} if img else None)
@@ -151,6 +153,16 @@ def render_kit(job_dir: Path, *, fmt: str, tpl: Template, cfg: dict[str, Any], d
     return RenderKit(job_dir, job_dir / fmt, fmt, tpl, registry, artist, guide, pinned, total)
 
 
+def pose_gaps(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """등록 그림이 없어 다른 감정 그림으로 대신 그린 컷 (필요한 새 포즈 목록). manifest['pose_gaps']."""
+    gaps: dict[tuple[str, str], list[int]] = {}
+    for r in records:
+        for pn in r.get("panels") or []:
+            if pn.get("pose_match") in ("similar", "substitute"):
+                gaps.setdefault((pn.get("character_id", ""), pn.get("emotion", "")), []).append(r["page"])
+    return [{"character": c, "emotion": e, "pages": sorted(set(p))} for (c, e), p in sorted(gaps.items())]
+
+
 def credit_text(i: int, img: dict[str, Any]) -> str:
     return f"{i}장 {img.get('credit', '')} — {img.get('page_url', '')}"
 
@@ -162,12 +174,13 @@ async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
     if img and not guard_image(img.get("path"), registry):
         progress("render", 50, f"{i}번 페이지 사진의 사용 근거가 확인되지 않아 그래픽으로 바꿉니다")
         img = None
-    panels, art_sources = [], []
+    panels, art_sources, matches = [], [], []
     if isinstance(page, ComicPage):
         for k, beat in enumerate(page.panels):
             art = await kit.artist.art(beat, i, kit.pinned.get(i) if k == 0 else None)
             panels.append(art)
             art_sources.append(art.source or art.kind)
+            matches.append(art.match)
     page_guide = kit.guide
     if isinstance(page, CardPage) and page.character_emotion and kit.guide is not None:
         # 표지 등에서 지정한 감정·자세의 캐릭터 그림 (훅 표지의 과장된 표정)
@@ -181,7 +194,7 @@ async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
         registry.mark_used(img["path"], i)
     if kit.pinned.get(i) and art_sources and art_sources[0] == "upload":
         registry.mark_used(kit.pinned[i], i)
-    return _page_record(i, page, info, img, art_sources)
+    return _page_record(i, page, info, img, art_sources, matches)
 
 
 def _caption_text(master: MasterContent, used_credits: list[str]) -> str:
@@ -286,6 +299,7 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
                 "topic": master.topic, "title": master.title, "story_score": master.story_score,
                 "characters": [bible.model_dump(include={"id", "name", "role"})] if bible else [],
                 "fallback_pages": [r["page"] for r in records if r["fallback_used"]],
+                "pose_gaps": pose_gaps(records),
                 "image_search": {k: report.get(k) for k in ("providers", "query_method", "fit_method", "errors") if k in report},
                 "sources": master.sources, "image_credits": used_credits}
     (out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

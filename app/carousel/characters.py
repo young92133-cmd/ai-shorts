@@ -175,6 +175,17 @@ def reference_for(bible: CharacterBible, emotion: str, pose: str, root: Path | N
     return near[0] if near else None
 
 
+def pose_match(bible: CharacterBible, emotion: str, path: Path | None, root: Path | None = None) -> str:
+    """고른 그림이 요청 감정과 얼마나 맞나: exact(같은 감정) · similar(also_emotions) · substitute(다른 감정 그림으로 대신)."""
+    if path is None:
+        return "none"
+    folder = character_dir(bible.id, root)
+    for p in bible.poses:
+        if (folder / p.file).resolve() == Path(path).resolve():
+            return "exact" if p.emotion == emotion else "similar" if emotion in p.also_emotions else "substitute"
+    return "exact" if emotion in Path(path).stem.lower() else "substitute"
+
+
 TORY = {
     "id": "tory_01",
     "name": "토리",

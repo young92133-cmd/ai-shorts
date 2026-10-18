@@ -908,5 +908,68 @@ class CarouselPreservationTests(unittest.TestCase):
             self.assertNotIn("공식 통계 원문", labels)
 
 
+class BalancedWrapTests(unittest.TestCase):
+    """2026-10-16 실제 제작 점검: 말풍선·제목의 마지막 줄에 한 단어만 남지 않게 (예: '…보는 / 거죠', '…출근은 / 29일')."""
+
+    def test_same_line_count_without_orphan_word(self):
+        d = Image.new("RGB", (10, 10))
+        draw = render.ImageDraw.Draw(d)
+        fnt = render.font(48)
+        text = "이 사진, 오늘만 보는 거죠"
+        width = draw.textlength("이 사진, 오늘만 보는", font=fnt) + 4
+        greedy = render._wrap(draw, text, fnt, width)
+        self.assertEqual(greedy[-1], "거죠")
+        lines = render.balanced(draw, text, fnt, width, greedy)
+        self.assertEqual(len(lines), len(greedy))
+        self.assertGreater(len(lines[-1].split()), 1)
+        self.assertEqual(" ".join(lines), text)
+        cut = ["가나다", "라마…"]
+        self.assertEqual(render.balanced(draw, "가나다 라마바사", fnt, width, cut), cut)   # 말줄임 줄은 그대로
+
+
+class ToonQualityTests(unittest.TestCase):
+    """2026-10-18 인스타툰 품질: 상대역 모양 구별 · 장면 시간대 · 표정 그림 일치 기록 · 말풍선 높이 측정."""
+
+    def test_partner_shapes_are_distinct(self):
+        from app.carousel import nametag
+        self.assertEqual([nametag.shape_for(x) for x in ("월급", "잔액", "자동이체", "물가")], ["bill", "coin", "card", "egg"])
+        imgs = [nametag.draw_tag_character(x, "happy") for x in ("월급", "잔액", "자동이체")]
+        self.assertTrue(all(im.size == (600, 780) and im.mode == "RGBA" for im in imgs))
+        self.assertEqual(len({im.tobytes() for im in imgs}), 3)
+        self.assertNotEqual(nametag.color_for("월급"), nametag.color_for("잔액"))
+
+    def test_scene_time_matches_story(self):
+        from app.carousel import scenes
+        from PIL import ImageStat
+        self.assertEqual(scenes.time_of("원룸 침실 아침, 햇빛"), "morning")
+        self.assertEqual(scenes.time_of("원룸 밤, 불 꺼진 방"), "night")
+        lum = lambda t: ImageStat.Stat(scenes.draw_scene((300, 300), t, mood="night").convert("L")).mean[0]
+        self.assertLess(lum("원룸 밤, 불 꺼진 방"), lum("원룸 밤, 작은 조명") - 15)
+        self.assertNotEqual(scenes.draw_scene((300, 300), "출근길 지하철").tobytes(),
+                            scenes.draw_scene((300, 300), "회사 사무실").tobytes())
+
+    def test_pose_match_marks_substitutes(self):
+        bible = charmod.get_character("hamtorich_01")
+        for emotion, want in (("happy", "exact"), ("sad", "similar"), ("angry", "similar")):
+            ref = charmod.reference_for(bible, emotion, "standing")
+            self.assertEqual(charmod.pose_match(bible, emotion, ref), want, emotion)
+        self.assertEqual(charmod.pose_match(bible, "happy", None), "none")
+        from app.carousel.pipeline import pose_gaps
+        recs = [{"page": 2, "panels": [{"character_id": "hamtorich_01", "emotion": "sad", "pose_match": "similar"}]},
+                {"page": 5, "panels": [{"character_id": "hamtorich_01", "emotion": "sad", "pose_match": "substitute"},
+                                       {"character_id": "hamtorich_01", "emotion": "happy", "pose_match": "exact"}]}]
+        self.assertEqual(pose_gaps(recs), [{"character": "hamtorich_01", "emotion": "sad", "pages": [2, 5]}])
+
+    def test_bubble_height_is_measured_before_drawing(self):
+        tpl = load_template("hamtorich_toon", "insta_toon")
+        canvas = Image.new("RGB", (1080, 600), "white")
+        box = (40, 40, 600, 220)
+        self.assertEqual(render.bubble_bottom(canvas, tpl, "", box), 40)
+        short = render.bubble_bottom(canvas, tpl, "네!", box)
+        long = render.bubble_bottom(canvas, tpl, "이번 달은 정말 꼭 모아 보려고 했는데 벌써 다 나갔어요", box)
+        self.assertLess(short, long)
+        self.assertLessEqual(long, 220)
+
+
 if __name__ == "__main__":
     unittest.main()

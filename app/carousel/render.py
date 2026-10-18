@@ -28,6 +28,7 @@ class PanelArt:
     image: Image.Image | None = None
     source: str = ""               # mascot | reference | ai_generated | upload | nametag
     partner: "PanelArt | None" = None   # 같은 컷의 상대 캐릭터
+    match: str = ""                # 등록 그림이 감정과 맞는 정도 (characters.pose_match)
 
 
 @dataclass
@@ -76,6 +77,21 @@ def fit(draw, text: str, max_w: float, max_h: float, start: int, min_size: int, 
         size -= 2
 
 
+def balanced(draw, text: str, fnt, max_w: float, lines: list[str]) -> list[str]:
+    """같은 줄 수를 유지하면서 가장 좁은 폭으로 다시 줄바꿈해 마지막 줄에 단어 하나만 남지 않게 한다."""
+    if len(lines) < 2 or lines[-1].endswith("…"):
+        return lines
+    lo, hi, best = max_w * 0.4, max_w, lines
+    for _ in range(12):
+        mid = (lo + hi) / 2
+        trial = _wrap(draw, text, fnt, mid)
+        if len(trial) <= len(lines):
+            best, hi = trial, mid
+        else:
+            lo = mid
+    return best
+
+
 def draw_text(draw, lines: list[str], fnt, line_h: int, box, *, align: str = "left", fill=(0, 0, 0),
               valign: str = "top", emphasis: str = "", highlight=None, stroke: int = 0, stroke_fill=None,
               emphasis_fill=None) -> int:
@@ -119,6 +135,8 @@ def text_in(draw, tpl: Template, text: str, box, *, kind: str = "body", bold: bo
     max_lines = max_lines or int(tpl.style.get(f"{kind}_lines", 4))
     fnt, lines, lh = fit(draw, text, x1 - x0, y1 - y0, start, min_size, max_lines, bold=bold,
                          spacing=1.22 if kind == "title" or kind == "cover_title" else 1.42)
+    if kind != "body":     # 제목은 줄 길이를 고르게 (마지막 줄에 '29일' 처럼 한 단어만 남지 않게)
+        lines = balanced(draw, text, fnt, x1 - x0, lines)
     return draw_text(draw, lines, fnt, lh, box, align=align or tpl.style.get("title_align", "left"),
                      fill=fill or tpl.color("ink"), valign=valign, emphasis=emphasis,
                      highlight=tpl.color("highlight") if emphasis else None)
@@ -659,6 +677,28 @@ def _bubble_box(panel, position: str, text_h_ratio: float = 0.30, width_ratio: f
     return (bx, by, bx + bw, by + bh)
 
 
+def bubble_layout(draw, tpl: Template, text: str, box):
+    """말풍선 글꼴·줄과 글자 양에 맞춰 줄인 실제 말풍선 사각형. 그리기 전에 크기를 알아야 할 때도 쓴다."""
+    x0, y0, x1, y1 = [int(v) for v in box]
+    pad_x, pad_y = (x1 - x0) * 0.1, (y1 - y0) * 0.16
+    fnt, lines, lh = fit(draw, text, (x1 - x0) - pad_x * 2, (y1 - y0) - pad_y * 2, tpl.font_px("bubble", 0.04),
+                         tpl.font_px("bubble_min", 0.029), 4, bold=True, spacing=1.3)
+    lines = balanced(draw, text, fnt, (x1 - x0) - pad_x * 2, lines)
+    tw = max(draw.textlength(l, font=fnt) for l in lines)
+    th = lh * len(lines)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    bw, bh = min(x1 - x0, tw + pad_x * 2.2), min(y1 - y0, th + pad_y * 2.4)
+    return fnt, lines, lh, (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
+
+
+def bubble_bottom(canvas: Image.Image, tpl: Template, text: str, box) -> float:
+    """말풍선이 차지할 아래 끝 y (대사가 없으면 상자 위쪽)."""
+    text = _clean(text)
+    if not text:
+        return box[1]
+    return bubble_layout(ImageDraw.Draw(canvas), tpl, text, box)[3][3]
+
+
 def speech_bubble(canvas: Image.Image, tpl: Template, text: str, box, tail_to: tuple[float, float] | None = None,
                   shout: bool = False) -> None:
     """빈 말풍선을 그리고 실제 대사를 합성한다 (이미지 모델이 글자를 만들지 않는다)."""
@@ -666,16 +706,9 @@ def speech_bubble(canvas: Image.Image, tpl: Template, text: str, box, tail_to: t
     if not text:
         return
     d = ImageDraw.Draw(canvas)
-    x0, y0, x1, y1 = [int(v) for v in box]
-    pad_x, pad_y = (x1 - x0) * 0.1, (y1 - y0) * 0.16
-    fnt, lines, lh = fit(d, text, (x1 - x0) - pad_x * 2, (y1 - y0) - pad_y * 2, tpl.font_px("bubble", 0.04),
-                         tpl.font_px("bubble_min", 0.029), 4, bold=True, spacing=1.3)
-    # 글자 양에 맞춰 말풍선을 줄인다
-    tw = max(d.textlength(l, font=fnt) for l in lines)
-    th = lh * len(lines)
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    bw, bh = min(x1 - x0, tw + pad_x * 2.2), min(y1 - y0, th + pad_y * 2.4)
-    bx0, by0, bx1, by1 = cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2
+    fnt, lines, lh, (bx0, by0, bx1, by1) = bubble_layout(d, tpl, text, box)
+    bw, bh = bx1 - bx0, by1 - by0
+    cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
     line_c, fill_c = tpl.color("bubble_line", "#151515"), tpl.color("bubble", "#FFFFFF")
     lw = max(4, int(tpl.width * 0.005))
     if tail_to:
@@ -773,11 +806,18 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
         if art.kind == "cutout" and art.image is not None and partner:
             # 두 인물 대치: 주인공 왼쪽, 상대 오른쪽, 말풍선은 각자 머리 위
             bubble_pos = "top_left"
-            head = paste_cutout(canvas, art.image, (x0 + int(w * 0.0), y0 + int(h * 0.12), x0 + int(w * 0.56), y1),
+            # 말풍선 실제 높이를 먼저 재서 그 아래(귀 끝만 살짝 겹침)부터 인물을 세운다 → 대사가 짧으면 인물이 커진다
+            main_bb = bubble_bottom(canvas, tpl, beat.dialogue, _bubble_box((x0, y0, x1, y1), "top_left", 0.30, 0.44))
+            top_main = min(0.30, max(0.10, (main_bb - y0) / h - 0.07))
+            # 가로로 넓은 컷(2컷 페이지)은 허리 아래를 잘라(상반신 구도) 인물을 키운다
+            low = y1 + int(h * 0.35) if h < w * 0.75 else y1
+            head = paste_cutout(canvas, art.image, (x0 + int(w * 0.0), y0 + int(h * top_main), x0 + int(w * 0.56), low),
                                 anchor="bottom", clip=(x0, y0, x1, y1))
-            # 의인화 캐릭터는 그림 여백이 없어 같은 상자면 커 보인다 → 조금 작게
-            top = 0.42 if partner.source == "nametag" else 0.2
-            p_head = paste_cutout(canvas, partner.image, (x0 + int(w * 0.50), y0 + int(h * top), x1 - int(w * 0.03), y1),
+            # 의인화 캐릭터는 그림 여백이 없어 같은 상자면 커 보인다 → 조금 작게, 그리고 상대 말풍선 아래부터
+            p_bb = bubble_bottom(canvas, tpl, beat.partner_dialogue, _bubble_box((x0, y0, x1, y1), "top_right", 0.26, 0.44))
+            top = max(0.42 if partner.source == "nametag" else 0.2, min(0.5, (p_bb - y0) / h + 0.02))
+            p_low = y1 + int(h * 0.10) if low > y1 else y1     # 상대역은 얼굴이 몸 가운데라 조금만 자른다
+            p_head = paste_cutout(canvas, partner.image, (x0 + int(w * 0.50), y0 + int(h * top), x1 - int(w * 0.03), p_low),
                                   anchor="bottom", clip=(x0, y0, x1, y1))
             draw_effects(canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
             draw_effects(canvas, (x0, y0, x1, y1), p_head, beat.partner_emotion, seed=beat.partner_dialogue)
@@ -786,6 +826,9 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
         elif art.kind == "cutout" and art.image is not None:
             cam = (beat.camera or "medium").lower()
             scale = {"close_up": 1.55, "closeup": 1.55, "wide": 0.55}.get(cam, 0.92)
+            if scale > 1.2 or cam in ("extreme_close_up", "face"):
+                # 얼굴이 컷을 채우는 클로즈업은 아래쪽 말풍선이 입·턱을 가린다 → 같은 쪽 위로
+                bubble_pos = "top_right" if bubble_pos.endswith("right") else "top_left"
             side = "left" if "right" in bubble_pos else "right" if "left" in bubble_pos else "center"
             area = (x0 + int(w * (0.02 if side == "left" else 0.30 if side == "right" else 0.16)), y0,
                     x0 + int(w * (0.70 if side == "left" else 0.98 if side == "right" else 0.84)), y1)

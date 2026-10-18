@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..carousel import characters as charmod
-from ..carousel.pipeline import MANIFEST, carousel_settings, render_kit, render_one
+from ..carousel.pipeline import MANIFEST, carousel_settings, pose_gaps, render_kit, render_one
 from ..carousel.schema import CAROUSEL_FORMATS, EMOTIONS, CardPage, CarouselPlan, ComicPage
 from ..carousel.scenes import SCENES
 from ..carousel.templates import load_template
@@ -100,6 +100,7 @@ def load(project_id: str) -> dict[str, Any]:
     return {"project_id": job.name, "format": fmt, "status": state.get("status"), "title": manifest.get("title", ""),
             "topic": manifest.get("topic") or state.get("topic", ""), "template": plan.template,
             "characters": manifest.get("characters", []), "pages": pages, "caption": caption,
+            "pose_gaps": manifest.get("pose_gaps", []),
             "options": options(manifest)}
 
 
@@ -158,6 +159,7 @@ async def rerender(project_id: str, page_no: int) -> dict[str, Any]:
     rec = await render_one(kit, page_no, plan.pages[page_no - 1], old.get("image"))
     manifest["pages"] = [rec if r.get("page") == page_no else r for r in records] if old else records + [rec]
     manifest["fallback_pages"] = [r["page"] for r in manifest["pages"] if r.get("fallback_used")]
+    manifest["pose_gaps"] = pose_gaps(manifest["pages"])
     (out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return rec
 

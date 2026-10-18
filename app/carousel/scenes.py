@@ -25,7 +25,9 @@ SCENES = {
     "room": ("원룸", "자취방", "방", "집", "책상"),
 }
 SKY = {"day": ((150, 205, 250), (225, 242, 255)), "sunset": ((255, 150, 95), (255, 214, 160)),
-       "night": ((24, 34, 74), (70, 80, 140)), "gloomy": ((120, 130, 150), (175, 182, 196))}
+       "night": ((24, 34, 74), (70, 80, 140)), "gloomy": ((120, 130, 150), (175, 182, 196)),
+       "morning": ((255, 214, 170), (255, 244, 222))}
+DARK_WORDS = ("불 꺼진", "불을 끈", "불 끈", "깜깜", "어두운 방", "소등")   # 밤 + 실내 조명까지 꺼진 장면
 
 
 def scene_type(background: str) -> str:
@@ -46,6 +48,8 @@ def time_of(background: str, mood: str = "") -> str:
         return "sunset"
     if any(w in text for w in ("비", "우울")):
         return "gloomy"
+    if any(w in text for w in ("아침", "햇빛", "햇살")):
+        return "morning"
     return "day"
 
 
@@ -112,7 +116,7 @@ class Room:
             while bx < x1:
                 bw = (x1 - x0) * rnd.uniform(0.12, 0.22)
                 bh = (y1 - y0) * rnd.uniform(0.25, 0.6)
-                col = (40, 48, 90) if time == "night" else (190, 205, 225) if time == "day" else (150, 110, 120)
+                col = (40, 48, 90) if time == "night" else (190, 205, 225) if time in ("day", "morning") else (150, 110, 120)
                 d.rectangle([bx, y1 - bh, min(x1, bx + bw), y1], fill=col)
                 if time == "night":
                     for _ in range(4):
@@ -124,8 +128,15 @@ class Room:
         d.line([((x0 + x1) / 2, y0), ((x0 + x1) / 2, y1)], fill=(250, 250, 250), width=8)
         d.rectangle([x0 - 6, y0 - 6, x1 + 6, y1 + 6], outline=LINE, width=3)
 
-    def finish(self, time: str) -> Image.Image:
-        if time == "night":
+    def finish(self, time: str, *, lights_off: bool = False) -> Image.Image:
+        if time == "night" and lights_off:
+            # 조명이 꺼진 방: 전체를 어둡게, 창가 달빛만 은은하게
+            light = Image.new("L", self.img.size, 0)
+            ImageDraw.Draw(light).ellipse([self.w * 0.0, self.h * 0.05, self.w * 0.6, self.h * 0.75], fill=150)
+            light = light.filter(ImageFilter.GaussianBlur(min(self.w, self.h) // 5))
+            dark = Image.blend(self.img, Image.new("RGB", self.img.size, (16, 20, 46)), 0.68)
+            self.img = Image.composite(Image.blend(self.img, dark, 0.45), dark, light)
+        elif time == "night":
             light = Image.new("L", self.img.size, 0)
             ImageDraw.Draw(light).ellipse([self.w * 0.15, self.h * 0.2, self.w * 0.85, self.h * 1.1], fill=255)
             light = light.filter(ImageFilter.GaussianBlur(min(self.w, self.h) // 6))
@@ -178,6 +189,7 @@ def draw_scene(size: tuple[int, int], background: str = "", *, mood: str = "", s
         return _street(w, h, time, apartments=kind == "apartment", rnd=rnd)
     if kind == "subway":
         return _subway(w, h, time)
+    lights_off = time == "night" and any(t in (background or "") for t in DARK_WORDS)
     walls = {"room": ((246, 232, 210), (214, 180, 140)), "living": ((240, 228, 214), (196, 160, 122)),
              "mart": ((248, 246, 238), (226, 226, 222)), "bank": ((232, 238, 244), (210, 214, 220)),
              "realestate": ((244, 236, 222), (200, 170, 130)), "office": ((236, 240, 244), (196, 204, 214)),
@@ -255,7 +267,14 @@ def draw_scene(size: tuple[int, int], background: str = "", *, mood: str = "", s
             pts = [(x + bw * (0.04 + i * 0.07), by0 + bh * (0.50 - 0.05 * ((i * 7) % 5))) for i in range(6)]
             d.line(pts, fill=(255, 220, 80), width=6)
         _box3d(d, w * 0.10, h * 0.76, w * 0.90, h * 1.02, 26, (230, 235, 245))
-    return room.finish(time)
+    if time == "morning":    # 아침 햇살: 창 쪽에서 들어오는 따뜻한 빛줄기
+        glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        for k in range(3):
+            x = w * (0.10 + k * 0.12)
+            gd.polygon([(x, 0), (x + w * 0.07, 0), (x + w * 0.30, h), (x + w * 0.16, h)], fill=(255, 236, 180, 46))
+        room.img.paste(glow, (0, 0), glow)
+    return room.finish(time, lights_off=lights_off)
 
 
 def _street(w: int, h: int, time: str, *, apartments: bool, rnd: random.Random) -> Image.Image:
@@ -318,7 +337,33 @@ def _subway(w: int, h: int, time: str) -> Image.Image:
         seat = [(0 if side < 0 else w, h * 0.80), (room.bx0 if side < 0 else room.bx1, room.by1 - 20),
                 (room.bx0 if side < 0 else room.bx1, room.by1 - 4), (0 if side < 0 else w, h * 0.92)]
         d.polygon(seat, fill=(90, 130, 200), outline=LINE)
+    bx0, by0, bx1, by1 = room.bx0, room.by0, room.bx1, room.by1
+    bw, bh = bx1 - bx0, by1 - by0
+    cx = (bx0 + bx1) / 2                                     # 뒤 연결문 + 창
+    d.rectangle([cx - bw * 0.16, by0 + bh * 0.10, cx + bw * 0.16, by1], fill=(196, 202, 210), outline=LINE, width=3)
+    d.rectangle([cx - bw * 0.11, by0 + bh * 0.18, cx + bw * 0.11, by0 + bh * 0.52],
+                fill=(110, 170, 220) if time != "night" else (40, 50, 90), outline=LINE, width=3)
+    d.rectangle([bx0 + bw * 0.04, by0 + bh * 0.02, bx1 - bw * 0.04, by0 + bh * 0.07], fill=(255, 255, 255), outline=LINE, width=2)
+    d.line([(bx0 + bw * 0.08, by0 + bh * 0.045), (bx1 - bw * 0.08, by0 + bh * 0.045)], fill=(60, 170, 90), width=4)  # 노선도
+    for k in range(6):
+        x = bx0 + bw * (0.10 + k * 0.16)
+        d.ellipse([x - 5, by0 + bh * 0.045 - 5, x + 5, by0 + bh * 0.045 + 5], fill=(255, 255, 255), outline=(60, 170, 90), width=2)
+    for side in (-1, 1):                                     # 창 위 광고판
+        x_edge, xb = (0, bx0) if side < 0 else (w, bx1)
+        for k, col in enumerate(((255, 200, 120), (170, 220, 190))):
+            t0, t1 = 0.12 + k * 0.42, 0.42 + k * 0.42
+            pts = [(x_edge + (xb - x_edge) * t, y * (1 - t) + (by0 + bh * (y / h)) * t)
+                   for t, y in ((t0, h * 0.08), (t1, h * 0.08), (t1, h * 0.15), (t0, h * 0.15))]
+            d.polygon(pts, fill=col, outline=LINE)
     for k in range(3):                                       # 손잡이 봉
         x = w * (0.25 + k * 0.25)
         d.line([(x, 0), (x, h)], fill=(200, 200, 210), width=10)
+    bar_y = h * 0.05                                         # 천장 가로봉 + 손잡이 고리
+    d.line([(0, bar_y), (w, bar_y)], fill=(185, 188, 198), width=8)
+    for k in range(9):
+        x = w * (0.06 + k * 0.11)
+        d.line([(x, bar_y), (x, bar_y + h * 0.07)], fill=(120, 124, 136), width=5)
+        r = w * 0.022
+        d.ellipse([x - r, bar_y + h * 0.07, x + r, bar_y + h * 0.07 + r * 2], outline=(230, 232, 238), width=7)
+        d.ellipse([x - r, bar_y + h * 0.07, x + r, bar_y + h * 0.07 + r * 2], outline=LINE, width=2)
     return room.finish(time)
