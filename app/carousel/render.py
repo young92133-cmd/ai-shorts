@@ -306,10 +306,16 @@ def r_cover_hook(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
         d.polygon([(0, H * 0.58), (W, H * 0.40), (W, H * 0.62), (0, H * 0.80)], fill=band)
     cbox = tpl.box("cover", "character")
     used = "graphic"
+    char_left = W      # 캐릭터가 실제로 보이는 왼쪽 끝 (부제가 캐릭터 밑으로 들어가지 않게)
     if assets.guide is not None:
         burst = speed_lines((W, H), ((cbox[0] + cbox[2]) / 2, (cbox[1] + cbox[3]) / 2), color=tpl.color("accent"), alpha=34)
         canvas.paste(burst, (0, 0), burst)
         head = paste_cutout(canvas, assets.guide, cbox, anchor="bottom", clip=(0, 0, W, H))
+        art = assets.guide
+        ch = cbox[3] - cbox[1]
+        cw = min(ch * art.width / art.height, (cbox[2] - cbox[0]) * 1.3)      # paste_cutout 과 같은 크기 계산
+        bb = art.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox() or (0, 0, art.width, art.height)
+        char_left = head[0] - cw / 2 + bb[0] * cw / art.width
         # 효과는 제목 아래 영역에만 (제목 글자와 겹치지 않게)
         draw_effects(canvas, (0, tpl.box("cover", "title")[3], W, H), head, page.character_emotion or "happy", seed=page.headline)
         used = "character"
@@ -331,10 +337,13 @@ def r_cover_hook(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
               emphasis=page.emphasis, emphasis_fill=tpl.color("hot", "#E5484D"))
     if tpl.has_box("cover", "body") and _clean(page.body):
         bx0, by0, bx1, by1 = tpl.box("cover", "body")
+        bx1 = min(bx1, max(bx0 + W * 0.3, char_left - W * 0.02))
         if scene:   # 장면 위에서는 흰 받침을 깔아 읽히게
             d.rounded_rectangle([bx0 - 14, by0 - 12, bx1 + 14, by1 + 12], radius=18, fill=(255, 255, 255),
                                 outline=tpl.color("line"), width=4)
-        text_in(d, tpl, page.body, (bx0, by0, bx1, by1), kind="body", bold=True, fill=tpl.color("cover_ink"), max_lines=2)
+        narrowed = bx1 < tpl.box("cover", "body")[2]
+        text_in(d, tpl, page.body, (bx0, by0, bx1, by1 + (H * 0.035 if narrowed else 0)), kind="body", bold=True,
+                fill=tpl.color("cover_ink"), max_lines=3 if narrowed else 2)
     footer(canvas, tpl, page, assets, dark=False)
     return {"image_use": used}
 
@@ -556,9 +565,11 @@ def r_quote(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
     x0, y0, x1, y1 = tpl.box("quote", "title")
     qf = font(int(tpl.width * 0.26))
     d.text((x0 - tpl.width * 0.02, y0 - tpl.height * 0.13), "“", font=qf, fill=tpl.color("accent"))
-    text_in(d, tpl, page.headline, (x0, y0, x1, y1), kind="title", align="center", valign="middle", max_lines=5,
+    quote, by = _clean(page.headline), _clean(page.body)
+    if not quote:      # AI 가 인용문을 본문 칸에만 넣은 경우: 본문이 인용문, 출처 줄은 없음 (큰 따옴표만 남는 빈 카드 방지)
+        quote, by = by.lstrip("— ").strip(), ""
+    text_in(d, tpl, quote, (x0, y0, x1, y1), kind="title", align="center", valign="middle", max_lines=5,
             emphasis=page.emphasis)
-    by = _clean(page.body)
     if by:
         text_in(d, tpl, by if by.startswith("—") else f"— {by}", tpl.box("quote", "body"), kind="body",
                 align="center", fill=tpl.color("sub"), max_lines=2)

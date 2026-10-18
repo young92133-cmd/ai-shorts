@@ -960,6 +960,37 @@ class ToonQualityTests(unittest.TestCase):
                                        {"character_id": "hamtorich_01", "emotion": "happy", "pose_match": "exact"}]}]
         self.assertEqual(pose_gaps(recs), [{"character": "hamtorich_01", "emotion": "sad", "pages": [2, 5]}])
 
+    def _texts(self, page, tpl, assets):
+        seen = []
+        orig = render.text_in
+
+        def spy(draw, tpl_, text, box, **kw):
+            seen.append((text, box))
+            return orig(draw, tpl_, text, box, **kw)
+        with patch.object(render, "text_in", side_effect=spy), tempfile.TemporaryDirectory() as tmp:
+            info = render_page(page, tpl, Path(tmp) / "p.png", assets)
+        self.assertFalse(info["fallback_used"], info.get("fallback_reason"))
+        return seen
+
+    def test_quote_text_only_in_body_becomes_the_quote(self):
+        """2026-10-19 실제 카드뉴스: AI 가 인용문을 body 에만 넣어 큰 따옴표만 남던 카드."""
+        tpl = load_template("clean_info", "card_news")
+        seen = self._texts(CardPage(type="quote", headline="", body="사람의 의지 대신 시스템에 맡겨야 한다."), tpl, PageAssets())
+        title_box = tpl.box("quote", "title")
+        self.assertIn(("사람의 의지 대신 시스템에 맡겨야 한다.", title_box), seen)
+        self.assertFalse(any(t.startswith("—") for t, _ in seen))
+
+    def test_cover_subtitle_stays_left_of_character(self):
+        """2026-10-19 실제 혼합형: 표지 부제가 캐릭터 밑으로 들어가 잘리던 문제."""
+        tpl = load_template("hamtorich_toon", "hybrid")
+        guide = Image.open(charmod.reference_for(charmod.get_character("hamtorich_01"), "worried", "standing")).convert("RGBA")
+        body = "월급 들어오기도 전에 통장이 비는 느낌, 저만 그런가요?"
+        seen = self._texts(CardPage(type="cover", headline="월급보다 카드값이 먼저 나가요", body=body),
+                           tpl, PageAssets(guide=guide))
+        box = next(b for t, b in seen if t == body)
+        self.assertLess(box[2], tpl.box("cover", "body")[2])
+        self.assertLess(box[2], tpl.box("cover", "character")[2])
+
     def test_bubble_height_is_measured_before_drawing(self):
         tpl = load_template("hamtorich_toon", "insta_toon")
         canvas = Image.new("RGB", (1080, 600), "white")

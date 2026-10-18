@@ -167,6 +167,26 @@ def credit_text(i: int, img: dict[str, Any]) -> str:
     return f"{i}장 {img.get('credit', '')} — {img.get('page_url', '')}"
 
 
+DERIVED = ("pages", "page_count", "fallback_pages", "pose_gaps", "image_credits")   # records 에서 다시 계산하는 manifest 칸
+
+
+def write_results(kit: RenderKit, master: MasterContent, records: list[dict[str, Any]], base: dict[str, Any]) -> dict:
+    """records(페이지 순서대로)로 manifest.json·sources.json·caption.txt 를 쓴다. 제작과 스튜디오 순서 편집이 같이 쓴다."""
+    used_credits = [credit_text(r["page"], r["image"]) for r in records if r.get("image")]
+    manifest = {**{k: v for k, v in base.items() if k not in DERIVED}, "pages": records, "page_count": len(records),
+                "fallback_pages": [r["page"] for r in records if r.get("fallback_used")],
+                "pose_gaps": pose_gaps(records), "image_credits": used_credits}
+    (kit.out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 이 형식에 쓴 자료만 모은 출처 파일 (전체 대장은 job_dir/sources.json)
+    used_paths = {str(Path(r["image"]["path"]).resolve()) for r in records if r.get("image")}
+    rows = [x.model_dump() for x in kit.registry.items.values()
+            if (x.usage in ("research", "reference_only") and x.url)
+            or (x.path and str(Path(x.path).resolve()) in used_paths)]
+    (kit.out_dir / "sources.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    (kit.out_dir / "caption.txt").write_text(_caption_text(master, used_credits), encoding="utf-8")
+    return manifest
+
+
 async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
                      progress: Progress = _noop) -> dict[str, Any]:
     """i번(1부터) 페이지 한 장을 card_NN.png 로 그리고 manifest 기록 한 줄을 돌려준다."""
@@ -280,37 +300,24 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
                                                 cfg=cfg, max_images=int(cs["max_images"]), progress=progress)
     kit = render_kit(job_dir, fmt=fmt, tpl=tpl, cfg=cfg, default_id=bible.id if bible else (character or cs["character"]),
                      total=len(plan.pages), character_root=character_root, progress=progress)
-    registry = kit.registry
 
     # 5. 렌더 (페이지마다 독립 — 하나가 실패해도 계속)
     total = kit.total
     records: list[dict[str, Any]] = []
-    used_credits: list[str] = []
     for i, page in enumerate(plan.pages, start=1):
         rec = await render_one(kit, i, page, images.get(i - 1), progress)
-        if rec.get("image"):
-            used_credits.append(credit_text(i, rec["image"]))
         records.append(rec)
         progress("render", int(100 * i / total), f"{i}/{total} {page.type}" + (" (대체 레이아웃)" if rec["fallback_used"] else ""))
 
     # 6. 결과 기록
-    manifest = {"format": fmt, "template": tpl.id, "size": f"{tpl.width}x{tpl.height}", "pages": records,
-                "page_count": total, "mix": plan.mix, "plan_method": plan.method, "master_method": master_method,
-                "topic": master.topic, "title": master.title, "story_score": master.story_score,
-                "characters": [bible.model_dump(include={"id", "name", "role"})] if bible else [],
-                "fallback_pages": [r["page"] for r in records if r["fallback_used"]],
-                "pose_gaps": pose_gaps(records),
-                "image_search": {k: report.get(k) for k in ("providers", "query_method", "fit_method", "errors") if k in report},
-                "sources": master.sources, "image_credits": used_credits}
-    (out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    base = {"format": fmt, "template": tpl.id, "size": f"{tpl.width}x{tpl.height}",
+            "mix": plan.mix, "plan_method": plan.method, "master_method": master_method,
+            "topic": master.topic, "title": master.title, "story_score": master.story_score,
+            "characters": [bible.model_dump(include={"id", "name", "role"})] if bible else [],
+            "image_search": {k: report.get(k) for k in ("providers", "query_method", "fit_method", "errors") if k in report},
+            "sources": master.sources}
+    manifest = write_results(kit, master, records, base)
     shutil.copyfile(job_dir / "master.json", out_dir / "master.json")
-    # 이 형식에 쓴 자료만 모은 출처 파일 (전체 대장은 job_dir/sources.json)
-    used_paths = {str(Path(r["image"]["path"]).resolve()) for r in records if r.get("image")}
-    rows = [x.model_dump() for x in registry.items.values()
-            if (x.usage in ("research", "reference_only") and x.url)
-            or (x.path and str(Path(x.path).resolve()) in used_paths)]
-    (out_dir / "sources.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
-    (out_dir / "caption.txt").write_text(_caption_text(master, used_credits), encoding="utf-8")
     progress("render", 100, f"{fmt} {total}장 완료 → {out_dir}")
     return {"format": fmt, "dir": str(out_dir), "pages": [str(out_dir / r["file"]) for r in records],
             "manifest": str(out_dir / MANIFEST), "topic": master.topic, "title": master.title, "mix": plan.mix,

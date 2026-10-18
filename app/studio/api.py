@@ -130,6 +130,41 @@ async def vary(pid: str, n: int):
         raise _err(e)
 
 
+class PageMove(BaseModel):
+    to: int
+
+
+class PageAdd(BaseModel):
+    after: int
+    kind: str = "card"     # card | comic
+
+
+@router.post("/api/studio/projects/{pid}/pages/{n}/move")
+async def move(pid: str, n: int, body: PageMove):
+    try:
+        return await _in_thread(studio.move_page, pid, n, body.to)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
+@router.post("/api/studio/projects/{pid}/pages/{n}/delete")
+async def delete(pid: str, n: int):
+    try:
+        return await _in_thread(studio.delete_page, pid, n)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
+@router.post("/api/studio/projects/{pid}/pages-add")
+async def add(pid: str, body: PageAdd):
+    if body.kind not in ("card", "comic"):
+        raise HTTPException(400, "kind 는 card | comic 입니다.")
+    try:
+        return await _in_thread(studio.add_page, pid, body.after, body.kind)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
 @router.post("/api/studio/projects/{pid}/export")
 async def export(pid: str):
     try:

@@ -93,8 +93,15 @@ button:disabled { opacity:.5; cursor:default; }
         <strong id="ed-title"></strong>
         <div id="editor"></div>
         <div class="row" style="margin-top:14px">
-          <button class="primary" id="save" onclick="savePage()">저장하고 다시 그리기</button>
-          <button id="vary" onclick="vary()" title="감정·자세·배경을 다음 후보로 바꿔 다시 그립니다">장면 바꾸기</button>
+          <button class="primary act" id="save" onclick="savePage()">저장하고 다시 그리기</button>
+          <button class="act" id="vary" onclick="vary()" title="감정·자세·배경을 다음 후보로 바꿔 다시 그립니다">장면 바꾸기</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="act" onclick="movePage(-1)" title="이 카드를 한 칸 앞으로">◀ 앞으로</button>
+          <button class="act" onclick="movePage(1)" title="이 카드를 한 칸 뒤로">뒤로 ▶</button>
+          <button class="act" onclick="addPage('card')" title="이 카드 뒤에 빈 카드를 넣습니다">+ 카드</button>
+          <button class="act" id="add-comic" onclick="addPage('comic')" title="이 카드 뒤에 만화 컷을 넣습니다">+ 만화 컷</button>
+          <button class="act" onclick="deletePage()" title="이 카드를 지웁니다 (이전 구성은 history/ 에 남음)">삭제</button>
         </div>
         <p class="hint" id="ed-msg"></p>
       </div>
@@ -165,6 +172,7 @@ async function openProject(pid, page = 1) {
     + P.pose_gaps.map(g => `${EMO[g.emotion] || g.emotion}(${g.pages.join("·")}장)`).join(", ")
     + " — 새 포즈 그림을 추가하면 좋아집니다 (characters/<캐릭터>/README.md)" : "";
   cur = Math.min(page, P.pages.length); drawStrip(); select(cur); loadProjects();
+  $("add-comic").hidden = P.format === "card_news";
 }
 
 function drawStrip() {
@@ -210,11 +218,23 @@ function collect() {
   return f;
 }
 
-async function busy(fn) {
-  $("save").disabled = $("vary").disabled = true; $("ed-msg").textContent = "다시 그리는 중…";
-  try { await fn(); await openProject(P.project_id, cur); $("ed-msg").innerHTML = `<span class="ok">${cur}장을 다시 그렸습니다.</span>`; }
+async function busy(fn, done = n => `${n}장을 다시 그렸습니다.`, next = () => cur) {
+  const acts = document.querySelectorAll("button.act");
+  acts.forEach(b => b.disabled = true); $("ed-msg").textContent = "다시 그리는 중…";
+  try { await fn(); const n = next(); await openProject(P.project_id, n); $("ed-msg").innerHTML = `<span class="ok">${esc(done(n))}</span>`; }
   catch (e) { $("ed-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-  finally { $("save").disabled = $("vary").disabled = false; }
+  finally { acts.forEach(b => b.disabled = false); $("add-comic").hidden = P && P.format === "card_news"; }
+}
+const post = (path, body) => api(`/api/studio/projects/${P.project_id}/${path}`, {method: "POST", body: body ? JSON.stringify(body) : undefined});
+function movePage(d) {
+  const to = cur + d;
+  if (to < 1 || to > P.pages.length) return;
+  busy(() => post(`pages/${cur}/move`, {to}), n => `${n}장으로 옮기고 전체 번호를 다시 그렸습니다.`, () => to);
+}
+const addPage = kind => busy(() => post("pages-add", {after: cur, kind}), n => `${n}장에 새 ${kind === "comic" ? "만화 컷을" : "카드를"} 넣었습니다. 문구를 고친 뒤 저장하세요.`, () => cur + 1);
+function deletePage() {
+  if (!confirm(`${cur}장을 삭제할까요? (이전 구성은 프로젝트 history 폴더에 남습니다)`)) return;
+  busy(() => post(`pages/${cur}/delete`), () => "삭제하고 번호를 다시 매겼습니다.", () => Math.max(1, cur - 1));
 }
 const savePage = () => busy(() => api(`/api/studio/projects/${P.project_id}/pages/${cur}`, {method: "POST", body: JSON.stringify({fields: collect()})}));
 const vary = () => busy(() => api(`/api/studio/projects/${P.project_id}/pages/${cur}/vary`, {method: "POST"}));

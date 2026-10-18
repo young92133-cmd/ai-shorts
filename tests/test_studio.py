@@ -9,10 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 
 from app.carousel import master as mastermod, planner
 from app.factory.core import FactoryError
 from app.pipeline.models import ResearchDoc
+from app.pipeline.sources import SourceRegistry
 from app.studio import project as studio
 from app.studio.api import router
 from tests.test_carousel import LONG
@@ -82,6 +84,70 @@ class StudioTests(FactoryTestCase):
         self.assertNotEqual((varied["emotion"], varied["background"]), (new["emotion"], new["background"]))
         self.assertEqual(rec["page"], n)
         self.assertIsInstance(studio.load(pid)["pose_gaps"], list)
+
+    def _state(self, pid: str):
+        """plan 문구 순서 · manifest 기록 · 실제 PNG 파일이 서로 맞는지 한 번에 본다."""
+        folder = studio.core.output_root() / pid / "card_news"
+        plan = json.loads((folder / "plan.json").read_text(encoding="utf-8"))
+        manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        heads = [pg["headline"] for pg in plan["pages"]]
+        self.assertEqual([r["page"] for r in manifest["pages"]], list(range(1, len(heads) + 1)))
+        self.assertEqual([r["headline"] for r in manifest["pages"]], heads)
+        self.assertEqual([r["file"] for r in manifest["pages"]], [f"card_{i:02d}.png" for i in range(1, len(heads) + 1)])
+        self.assertEqual(sorted(p.name for p in folder.glob("card_*.png")), [r["file"] for r in manifest["pages"]])
+        self.assertEqual(manifest["page_count"], len(heads))
+        return folder, heads, manifest
+
+    async def test_move_add_delete_keep_text_image_files_in_sync(self):
+        pid = await self._make()
+        folder, heads, manifest = self._state(pid)
+        # 2장에 권리 확인된 사진이 있다고 가정 → 순서를 바꾸면 사진·출처 표기도 같이 움직여야 한다
+        photo = folder / "photo.png"
+        PILImage.new("RGB", (400, 300), (120, 160, 200)).save(photo)
+        reg = SourceRegistry(folder.parent)
+        reg.add(kind="image", origin="generated", path=str(photo), title="테스트 사진")
+        manifest["pages"][1]["image"] = {"path": str(photo), "credit": "테스트 크레딧", "page_url": "https://x.test/p"}
+        (folder / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+        out = await studio.move_page(pid, 2, 5)
+        _, moved, manifest = self._state(pid)
+        self.assertEqual(moved, heads[:1] + heads[2:5] + [heads[1]] + heads[5:])
+        self.assertEqual(manifest["pages"][4]["image"]["path"], str(photo))
+        self.assertTrue(all(r["image"] is None for k, r in enumerate(manifest["pages"]) if k != 4))
+        self.assertIn("5장 테스트 크레딧", (folder / "caption.txt").read_text(encoding="utf-8"))
+        self.assertNotIn("2장 테스트 크레딧", (folder / "caption.txt").read_text(encoding="utf-8"))
+        self.assertEqual(len(out["pages"]), 7)
+
+        await studio.add_page(pid, 2, "card")
+        _, added, _ = self._state(pid)
+        self.assertEqual(added[2], "새 카드 제목")
+        self.assertEqual(added[:2] + added[3:], moved)
+        with self.assertRaises(FactoryError):
+            await studio.add_page(pid, 1, "comic")          # 카드뉴스에는 만화 컷을 넣지 않는다
+
+        await studio.delete_page(pid, 3)
+        _, deleted, manifest = self._state(pid)
+        self.assertEqual(deleted, moved)
+        self.assertFalse((folder / "card_08.png").exists())   # 줄어든 번호의 옛 파일은 남지 않는다
+        self.assertTrue(list((folder / "history").glob("*_plan.json")))   # 바꾸기 전 구성은 보존
+        with zipfile.ZipFile(studio.export_zip(pid)) as z:
+            self.assertEqual(len([n for n in z.namelist() if n.startswith("card_")]), 7)
+        for _ in range(4):
+            await studio.delete_page(pid, 1)
+        with self.assertRaises(FactoryError):                # 최소 장수 아래로는 지우지 않는다
+            await studio.delete_page(pid, 1)
+        with self.assertRaises(FactoryError):
+            await studio.move_page(pid, 1, 9)
+
+    async def test_add_comic_page_to_insta_toon(self):
+        pid = await self._make("insta_toon")
+        before = studio.load(pid)
+        after = await studio.add_page(pid, 0, "comic")
+        self.assertEqual(len(after["pages"]), len(before["pages"]) + 1)
+        first = after["pages"][0]
+        self.assertEqual(first["kind"], "comic")
+        self.assertEqual(first["data"]["panels"][0]["character_id"], "hamtorich_01")
+        self.assertEqual([p["data"]["headline"] for p in after["pages"][1:]], [p["data"]["headline"] for p in before["pages"]])
 
     async def test_export_zip(self):
         pid = await self._make()

@@ -5,14 +5,15 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import zipfile
 from pathlib import Path
 from typing import Any
 
 from ..carousel import characters as charmod
-from ..carousel.pipeline import MANIFEST, carousel_settings, pose_gaps, render_kit, render_one
-from ..carousel.schema import CAROUSEL_FORMATS, EMOTIONS, CardPage, CarouselPlan, ComicPage
+from ..carousel.pipeline import MANIFEST, carousel_settings, render_kit, render_one, write_results
+from ..carousel.schema import CAROUSEL_FORMATS, EMOTIONS, CardPage, CarouselPlan, ComicBeat, ComicPage, MasterContent
 from ..carousel.scenes import SCENES
 from ..carousel.templates import load_template
 from ..factory import core
@@ -23,6 +24,7 @@ CARD_FIELDS = ("label", "headline", "body", "items", "emphasis", "character_emot
 COMIC_FIELDS = ("headline", "caption")
 PANEL_FIELDS = ("dialogue", "partner_dialogue", "emotion", "partner_emotion", "pose", "background", "camera",
                 "speech_bubble_position", "sfx", "scene")
+MIN_PAGES, MAX_PAGES = 3, 10      # 스튜디오에서 추가·삭제할 때의 장수 범위
 LIMITS = {"headline": 60, "label": 20, "body": 200, "caption": 200, "dialogue": 80, "partner_dialogue": 80, "sfx": 12}
 
 
@@ -93,7 +95,7 @@ def load(project_id: str) -> dict[str, Any]:
         png = out_dir / f"card_{i:02d}.png"
         pages.append({"page": i, "kind": page.kind, "type": page.type, "data": page.model_dump(),
                       "file": f"{fmt}/{png.name}" if png.is_file() else "",
-                      "version": int(png.stat().st_mtime) if png.is_file() else 0,
+                      "version": png.stat().st_mtime_ns // 1_000_000 if png.is_file() else 0,
                       "fallback_used": rec.get("fallback_used", False), "image": rec.get("image"),
                       "art": [p.get("art") for p in rec.get("panels", [])]})
     caption = (out_dir / "caption.txt").read_text(encoding="utf-8") if (out_dir / "caption.txt").is_file() else ""
@@ -142,8 +144,21 @@ def _apply(page, fields: dict[str, Any]):
     return page.model_copy(update={**upd, "panels": panels})
 
 
+def _kit(job: Path, state: dict[str, Any], fmt: str, plan: CarouselPlan, manifest: dict[str, Any]):
+    cfg = core._run_cfg(state.get("request") or {})
+    chars = manifest.get("characters") or []
+    default_id = chars[0]["id"] if chars else (state.get("request") or {}).get("character") or carousel_settings(cfg)["character"]
+    return render_kit(job, fmt=fmt, tpl=load_template(plan.template, fmt), cfg=cfg, default_id=default_id,
+                      total=len(plan.pages))
+
+
+def _master(out_dir: Path, job: Path) -> MasterContent:
+    raw = _read(out_dir / "master.json") or _read(job / "master.json")
+    return MasterContent.model_validate(raw)
+
+
 async def rerender(project_id: str, page_no: int) -> dict[str, Any]:
-    """plan.json 의 page_no 장만 다시 그리고 manifest 기록을 바꾼다 (사진은 처음 고른 것 그대로)."""
+    """plan.json 의 page_no 장만 다시 그리고 manifest·캡션·출처를 맞춘다 (사진은 처음 고른 것 그대로)."""
     job, state, fmt, out_dir = _paths(project_id)
     plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
     if not 1 <= page_no <= len(plan.pages):
@@ -151,17 +166,96 @@ async def rerender(project_id: str, page_no: int) -> dict[str, Any]:
     manifest = _read(out_dir / MANIFEST, {}) or {}
     records = manifest.get("pages", [])
     old = next((r for r in records if r.get("page") == page_no), {})
-    cfg = core._run_cfg(state.get("request") or {})
-    chars = manifest.get("characters") or []
-    default_id = chars[0]["id"] if chars else (state.get("request") or {}).get("character") or carousel_settings(cfg)["character"]
-    tpl = load_template(plan.template, fmt)
-    kit = render_kit(job, fmt=fmt, tpl=tpl, cfg=cfg, default_id=default_id, total=len(plan.pages))
+    kit = _kit(job, state, fmt, plan, manifest)
     rec = await render_one(kit, page_no, plan.pages[page_no - 1], old.get("image"))
-    manifest["pages"] = [rec if r.get("page") == page_no else r for r in records] if old else records + [rec]
-    manifest["fallback_pages"] = [r["page"] for r in manifest["pages"] if r.get("fallback_used")]
-    manifest["pose_gaps"] = pose_gaps(manifest["pages"])
-    (out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    records = [rec if r.get("page") == page_no else r for r in records] if old else records + [rec]
+    write_results(kit, _master(out_dir, job), records, manifest)
     return rec
+
+
+# ---------- 순서 바꾸기 · 추가 · 삭제 ----------
+
+def _backup(out_dir: Path) -> None:
+    """구조를 바꾸기 전 plan·manifest 를 history/ 에 남긴다 (되돌릴 때 참고, 지우지 않음)."""
+    hist = out_dir / "history"
+    hist.mkdir(exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    for name in ("plan.json", MANIFEST):
+        if (out_dir / name).is_file():
+            (hist / f"{stamp}_{name}").write_bytes((out_dir / name).read_bytes())
+
+
+async def _restructure(project_id: str, change) -> dict[str, Any]:
+    """페이지 목록을 바꾼 뒤 전체를 새 번호로 다시 그린다. 문구(plan)·그림(사진)·기록(manifest)·파일명이 함께 움직인다."""
+    job, state, fmt, out_dir = _paths(project_id)
+    plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
+    manifest = _read(out_dir / MANIFEST, {}) or {}
+    recs = {r.get("page"): r for r in manifest.get("pages", [])}
+    items = [{"page": pg, "old": i, "image": (recs.get(i) or {}).get("image")} for i, pg in enumerate(plan.pages, start=1)]
+    items = change(items)
+    if not MIN_PAGES <= len(items) <= MAX_PAGES:
+        raise FactoryError("invalid", f"장수는 {MIN_PAGES}~{MAX_PAGES}장 사이여야 합니다.")
+    _backup(out_dir)
+    pages = [it["page"] for it in items]
+    comics = sum(isinstance(pg, ComicPage) for pg in pages)
+    mix = {"card": round(100 * (len(pages) - comics) / len(pages)), "comic": round(100 * comics / len(pages))}
+    plan = plan.model_copy(update={"pages": pages, "mix": mix})
+    (out_dir / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    kit = _kit(job, state, fmt, plan, manifest)
+    old_pins = kit.pinned           # 업로드 고정 그림(uploads/toon_NN_*)도 페이지와 함께 옮긴다
+    kit.pinned = {n: old_pins[it["old"]] for n, it in enumerate(items, start=1) if it.get("old") in old_pins}
+    for r in recs.values():         # 사진의 장면 번호는 새 순서로 다시 기록
+        item = kit.registry.by_path(r["image"]["path"]) if r.get("image") else None
+        if item:
+            item.scene_ids.clear()
+    records = [await render_one(kit, n, it["page"], it["image"]) for n, it in enumerate(items, start=1)]
+    for png in out_dir.glob("card_*.png"):            # 줄어든 장수만큼 남은 옛 번호 파일 정리 (이 프로젝트가 만든 렌더 파일)
+        if png.name not in {r["file"] for r in records}:
+            png.unlink()
+    write_results(kit, _master(out_dir, job), records, {**manifest, "mix": mix})
+    return load(project_id)
+
+
+async def move_page(project_id: str, page_no: int, to: int) -> dict[str, Any]:
+    def change(items):
+        if not (1 <= page_no <= len(items) and 1 <= to <= len(items)):
+            raise FactoryError("invalid", f"페이지 번호는 1~{len(items)} 입니다.")
+        items = list(items)
+        items.insert(to - 1, items.pop(page_no - 1))
+        return items
+    return await _restructure(project_id, change)
+
+
+async def delete_page(project_id: str, page_no: int) -> dict[str, Any]:
+    def change(items):
+        if not 1 <= page_no <= len(items):
+            raise FactoryError("invalid", f"페이지 번호는 1~{len(items)} 입니다.")
+        return items[:page_no - 1] + items[page_no:]
+    return await _restructure(project_id, change)
+
+
+def _blank(kind: str, fmt: str, character: str):
+    if kind == "comic":
+        if fmt == "card_news":
+            raise FactoryError("invalid", "카드뉴스에는 만화 컷을 넣지 않습니다. 인스타툰·섞기 형식에서 추가해 주세요.")
+        return ComicPage(type="comic_scene", headline="", panels=[ComicBeat(
+            character_id=character, emotion="happy", pose="standing", background="방", dialogue="대사를 입력하세요")])
+    return CardPage(type="info_card", label="", headline="새 카드 제목", body="내용을 입력한 뒤 '저장하고 다시 그리기'를 눌러 주세요.")
+
+
+async def add_page(project_id: str, after: int, kind: str = "card") -> dict[str, Any]:
+    """after 장 뒤에 빈 카드(또는 만화 컷)를 넣는다. 0 이면 맨 앞."""
+    job, state, fmt, out_dir = _paths(project_id)
+    manifest = _read(out_dir / MANIFEST, {}) or {}
+    chars = manifest.get("characters") or []
+    character = chars[0]["id"] if chars else "hamtorich_01"
+    page = _blank(kind, fmt, character)
+
+    def change(items):
+        if not 0 <= after <= len(items):
+            raise FactoryError("invalid", f"위치는 0~{len(items)} 입니다.")
+        return items[:after] + [{"page": page, "old": None, "image": None}] + items[after:]
+    return await _restructure(project_id, change)
 
 
 def _save_page(out_dir: Path, plan: CarouselPlan, page_no: int, page) -> None:
