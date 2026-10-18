@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -14,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 URL = "http://127.0.0.1:8765/"
+# 첫 화면: `python -m app.launcher studio` 면 카드뉴스·인스타툰 스튜디오, 인자가 없으면 기존 쇼츠 화면
+START = URL + (sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ("studio",) else "")
 
 
 def _refresh_user_path() -> None:
@@ -48,11 +51,11 @@ def _open_browser_when_ready(stop: threading.Event) -> None:
         if stop.is_set():
             return
         if _our_server_is_ready():
-            print(f"Opening browser: {URL}", flush=True)
-            webbrowser.open(URL)
+            print(f"Opening browser: {START}", flush=True)
+            webbrowser.open(START)
             return
         time.sleep(0.5)
-    print(f"Browser did not open automatically. Visit {URL}", flush=True)
+    print(f"Browser did not open automatically. Visit {START}", flush=True)
 
 
 def main() -> int:
@@ -60,7 +63,7 @@ def main() -> int:
     _refresh_user_path()
     if _our_server_is_ready():
         print("AI Shorts is already running. Opening browser...", flush=True)
-        webbrowser.open(URL)
+        webbrowser.open(START)
         return 0
     if _port_is_in_use():
         print("Port 8765 is being used by another program. Close it and try again.", flush=True)

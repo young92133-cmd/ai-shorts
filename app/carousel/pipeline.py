@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -19,7 +20,7 @@ from .master import build_master
 from .planner import plan_pages
 from .render import PageAssets, render_page
 from .schema import CAROUSEL_FORMATS, CardPage, ComicPage, MasterContent, CarouselPlan
-from .templates import load_template
+from .templates import Template, load_template
 from .visuals import CharacterArtist, find_card_images, guard_image, pinned_uploads
 
 Progress = Callable[[str, int, str], None]
@@ -122,6 +123,67 @@ def _page_record(i: int, page, info: dict[str, Any], img: dict[str, Any] | None,
     return rec
 
 
+@dataclass
+class RenderKit:
+    """페이지 렌더에 필요한 도구 묶음. 전체 제작과 카드 1장 다시 그리기(app/studio)가 같이 쓴다."""
+    job_dir: Path
+    out_dir: Path
+    fmt: str
+    tpl: Template
+    registry: SourceRegistry
+    artist: CharacterArtist
+    guide: Any
+    pinned: dict[int, Path]
+    total: int
+
+
+def render_kit(job_dir: Path, *, fmt: str, tpl: Template, cfg: dict[str, Any], default_id: str, total: int,
+               character_root: Path | None = None, progress: Progress = _noop) -> RenderKit:
+    cs = carousel_settings(cfg)
+    registry = SourceRegistry(job_dir)    # resolver 가 등록한 항목 다시 읽기
+    provider_cfg = {"images": {**cfg.get("images", {}), "provider": cs.get("image_provider") or "none"}}
+    artist = CharacterArtist(job_dir=job_dir, registry=registry, provider_cfg=provider_cfg, default_id=default_id,
+                             root=character_root, log=lambda m: progress("images", 60, m))
+    pinned = pinned_uploads(job_dir, registry)
+    if fmt == "card_news" and tpl.character.get("on_cards"):
+        charmod.ensure_default(character_root)      # 캐릭터 템플릿이면 카드뉴스에도 안내 캐릭터
+    guide = artist.guide() if (fmt != "card_news" or tpl.character.get("on_cards")) else None
+    return RenderKit(job_dir, job_dir / fmt, fmt, tpl, registry, artist, guide, pinned, total)
+
+
+def credit_text(i: int, img: dict[str, Any]) -> str:
+    return f"{i}장 {img.get('credit', '')} — {img.get('page_url', '')}"
+
+
+async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
+                     progress: Progress = _noop) -> dict[str, Any]:
+    """i번(1부터) 페이지 한 장을 card_NN.png 로 그리고 manifest 기록 한 줄을 돌려준다."""
+    registry = kit.registry
+    if img and not guard_image(img.get("path"), registry):
+        progress("render", 50, f"{i}번 페이지 사진의 사용 근거가 확인되지 않아 그래픽으로 바꿉니다")
+        img = None
+    panels, art_sources = [], []
+    if isinstance(page, ComicPage):
+        for k, beat in enumerate(page.panels):
+            art = await kit.artist.art(beat, i, kit.pinned.get(i) if k == 0 else None)
+            panels.append(art)
+            art_sources.append(art.source or art.kind)
+    page_guide = kit.guide
+    if isinstance(page, CardPage) and page.character_emotion and kit.guide is not None:
+        # 표지 등에서 지정한 감정·자세의 캐릭터 그림 (훅 표지의 과장된 표정)
+        page_guide = kit.artist.guide(page.character_emotion, page.character_pose or "standing") or kit.guide
+    assets = PageAssets(image=Path(img["path"]) if img else None, credit=img.get("credit", "") if img else "",
+                        panels=panels, guide=page_guide, index=i, total=kit.total)
+    out = kit.out_dir / f"card_{i:02d}.png"
+    info = render_page(page, kit.tpl, out, assets)
+    registry.add(kind="image", origin="generated", path=str(out), title=f"{kit.fmt} {i}장", used_for=f"page_{i:02d}")
+    if img:
+        registry.mark_used(img["path"], i)
+    if kit.pinned.get(i) and art_sources and art_sources[0] == "upload":
+        registry.mark_used(kit.pinned[i], i)
+    return _page_record(i, page, info, img, art_sources)
+
+
 def _caption_text(master: MasterContent, used_credits: list[str]) -> str:
     tags = " ".join(f"#{h.lstrip('#')}" for h in master.hashtags)
     lines = [master.title, "", master.summary or master.angle, "", master.cta, "", tags, ""]
@@ -203,47 +265,20 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
         progress("images", 20, "카드에 쓸 공개 사진 찾는 중 (권리 확인되는 것만)")
         images, report = await find_card_images(plan, llm=llm, topic=master.topic, work_dir=out_dir, registry=registry,
                                                 cfg=cfg, max_images=int(cs["max_images"]), progress=progress)
-    registry = SourceRegistry(job_dir)    # resolver 가 등록한 항목 다시 읽기
-    provider_cfg = {"images": {**cfg.get("images", {}), "provider": cs.get("image_provider") or "none"}}
-    artist = CharacterArtist(job_dir=job_dir, registry=registry, provider_cfg=provider_cfg,
-                             default_id=bible.id if bible else (character or cs["character"]), root=character_root,
-                             log=lambda m: progress("images", 60, m))
-    pinned = pinned_uploads(job_dir, registry)
-    if fmt == "card_news" and tpl.character.get("on_cards"):
-        charmod.ensure_default(character_root)      # 캐릭터 템플릿이면 카드뉴스에도 안내 캐릭터
-    guide = artist.guide() if (fmt != "card_news" or tpl.character.get("on_cards")) else None
+    kit = render_kit(job_dir, fmt=fmt, tpl=tpl, cfg=cfg, default_id=bible.id if bible else (character or cs["character"]),
+                     total=len(plan.pages), character_root=character_root, progress=progress)
+    registry = kit.registry
 
     # 5. 렌더 (페이지마다 독립 — 하나가 실패해도 계속)
-    total = len(plan.pages)
+    total = kit.total
     records: list[dict[str, Any]] = []
     used_credits: list[str] = []
     for i, page in enumerate(plan.pages, start=1):
-        img = images.get(i - 1)
-        if img and not guard_image(img.get("path"), registry):
-            progress("render", 50, f"{i}번 페이지 사진의 사용 근거가 확인되지 않아 그래픽으로 바꿉니다")
-            img = None
-        panels, art_sources = [], []
-        if isinstance(page, ComicPage):
-            for k, beat in enumerate(page.panels):
-                art = await artist.art(beat, i, pinned.get(i) if k == 0 else None)
-                panels.append(art)
-                art_sources.append(art.source or art.kind)
-        page_guide = guide
-        if isinstance(page, CardPage) and page.character_emotion and guide is not None:
-            # 표지 등에서 지정한 감정·자세의 캐릭터 그림 (훅 표지의 과장된 표정)
-            page_guide = artist.guide(page.character_emotion, page.character_pose or "standing") or guide
-        assets = PageAssets(image=Path(img["path"]) if img else None, credit=img.get("credit", "") if img else "",
-                            panels=panels, guide=page_guide, index=i, total=total)
-        out = out_dir / f"card_{i:02d}.png"
-        info = render_page(page, tpl, out, assets)
-        registry.add(kind="image", origin="generated", path=str(out), title=f"{fmt} {i}장", used_for=f"page_{i:02d}")
-        if img:
-            registry.mark_used(img["path"], i)
-            used_credits.append(f"{i}장 {img.get('credit', '')} — {img.get('page_url', '')}")
-        if pinned.get(i) and art_sources and art_sources[0] == "upload":
-            registry.mark_used(pinned[i], i)
-        records.append(_page_record(i, page, info, img, art_sources))
-        progress("render", int(100 * i / total), f"{i}/{total} {page.type}" + (" (대체 레이아웃)" if info.get("fallback_used") else ""))
+        rec = await render_one(kit, i, page, images.get(i - 1), progress)
+        if rec.get("image"):
+            used_credits.append(credit_text(i, rec["image"]))
+        records.append(rec)
+        progress("render", int(100 * i / total), f"{i}/{total} {page.type}" + (" (대체 레이아웃)" if rec["fallback_used"] else ""))
 
     # 6. 결과 기록
     manifest = {"format": fmt, "template": tpl.id, "size": f"{tpl.width}x{tpl.height}", "pages": records,

@@ -26,6 +26,7 @@ from .pipeline import blueprint as blueprintmod, capcut as capcutmod, timeline a
 from .pipeline.sources import SourceRegistry, guard_timeline
 from .pipeline.comment_layout import analyze_comment_layout, place as place_comment
 from .pipeline.styles import analyze_references, style_to_dict
+from .studio.api import router as studio_router
 
 BASE = Path(__file__).resolve().parent
 OVERLAY_DIR = "overlays"   # 댓글 캡처. uploads/ 와 분리해야 장면 배경으로 잘못 쓰이지 않는다
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Shorts", lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+app.include_router(studio_router)   # 카드뉴스·인스타툰 스튜디오 (/studio)
 
 
 class CreateJob(BaseModel):
