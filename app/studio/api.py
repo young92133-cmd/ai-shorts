@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import asyncio
 import re
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -50,7 +51,7 @@ async def _in_thread(coro_fn, *args, **kwargs):
 
 @router.get("/studio", response_class=HTMLResponse)
 async def page():
-    return HTMLResponse(PAGE.read_text(encoding="utf-8"))
+    return HTMLResponse(PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})   # 화면을 고치면 바로 반영
 
 
 @router.get("/api/studio/choices")
@@ -161,6 +162,37 @@ async def add(pid: str, body: PageAdd):
         raise HTTPException(400, "kind 는 card | comic 입니다.")
     try:
         return await _in_thread(studio.add_page, pid, body.after, body.kind)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
+@router.post("/api/studio/projects/{pid}/undo")
+async def undo(pid: str):
+    try:
+        return await _in_thread(studio.undo, pid)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
+@router.post("/api/studio/projects/{pid}/pages/{n}/image")
+async def upload_image(pid: str, n: int, file: UploadFile = File(...), confirm_rights: bool = Form(False)):
+    """카드 n 에 PC 이미지를 넣는다(교체). 임시 파일로 받은 뒤 프로젝트 uploads/studio/ 로 복사한다."""
+    data = await file.read(studio.MAX_UPLOAD + 1)     # 한도는 엔진(project.MAX_UPLOAD) 하나
+    if len(data) > studio.MAX_UPLOAD:
+        raise HTTPException(400, "이미지는 20MB 이하만 넣을 수 있습니다.")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "upload"
+        src.write_bytes(data)
+        try:
+            return await _in_thread(studio.set_image, pid, n, src, file.filename or "image.png", confirm_rights=confirm_rights)
+        except Exception as e:  # noqa: BLE001
+            raise _err(e)
+
+
+@router.post("/api/studio/projects/{pid}/pages/{n}/image-clear")
+async def clear_image(pid: str, n: int):
+    try:
+        return await _in_thread(studio.clear_image, pid, n)
     except Exception as e:  # noqa: BLE001
         raise _err(e)
 

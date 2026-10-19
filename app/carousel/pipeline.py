@@ -121,7 +121,8 @@ def _page_record(i: int, page, info: dict[str, Any], img: dict[str, Any] | None,
                             "pose_match": (matches or [])[k] if k < len(matches or []) else ""}
                            for k, b in enumerate(page.panels)])
     rec["image"] = ({"path": img["path"], "credit": img.get("credit", ""), "page_url": img.get("page_url", ""),
-                     "reason": img.get("reason", "")} if img else None)
+                     "reason": img.get("reason", ""),
+                     **{k: img[k] for k in ("upload", "name") if k in img}} if img else None)   # 스튜디오에서 직접 올린 이미지 표시
     return rec
 
 
@@ -195,9 +196,11 @@ async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
         progress("render", 50, f"{i}번 페이지 사진의 사용 근거가 확인되지 않아 그래픽으로 바꿉니다")
         img = None
     panels, art_sources, matches = [], [], []
+    # 만화 첫 컷 그림: 파일 번호 고정 업로드(toon_NN) → 스튜디오에서 이 페이지에 올린 이미지
+    pin = kit.pinned.get(i) or (Path(img["path"]) if img and isinstance(page, ComicPage) else None)
     if isinstance(page, ComicPage):
         for k, beat in enumerate(page.panels):
-            art = await kit.artist.art(beat, i, kit.pinned.get(i) if k == 0 else None)
+            art = await kit.artist.art(beat, i, pin if k == 0 else None)
             panels.append(art)
             art_sources.append(art.source or art.kind)
             matches.append(art.match)
@@ -212,8 +215,8 @@ async def render_one(kit: RenderKit, i: int, page, img: dict[str, Any] | None,
     registry.add(kind="image", origin="generated", path=str(out), title=f"{kit.fmt} {i}장", used_for=f"page_{i:02d}")
     if img:
         registry.mark_used(img["path"], i)
-    if kit.pinned.get(i) and art_sources and art_sources[0] == "upload":
-        registry.mark_used(kit.pinned[i], i)
+    if pin and art_sources and art_sources[0] == "upload":
+        registry.mark_used(pin, i)
     return _page_record(i, page, info, img, art_sources, matches)
 
 

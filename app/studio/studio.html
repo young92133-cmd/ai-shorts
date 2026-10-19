@@ -30,15 +30,29 @@ button.primary, .seg button.on { background:var(--accent); color:var(--accent-in
 button:disabled { opacity:.5; cursor:default; }
 .hint { color:var(--muted); font-size:13px; } .err { color:var(--err); } .ok { color:var(--ok); }
 .log { font:12px/1.5 Consolas,monospace; background:var(--bg); border-radius:8px; padding:10px; max-height:220px; overflow:auto; white-space:pre-wrap; }
-.strip { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }
-.strip .th { flex:none; width:84px; cursor:pointer; text-align:center; font-size:11px; color:var(--muted); }
-.strip img { width:84px; height:105px; object-fit:cover; border-radius:6px; border:2px solid transparent; display:block; }
+.strip { display:flex; gap:6px; overflow-x:auto; }
+.strip .th { flex:none; width:60px; cursor:pointer; text-align:center; font-size:11px; color:var(--muted); }
+.strip img { width:60px; height:75px; object-fit:cover; border-radius:5px; border:2px solid transparent; display:block; }
 .strip .th.on img { border-color:var(--accent); }
-.work { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,380px); gap:16px; align-items:start; }
-.preview img { width:100%; max-width:540px; border-radius:10px; border:1px solid var(--line); display:block; }
+.box.tight { padding:10px; margin-bottom:12px; }
+.work { display:grid; grid-template-columns:168px minmax(0,auto) minmax(280px,1fr); gap:12px; align-items:start; }
+.tools { display:flex; flex-direction:column; gap:6px; padding:12px; }
+.tools .pair { display:flex; gap:6px; } .tools .pair button { flex:1; padding:8px 4px; }
+.tools button { width:100%; text-align:left; white-space:nowrap; font-size:14px; padding:7px 10px; }
+.tools .sep { border-top:1px solid var(--line); margin:4px 0; }
+.tools .meta { font-size:12px; color:var(--muted); word-break:break-all; }
+.preview { padding:10px; }
+.preview img { display:block; max-width:100%; height:auto; max-height:calc(100vh - 250px); border-radius:10px; border:1px solid var(--line); }
+.editor-box { display:flex; flex-direction:column; max-height:calc(100vh - 230px); padding:0; overflow:hidden; }
+.editor-box .scroll { overflow:auto; padding:14px 16px; flex:1; }
+.editor-box .foot { border-top:1px solid var(--line); padding:10px 16px; background:var(--panel); }
+button.danger { color:var(--err); }
 .panel-ed { border-top:1px dashed var(--line); margin-top:12px; padding-top:4px; }
 .top { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; } .top h2 { flex:1; margin:0; font-size:18px; min-width:200px; }
-@media (max-width:860px) { .app { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); max-height:220px; } .work { grid-template-columns:1fr; } main { padding:16px; } }
+@media (max-width:1100px) { .work { grid-template-columns:168px minmax(0,1fr); } .editor-box { grid-column:1 / -1; max-height:none; } }
+@media (max-width:860px) { .app { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); max-height:220px; }
+  .work { grid-template-columns:1fr; } .tools { flex-direction:row; flex-wrap:wrap; } .tools button, .tools .pair { width:auto; }
+  .preview img { max-height:none; } main { padding:16px; } }
 </style>
 </head>
 <body>
@@ -82,28 +96,33 @@ button:disabled { opacity:.5; cursor:default; }
   <section id="v-project" hidden>
     <div class="top">
       <h2 id="p-title"></h2>
+      <button class="act" id="undo" onclick="undo()" title="마지막 편집(문구·장면·순서·추가·삭제·이미지)을 되돌립니다">↶ 실행 취소</button>
       <button onclick="exportZip()">PNG 전부 저장 (ZIP)</button>
       <button onclick="copyCaption()">캡션 복사</button>
     </div>
     <p class="hint" id="p-msg"></p>
-    <div class="box"><div class="strip" id="strip"></div></div>
+    <div class="box tight"><div class="strip" id="strip"></div></div>
     <div class="work">
-      <div class="box preview"><img id="big" alt="선택한 카드"></div>
-      <div class="box">
+      <div class="box tools">
         <strong id="ed-title"></strong>
-        <div id="editor"></div>
-        <div class="row" style="margin-top:14px">
-          <button class="primary act" id="save" onclick="savePage()">저장하고 다시 그리기</button>
-          <button class="act" id="vary" onclick="vary()" title="감정·자세·배경을 다음 후보로 바꿔 다시 그립니다">장면 바꾸기</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button class="act" onclick="movePage(-1)" title="이 카드를 한 칸 앞으로">◀ 앞으로</button>
-          <button class="act" onclick="movePage(1)" title="이 카드를 한 칸 뒤로">뒤로 ▶</button>
-          <button class="act" onclick="addPage('card')" title="이 카드 뒤에 빈 카드를 넣습니다">+ 카드</button>
-          <button class="act" id="add-comic" onclick="addPage('comic')" title="이 카드 뒤에 만화 컷을 넣습니다">+ 만화 컷</button>
-          <button class="act" onclick="deletePage()" title="이 카드를 지웁니다 (이전 구성은 history/ 에 남음)">삭제</button>
-        </div>
-        <p class="hint" id="ed-msg"></p>
+        <div class="pair"><button class="act" onclick="movePage(-1)" title="한 칸 앞으로">◀ 앞</button>
+          <button class="act" onclick="movePage(1)" title="한 칸 뒤로">뒤 ▶</button></div>
+        <button class="act" onclick="addPage('card')" title="이 카드 뒤에 빈 카드를 넣습니다">+ 카드 추가</button>
+        <button class="act" id="add-comic" onclick="addPage('comic')" title="이 카드 뒤에 만화 컷을 넣습니다">+ 만화 컷</button>
+        <div class="sep"></div>
+        <button class="act" onclick="pickImage()" title="PC 의 PNG·JPG 이미지를 이 카드에 넣습니다">🖼 이미지 넣기·교체</button>
+        <button class="act" id="clear-img" onclick="clearImage()" title="이 카드의 사진·올린 이미지를 뺍니다">이미지 빼기</button>
+        <span class="meta" id="img-meta"></span>
+        <input type="file" id="imgfile" accept=".png,.jpg,.jpeg,.webp" hidden>
+        <div class="sep"></div>
+        <button class="act" id="vary" onclick="vary()" title="감정·자세·배경을 다음 후보로 바꿔 다시 그립니다">장면 바꾸기</button>
+        <button class="act danger" onclick="deletePage()" title="이 카드를 지웁니다 (실행 취소 가능)">카드 삭제</button>
+        <p class="hint" id="ed-msg" style="margin:4px 0 0"></p>
+      </div>
+      <div class="box preview"><img id="big" alt="선택한 카드"></div>
+      <div class="box editor-box">
+        <div class="scroll" id="editor"></div>
+        <div class="foot"><button class="primary act" id="save" onclick="savePage()" style="width:100%">저장하고 다시 그리기</button></div>
       </div>
     </div>
   </section>
@@ -130,6 +149,8 @@ async function init() {
   document.querySelectorAll("#fmt button").forEach(b => b.onclick = () => {
     document.querySelectorAll("#fmt button").forEach(x => x.classList.toggle("on", x === b)); fmt = b.dataset.v; });
   await loadProjects();
+  const [pid, page] = decodeURIComponent(location.hash.slice(1)).split("/");     // /studio#<프로젝트>/<장> 로 바로 열기
+  if (pid) openProject(pid, +page || 1);
 }
 
 async function loadProjects() {
@@ -172,7 +193,9 @@ async function openProject(pid, page = 1) {
     + P.pose_gaps.map(g => `${EMO[g.emotion] || g.emotion}(${g.pages.join("·")}장)`).join(", ")
     + " — 새 포즈 그림을 추가하면 좋아집니다 (characters/<캐릭터>/README.md)" : "";
   cur = Math.min(page, P.pages.length); drawStrip(); select(cur); loadProjects();
+  history.replaceState(null, "", `#${P.project_id}/${cur}`);
   $("add-comic").hidden = P.format === "card_news";
+  $("undo").textContent = `↶ 실행 취소${P.undo_count ? ` (${P.undo_count})` : ""}`; $("undo").disabled = !P.undo_count;
 }
 
 function drawStrip() {
@@ -188,7 +211,11 @@ const field = (key, label, v, area) => `<label>${label}</label>` + (area
 function select(n) {
   cur = n; const p = P.pages[n - 1], d = p.data, o = P.options;
   $("big").src = fileUrl(P.project_id, p.file, p.version); drawStrip();
-  $("ed-title").textContent = `${n}장 · ${p.type}`; $("ed-msg").textContent = p.fallback_used ? "⚠ 이 장은 대체 레이아웃으로 그려졌습니다. 문구를 줄여 보세요." : "";
+  $("ed-title").textContent = `${n} / ${P.pages.length}장 · ${p.type}`;
+  $("ed-msg").textContent = p.fallback_used ? "⚠ 대체 레이아웃으로 그려졌습니다. 문구를 줄여 보세요." : "";
+  const im = p.image;
+  $("img-meta").textContent = !im ? "이미지 없음" : im.upload ? `올린 이미지: ${im.name || "파일"}` : `공개 사진: ${im.credit || ""}`.slice(0, 80);
+  $("clear-img").disabled = !im;
   let h = "";
   if (p.kind === "card") {
     h += field("headline", "제목", d.headline) + field("body", "본문", d.body, true);
@@ -223,7 +250,8 @@ async function busy(fn, done = n => `${n}장을 다시 그렸습니다.`, next =
   acts.forEach(b => b.disabled = true); $("ed-msg").textContent = "다시 그리는 중…";
   try { await fn(); const n = next(); await openProject(P.project_id, n); $("ed-msg").innerHTML = `<span class="ok">${esc(done(n))}</span>`; }
   catch (e) { $("ed-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-  finally { acts.forEach(b => b.disabled = false); $("add-comic").hidden = P && P.format === "card_news"; }
+  finally { acts.forEach(b => b.disabled = false); if (P) { $("add-comic").hidden = P.format === "card_news";
+    $("undo").disabled = !P.undo_count; $("clear-img").disabled = !(P.pages[cur - 1] || {}).image; } }
 }
 const post = (path, body) => api(`/api/studio/projects/${P.project_id}/${path}`, {method: "POST", body: body ? JSON.stringify(body) : undefined});
 function movePage(d) {
@@ -232,6 +260,22 @@ function movePage(d) {
   busy(() => post(`pages/${cur}/move`, {to}), n => `${n}장으로 옮기고 전체 번호를 다시 그렸습니다.`, () => to);
 }
 const addPage = kind => busy(() => post("pages-add", {after: cur, kind}), n => `${n}장에 새 ${kind === "comic" ? "만화 컷을" : "카드를"} 넣었습니다. 문구를 고친 뒤 저장하세요.`, () => cur + 1);
+const undo = () => busy(() => post("undo"), () => "마지막 편집을 되돌렸습니다.", () => cur);
+function pickImage() { $("imgfile").value = ""; $("imgfile").click(); }
+let lastImage = null;
+$("imgfile").onchange = () => {
+  const f = $("imgfile").files[0];
+  if (!f) return;
+  if (!confirm("직접 찍었거나 만든 이미지, 또는 사용 허락을 받은 이미지인가요?\n확인을 누르면 이 카드에 넣습니다.")) return;
+  const fd = new FormData(); fd.append("file", f); fd.append("confirm_rights", "true");
+  busy(async () => {
+    const r = await fetch(`/api/studio/projects/${P.project_id}/pages/${cur}/image`, {method: "POST", body: fd});
+    lastImage = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(lastImage.detail || r.statusText);
+  }, n => lastImage && lastImage.image_shown ? `${n}장에 이미지를 넣었습니다.`
+        : `${n}장에 이미지를 저장했지만 이 카드 종류는 그림 자리가 없어 보이지 않습니다. 정보 카드·표지·만화 컷에 넣어 보세요.`);
+};
+const clearImage = () => busy(() => post(`pages/${cur}/image-clear`), n => `${n}장의 이미지를 뺐습니다.`);
 function deletePage() {
   if (!confirm(`${cur}장을 삭제할까요? (이전 구성은 프로젝트 history 폴더에 남습니다)`)) return;
   busy(() => post(`pages/${cur}/delete`), () => "삭제하고 번호를 다시 매겼습니다.", () => Math.max(1, cur - 1));

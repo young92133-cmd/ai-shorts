@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from ..carousel.templates import load_template
 from ..factory import core
 from ..factory import state as st
 from ..factory.core import FactoryError
+from ..pipeline.sources import SourceRegistry
 
 CARD_FIELDS = ("label", "headline", "body", "items", "emphasis", "character_emotion", "character_pose")
 COMIC_FIELDS = ("headline", "caption")
@@ -102,7 +104,7 @@ def load(project_id: str) -> dict[str, Any]:
     return {"project_id": job.name, "format": fmt, "status": state.get("status"), "title": manifest.get("title", ""),
             "topic": manifest.get("topic") or state.get("topic", ""), "template": plan.template,
             "characters": manifest.get("characters", []), "pages": pages, "caption": caption,
-            "pose_gaps": manifest.get("pose_gaps", []),
+            "pose_gaps": manifest.get("pose_gaps", []), "undo_count": len(_snapshots(out_dir)),
             "options": options(manifest)}
 
 
@@ -148,8 +150,11 @@ def _kit(job: Path, state: dict[str, Any], fmt: str, plan: CarouselPlan, manifes
     cfg = core._run_cfg(state.get("request") or {})
     chars = manifest.get("characters") or []
     default_id = chars[0]["id"] if chars else (state.get("request") or {}).get("character") or carousel_settings(cfg)["character"]
-    return render_kit(job, fmt=fmt, tpl=load_template(plan.template, fmt), cfg=cfg, default_id=default_id,
-                      total=len(plan.pages))
+    kit = render_kit(job, fmt=fmt, tpl=load_template(plan.template, fmt), cfg=cfg, default_id=default_id,
+                     total=len(plan.pages))
+    if manifest.get("pins_in_records"):   # 순서 편집 뒤에는 파일 이름 번호 대신 페이지 기록의 이미지를 쓴다
+        kit.pinned = {}
+    return kit
 
 
 def _master(out_dir: Path, job: Path) -> MasterContent:
@@ -176,7 +181,7 @@ async def rerender(project_id: str, page_no: int) -> dict[str, Any]:
 # ---------- 순서 바꾸기 · 추가 · 삭제 ----------
 
 def _backup(out_dir: Path) -> None:
-    """구조를 바꾸기 전 plan·manifest 를 history/ 에 남긴다 (되돌릴 때 참고, 지우지 않음)."""
+    """바꾸기 전 plan·manifest 를 history/ 에 남긴다 = 실행 취소 목록 (지우지 않음)."""
     hist = out_dir / "history"
     hist.mkdir(exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -185,35 +190,128 @@ def _backup(out_dir: Path) -> None:
             (hist / f"{stamp}_{name}").write_bytes((out_dir / name).read_bytes())
 
 
-async def _restructure(project_id: str, change) -> dict[str, Any]:
-    """페이지 목록을 바꾼 뒤 전체를 새 번호로 다시 그린다. 문구(plan)·그림(사진)·기록(manifest)·파일명이 함께 움직인다."""
-    job, state, fmt, out_dir = _paths(project_id)
-    plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
-    manifest = _read(out_dir / MANIFEST, {}) or {}
-    recs = {r.get("page"): r for r in manifest.get("pages", [])}
-    items = [{"page": pg, "old": i, "image": (recs.get(i) or {}).get("image")} for i, pg in enumerate(plan.pages, start=1)]
-    items = change(items)
-    if not MIN_PAGES <= len(items) <= MAX_PAGES:
-        raise FactoryError("invalid", f"장수는 {MIN_PAGES}~{MAX_PAGES}장 사이여야 합니다.")
-    _backup(out_dir)
+def _snapshots(out_dir: Path) -> list[str]:
+    """실행 취소할 수 있는 저장 시점 (오래된 것부터). plan 과 manifest 가 둘 다 있는 것만."""
+    hist = out_dir / "history"
+    stamps = sorted(f.name[:-len("_plan.json")] for f in hist.glob("*_plan.json")) if hist.is_dir() else []
+    return [t for t in stamps if (hist / f"{t}_{MANIFEST}").is_file()]
+
+
+async def _render_pages(job: Path, state: dict[str, Any], fmt: str, out_dir: Path, plan: CarouselPlan,
+                        manifest: dict[str, Any], items: list[dict[str, Any]]) -> None:
+    """items(새 순서의 페이지·사진)로 plan 을 쓰고 전체를 새 번호로 다시 그린다. 순서 편집과 실행 취소가 같이 쓴다."""
     pages = [it["page"] for it in items]
     comics = sum(isinstance(pg, ComicPage) for pg in pages)
     mix = {"card": round(100 * (len(pages) - comics) / len(pages)), "comic": round(100 * comics / len(pages))}
     plan = plan.model_copy(update={"pages": pages, "mix": mix})
     (out_dir / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     kit = _kit(job, state, fmt, plan, manifest)
-    old_pins = kit.pinned           # 업로드 고정 그림(uploads/toon_NN_*)도 페이지와 함께 옮긴다
-    kit.pinned = {n: old_pins[it["old"]] for n, it in enumerate(items, start=1) if it.get("old") in old_pins}
-    for r in recs.values():         # 사진의 장면 번호는 새 순서로 다시 기록
-        item = kit.registry.by_path(r["image"]["path"]) if r.get("image") else None
+    # 파일 이름 번호로 고정된 업로드 그림(uploads/toon_NN_*)은 그 페이지의 이미지 기록으로 옮겨 페이지와 함께 움직이게 한다
+    for it in items:
+        if it.get("old") in kit.pinned and not it.get("image"):
+            it["image"] = {"path": str(kit.pinned[it["old"]]), "credit": "", "page_url": "", "upload": True}
+    kit.pinned = {}
+    for it in items:                # 사진의 장면 번호는 새 순서로 다시 기록
+        item = kit.registry.by_path(it["image"]["path"]) if it.get("image") else None
         if item:
             item.scene_ids.clear()
     records = [await render_one(kit, n, it["page"], it["image"]) for n, it in enumerate(items, start=1)]
     for png in out_dir.glob("card_*.png"):            # 줄어든 장수만큼 남은 옛 번호 파일 정리 (이 프로젝트가 만든 렌더 파일)
         if png.name not in {r["file"] for r in records}:
             png.unlink()
-    write_results(kit, _master(out_dir, job), records, {**manifest, "mix": mix})
+    write_results(kit, _master(out_dir, job), records, {**manifest, "mix": mix, "pins_in_records": True})
+
+
+def _items(plan: CarouselPlan, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    recs = {r.get("page"): r for r in manifest.get("pages", [])}
+    return [{"page": pg, "old": i, "image": (recs.get(i) or {}).get("image")} for i, pg in enumerate(plan.pages, start=1)]
+
+
+async def _restructure(project_id: str, change) -> dict[str, Any]:
+    """페이지 목록을 바꾼 뒤 전체를 새 번호로 다시 그린다. 문구(plan)·그림(사진)·기록(manifest)·파일명이 함께 움직인다."""
+    job, state, fmt, out_dir = _paths(project_id)
+    plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
+    manifest = _read(out_dir / MANIFEST, {}) or {}
+    items = change(_items(plan, manifest))
+    if not MIN_PAGES <= len(items) <= MAX_PAGES:
+        raise FactoryError("invalid", f"장수는 {MIN_PAGES}~{MAX_PAGES}장 사이여야 합니다.")
+    _backup(out_dir)
+    await _render_pages(job, state, fmt, out_dir, plan, manifest, items)
     return load(project_id)
+
+
+async def undo(project_id: str) -> dict[str, Any]:
+    """마지막 편집(문구·장면·순서·추가·삭제·이미지) 직전 상태로 되돌린다. 쓴 저장 시점은 history/undone/ 으로 옮긴다."""
+    job, state, fmt, out_dir = _paths(project_id)
+    stamps = _snapshots(out_dir)
+    if not stamps:
+        raise FactoryError("not_ready", "되돌릴 편집 기록이 없습니다.")
+    hist, stamp = out_dir / "history", stamps[-1]
+    plan = CarouselPlan.model_validate(_read(hist / f"{stamp}_plan.json"))
+    manifest = _read(hist / f"{stamp}_{MANIFEST}", {}) or {}
+    await _render_pages(job, state, fmt, out_dir, plan, manifest, _items(plan, manifest))
+    (hist / "undone").mkdir(exist_ok=True)
+    for name in (f"{stamp}_plan.json", f"{stamp}_{MANIFEST}"):
+        shutil.move(str(hist / name), str(hist / "undone" / name))
+    return load(project_id)
+
+
+# ---------- 카드 이미지 직접 올리기 · 빼기 ----------
+
+IMAGE_TYPES = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}   # 확장자 → 실제 파일 형식
+MAX_UPLOAD = 20 * 1024 * 1024        # 20MB
+MAX_PIXELS = 40_000_000              # 가로×세로 4천만 화소 (메모리를 과하게 쓰는 그림 방지)
+
+
+async def _set_record_image(project_id: str, page_no: int, image: dict[str, Any] | None) -> dict[str, Any]:
+    job, state, fmt, out_dir = _paths(project_id)
+    plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
+    if not 1 <= page_no <= len(plan.pages):
+        raise FactoryError("invalid", f"페이지 번호는 1~{len(plan.pages)} 입니다.")
+    manifest = _read(out_dir / MANIFEST, {}) or {}
+    _backup(out_dir)
+    for r in manifest.get("pages", []):
+        if r.get("page") == page_no:
+            r["image"] = image
+    (out_dir / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    rec = await rerender(project_id, page_no)
+    shown = rec.get("layout") == "image" or any(pn.get("art") == "upload" for pn in rec.get("panels") or [])
+    return {**rec, "image_shown": bool(image) and shown}
+
+
+async def set_image(project_id: str, page_no: int, src: Path, name: str, *, confirm_rights: bool) -> dict[str, Any]:
+    """PC 의 이미지를 n장에 넣는다(교체). 권리 확인한 사용자 이미지로 출처 대장에 남기고, 순서를 바꿔도 그 카드를 따라간다."""
+    if not confirm_rights:
+        raise FactoryError("invalid", "직접 찍었거나 만든 이미지, 또는 사용 허락을 받은 이미지만 넣을 수 있습니다. 권리를 확인해 주세요.")
+    ext = Path(name).suffix.lower()
+    if ext not in IMAGE_TYPES:
+        raise FactoryError("invalid", "PNG·JPG·WEBP 이미지만 넣을 수 있습니다.")
+    if src.stat().st_size > MAX_UPLOAD:
+        raise FactoryError("invalid", "이미지는 20MB 이하만 넣을 수 있습니다.")
+    try:
+        from PIL import Image
+        with Image.open(src) as im:
+            fmt_, size = im.format, im.size
+            im.verify()
+    except Exception as e:  # noqa: BLE001 - 깨진 파일·지나치게 큰 그림(DecompressionBomb) 포함
+        raise FactoryError("invalid", "이미지 파일을 열 수 없습니다.") from e
+    if fmt_ != IMAGE_TYPES[ext]:
+        raise FactoryError("invalid", f"파일 내용이 확장자({ext})와 다릅니다. 원본 이미지를 다시 저장해서 올려 주세요.")
+    if size[0] * size[1] > MAX_PIXELS:
+        raise FactoryError("invalid", "이미지 해상도가 너무 큽니다 (최대 약 4천만 화소). 크기를 줄여서 올려 주세요.")
+    job, _, _, _ = _paths(project_id)
+    dest = job / "uploads" / "studio" / f"{dt.datetime.now():%Y%m%d_%H%M%S_%f}{ext}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    SourceRegistry(job).add(kind="image", origin="upload", path=str(dest), title=Path(name).name, used_for="studio_upload",
+                            rights=core._own_rights("my_channel", "스튜디오에서 사용자가 직접 올림 (사용 권리 확인)", True))
+    return await _set_record_image(project_id, page_no, {"path": str(dest), "credit": "직접 올린 이미지", "page_url": "",
+                                                         "upload": True, "name": Path(name).name})
+
+
+async def clear_image(project_id: str, page_no: int) -> dict[str, Any]:
+    """n장의 사진·올린 이미지를 빼고 앱 그래픽으로 다시 그린다 (파일은 지우지 않음)."""
+    return await _set_record_image(project_id, page_no, None)
 
 
 async def move_page(project_id: str, page_no: int, to: int) -> dict[str, Any]:
@@ -276,6 +374,7 @@ def _page(project_id: str, page_no: int):
 async def update_page(project_id: str, page_no: int, fields: dict[str, Any]) -> dict[str, Any]:
     """카드 문구·컷 대사 등을 고치고 그 장만 다시 그린다."""
     out_dir, plan, page = _page(project_id, page_no)
+    _backup(out_dir)
     _save_page(out_dir, plan, page_no, _apply(page, fields))
     return await rerender(project_id, page_no)
 
@@ -299,6 +398,7 @@ async def vary_scene(project_id: str, page_no: int) -> dict[str, Any]:
     else:
         page = page.model_copy(update={"character_emotion": _next(emotions, page.character_emotion or "happy"),
                                        "character_pose": _next(opts["poses"], page.character_pose)})
+    _backup(out_dir)
     _save_page(out_dir, plan, page_no, page)
     return await rerender(project_id, page_no)
 

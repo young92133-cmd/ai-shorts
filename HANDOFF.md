@@ -6,7 +6,8 @@
 ## 현재 상태 (2026-10-19, Claude)
 
 - 저장소 `young92133-cmd/ai-shorts`, 브랜치 `feature/agent-content-factory`. 2026-10-19 일반 push 2회(강제 push 없음):
-  `acc4ac2` 경량화 · `95d1f2e` 스튜디오 · `93b03d5` 인스타툰 품질 · 그 다음 커밋 = 카드 순서·추가·삭제 + 실제 제작 버그 수정(이 HANDOFF 포함).
+  `acc4ac2` 경량화 · `95d1f2e` 스튜디오 · `93b03d5` 인스타툰 품질 · `93307ff` 카드 순서·추가·삭제 + 실제 제작 버그 수정.
+  2026-10-20: 그 다음 커밋 = 실행 취소·이미지 넣기·화면 개선(이 HANDOFF 포함), 사용자 승인 후 일반 push.
   확인: `git fetch` 후 `git status -sb` 에 ahead/behind 가 없으면 GitHub 와 일치.
 - 계획 문서: `docs/OPTIMIZATION_PLAN_2026-10-14.md`(5·6단계 승인 대기), `docs/STUDIO_PLAN_2026-10-16.md`.
 
@@ -29,14 +30,26 @@
   훅 표지 부제가 캐릭터 밑으로 들어가 잘리던 문제(캐릭터 실제 왼쪽 끝까지로 줄이고 3줄 허용).
 - 수정 파일: app/carousel/{pipeline,render}.py, app/studio/{project,api}.py, studio.html, tests/test_{studio,carousel}.py
 
+### 완료 (2026-10-20, 사용자 승인 후 커밋·push) — 스튜디오 사용성
+- 실행 취소: `history/` 저장 시점을 그대로 실행 취소 목록으로 씀. 문구 수정·장면 바꾸기·순서·추가·삭제·이미지 넣기/빼기 전에
+  저장 → `studio.undo` 가 마지막 시점으로 전체 다시 그림(`_render_pages`, 순서 편집과 같은 경로), 쓴 시점은 `history/undone/` 으로 이동.
+- 이미지 직접 넣기·교체·빼기: `studio.set_image/clear_image`. 권리 확인(화면 확인창) 필수, PNG·JPG·WEBP 20MB,
+  확장자와 실제 형식 일치·4천만 화소 이하(엔진에서 검사), 저장 이름은 앱이 만듦(사용자 파일명은 표시용 이름만),
+  `uploads/studio/` 로 복사 + 출처 대장 등록(`core._own_rights`). 그 페이지 manifest `image`(upload·name) 로 남아 순서 변경·다시 그리기·실행 취소에도
+  따라감. 만화 페이지는 첫 컷 그림으로 쓰임(`pipeline.render_one`). `_page_record` 가 upload·name 을 버리던 문제 수정.
+- 화면: 편집 버튼을 미리보기 옆 세로 줄로, 미리보기·편집 칸을 창 높이에 맞춤(저장 버튼 고정), 상단 '↶ 실행 취소(n)',
+  `/studio#<프로젝트>/<장>` 바로 열기, `/studio` 캐시 안 함. 1280×800 에서 페이지 높이 1,621→838px.
+- 확인: 실제 스튜디오(복사본 프로젝트)에서 이미지 넣기 → 순서 이동(이미지 따라감) → 실행 취소 2회 → 원본과 문구·PNG 8장 바이트 동일, ZIP=파일. 복사본은 삭제.
+- 수정 파일: app/studio/{project,api}.py, studio.html, app/carousel/pipeline.py, tests/test_studio.py
+
 ### 테스트
 
-- 2026-10-19 전체 `unittest discover`: **399개 통과**(순서·추가·삭제 4개 + 렌더 회귀 2개 추가 포함).
+- 2026-10-20 전체 `unittest discover`: **402개 통과**(실행 취소·이미지 넣기·만화 이미지 3개 추가, API·업로드 검증 테스트 확장).
 - 글꼴 순서: Windows 에서는 전과 같이 `malgunbd.ttf` 가 먼저 잡힌다. 다른 OS 대체 순서만 하나로 합쳐짐.
 
 ## 남은 작업 / 다음 작업
 
-- 다음 후보(승인 후): 카드 종류 바꾸기(새 카드는 info_card 고정), 카드 사진 다시 찾기·직접 올리기, 실행 취소(history 되돌리기),
+- 다음 후보(승인 후): 카드 종류 바꾸기(새 카드는 info_card 고정), 공개 사진 다시 찾기, 다시 실행(redo),
   감정 포즈 그림 추가(목록 `characters/hamtorich_01/README.md`), toon(검증 사실 스토리 작가) 화면 연결.
 - [승인 대기] 최적화 5단계: 옛 MVP 데모·verify 스크립트 4개 `scripts/legacy/` 이동 또는 삭제.
 - [승인 대기] 최적화 6단계: Git 밖 대용량(reference.mp4 1GB, output 319MB) 정리 — 사용자 데이터.

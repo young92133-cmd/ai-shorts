@@ -85,9 +85,9 @@ class StudioTests(FactoryTestCase):
         self.assertEqual(rec["page"], n)
         self.assertIsInstance(studio.load(pid)["pose_gaps"], list)
 
-    def _state(self, pid: str):
+    def _state(self, pid: str, fmt: str = "card_news"):
         """plan 문구 순서 · manifest 기록 · 실제 PNG 파일이 서로 맞는지 한 번에 본다."""
-        folder = studio.core.output_root() / pid / "card_news"
+        folder = studio.core.output_root() / pid / fmt
         plan = json.loads((folder / "plan.json").read_text(encoding="utf-8"))
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
         heads = [pg["headline"] for pg in plan["pages"]]
@@ -139,6 +139,106 @@ class StudioTests(FactoryTestCase):
         with self.assertRaises(FactoryError):
             await studio.move_page(pid, 1, 9)
 
+    def _png(self, name="mine.png", color=(200, 80, 80)) -> Path:
+        path = Path(self._tmp.name) / name
+        PILImage.new("RGB", (640, 480), color).save(path)
+        return path
+
+    def _card_with_image_slot(self, pid: str) -> int:
+        """사진 자리가 있는 정보 카드 번호."""
+        return next(p["page"] for p in studio.load(pid)["pages"] if p["type"] == "info_card")
+
+    async def test_upload_image_follows_card_and_needs_rights(self):
+        pid = await self._make()
+        n = self._card_with_image_slot(pid)
+        src = self._png()
+        with self.assertRaises(FactoryError):
+            await studio.set_image(pid, n, src, "mine.png", confirm_rights=False)
+        with self.assertRaises(FactoryError):
+            await studio.set_image(pid, n, src, "mine.gif", confirm_rights=True)
+        bad = Path(self._tmp.name) / "bad.png"
+        bad.write_bytes(b"not an image")
+        with self.assertRaises(FactoryError):
+            await studio.set_image(pid, n, bad, "bad.png", confirm_rights=True)
+
+        jpg = Path(self._tmp.name) / "real.jpg"
+        PILImage.new("RGB", (64, 64)).save(jpg, "JPEG")
+        with self.assertRaises(FactoryError):                                   # 확장자와 실제 형식이 다름
+            await studio.set_image(pid, n, jpg, "fake.png", confirm_rights=True)
+        with patch.object(studio, "MAX_PIXELS", 64 * 64 - 1), self.assertRaises(FactoryError):   # 해상도 한도
+            await studio.set_image(pid, n, jpg, "real.jpg", confirm_rights=True)
+        with patch.object(studio, "MAX_UPLOAD", 10), self.assertRaises(FactoryError):           # 용량 한도(엔진에서도)
+            await studio.set_image(pid, n, jpg, "real.jpg", confirm_rights=True)
+        self.assertEqual(json.loads((studio.core.output_root() / pid / "card_news" / "manifest.json")
+                                    .read_text(encoding="utf-8"))["pages"][n - 1]["image"], None)   # 거부되면 아무것도 안 바뀜
+
+        rec = await studio.set_image(pid, n, src, "..\\..\\evil/mine.png", confirm_rights=True)   # 경로가 섞인 이름
+        self.assertTrue(rec["image_shown"])
+        self.assertEqual(rec["image"]["name"], "mine.png")
+        folder, heads, manifest = self._state(pid)
+        stored = manifest["pages"][n - 1]["image"]
+        self.assertTrue(stored["upload"])
+        self.assertEqual(Path(stored["path"]).parent.name, "studio")          # 프로젝트 uploads/studio/ 로 복사
+        self.assertTrue(Path(stored["path"]).is_file() and src.is_file())     # 원본은 그대로
+        self.assertIn(stored["path"], [r.get("path") for r in json.loads((folder / "sources.json").read_text(encoding="utf-8"))])
+        moved_to = 1 if n != 1 else 2
+        await studio.move_page(pid, n, moved_to)                              # 순서를 바꿔도 그 카드를 따라간다
+        _, _, manifest = self._state(pid)
+        self.assertEqual(manifest["pages"][moved_to - 1]["image"]["path"], stored["path"])
+        await studio.update_page(pid, moved_to, {"headline": "사진 카드"})       # 다시 그려도 유지
+        _, _, manifest = self._state(pid)
+        self.assertEqual(manifest["pages"][moved_to - 1]["image"]["path"], stored["path"])
+        self.assertEqual(manifest["pages"][moved_to - 1]["layout"], "image")
+        rec = await studio.clear_image(pid, moved_to)
+        self.assertIsNone(rec["image"])
+        self.assertTrue(Path(stored["path"]).is_file())                        # 빼도 파일은 지우지 않는다
+
+    async def test_comic_page_upload_replaces_first_panel_art(self):
+        pid = await self._make("insta_toon")
+        n = next(p["page"] for p in studio.load(pid)["pages"] if p["kind"] == "comic")
+        rec = await studio.set_image(pid, n, self._png("scene.png"), "scene.png", confirm_rights=True)
+        self.assertTrue(rec["image_shown"])
+        self.assertEqual(rec["panels"][0]["art"], "upload")
+        await studio.move_page(pid, n, n + 1)
+        _, _, manifest = self._state(pid, "insta_toon")
+        self.assertEqual(manifest["pages"][n]["panels"][0]["art"], "upload")
+        self.assertNotEqual(manifest["pages"][n - 1]["panels"][0]["art"] if manifest["pages"][n - 1].get("panels") else "", "upload")
+
+    async def test_undo_restores_text_order_images_and_zip(self):
+        pid = await self._make()
+        folder, original, _ = self._state(pid)
+        self.assertEqual(studio.load(pid)["undo_count"], 0)
+        n = self._card_with_image_slot(pid)
+        await studio.set_image(pid, n, self._png(), "mine.png", confirm_rights=True)
+        await studio.move_page(pid, n, 7)
+        await studio.update_page(pid, 1, {"headline": "바꾼 표지"})
+        await studio.delete_page(pid, 2)
+        self.assertEqual(studio.load(pid)["undo_count"], 4)
+
+        await studio.undo(pid)                                   # 삭제 취소
+        _, heads, _ = self._state(pid)
+        self.assertEqual(len(heads), 7)
+        self.assertEqual(heads[0], "바꾼 표지")
+        await studio.undo(pid)                                   # 문구 수정 취소
+        _, heads, manifest = self._state(pid)
+        self.assertEqual(heads[0], original[0])
+        self.assertEqual(manifest["pages"][6]["image"]["name"], "mine.png")
+        await studio.undo(pid)                                   # 순서 바꾸기 취소 → 사진도 원래 카드로
+        _, heads, manifest = self._state(pid)
+        self.assertEqual(heads, original)
+        self.assertEqual(manifest["pages"][n - 1]["image"]["name"], "mine.png")
+        self.assertIn(f"{n}장 직접 올린 이미지", (folder / "caption.txt").read_text(encoding="utf-8"))
+        await studio.undo(pid)                                   # 이미지 넣기 취소
+        _, heads, manifest = self._state(pid)
+        self.assertIsNone(manifest["pages"][n - 1]["image"])
+        self.assertEqual(studio.load(pid)["undo_count"], 0)
+        with self.assertRaises(FactoryError):
+            await studio.undo(pid)
+        self.assertEqual(len(list((folder / "history" / "undone").glob("*_plan.json"))), 4)   # 쓴 기록도 지우지 않음
+        with zipfile.ZipFile(studio.export_zip(pid)) as z:
+            for name in [f"card_{i:02d}.png" for i in range(1, 8)]:
+                self.assertEqual(z.read(name), (folder / name).read_bytes())
+
     async def test_add_comic_page_to_insta_toon(self):
         pid = await self._make("insta_toon")
         before = studio.load(pid)
@@ -175,6 +275,20 @@ class StudioTests(FactoryTestCase):
         self.assertEqual(client.post("/api/studio/projects", json={"topic": "", "format": "card_news"}).status_code, 400)
         z = client.post(f"/api/studio/projects/{pid}/export").json()
         self.assertEqual(client.get(f"/api/studio/files/{pid}/{z['file']}").status_code, 200)
+        n = self._card_with_image_slot(pid)
+        png = self._png().read_bytes()
+        r = client.post(f"/api/studio/projects/{pid}/pages/{n}/image", files={"file": ("내사진.png", png, "image/png")})
+        self.assertEqual(r.status_code, 400)                                  # 권리 확인 없이는 넣지 않는다
+        r = client.post(f"/api/studio/projects/{pid}/pages/{n}/image", files={"file": ("내사진.png", png, "image/png")},
+                        data={"confirm_rights": "true"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["image_shown"])
+        self.assertEqual(client.get(f"/api/studio/projects/{pid}").json()["pages"][n - 1]["image"]["name"], "내사진.png")
+        before = client.get(f"/api/studio/projects/{pid}").json()["undo_count"]
+        r = client.post(f"/api/studio/projects/{pid}/undo")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["undo_count"], before - 1)
+        self.assertIsNone(r.json()["pages"][n - 1]["image"])
 
 
 if __name__ == "__main__":
