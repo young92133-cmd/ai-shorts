@@ -926,6 +926,21 @@ class BalancedWrapTests(unittest.TestCase):
         cut = ["가나다", "라마…"]
         self.assertEqual(render.balanced(draw, "가나다 라마바사", fnt, width, cut), cut)   # 말줄임 줄은 그대로
 
+    def test_hook_cover_title_has_no_lonely_last_word(self):
+        """2026-10-21 검수: 표지 제목 마지막 줄에 '중' 한 글자만 남던 문제 (훅 표지도 줄 균등)."""
+        tpl = load_template("hamtorich_toon", "hybrid")
+        seen = []
+        orig = render.draw_text
+
+        def spy(draw, lines, *a, **kw):
+            seen.append(list(lines))
+            return orig(draw, lines, *a, **kw)
+        page = CardPage(type="cover", headline="내 통장서 매달 3만 2천 원 새는 중", body="")
+        with patch.object(render, "draw_text", side_effect=spy), tempfile.TemporaryDirectory() as tmp:
+            render_page(page, tpl, Path(tmp) / "c.png", PageAssets())
+        title = next(ls for ls in seen if "".join(ls).replace(" ", "") == page.headline.replace(" ", ""))
+        self.assertGreater(len(title[-1].split()), 1, title)
+
     def test_balancing_never_splits_a_word(self):
         """2026-10-20 실제 카드뉴스: 줄 균등이 폭을 좁혀 '자동이체부 / 터 걸어두기' 로 단어를 자르던 문제."""
         draw = render.ImageDraw.Draw(Image.new("RGB", (10, 10)))

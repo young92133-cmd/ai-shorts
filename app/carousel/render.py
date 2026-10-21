@@ -337,6 +337,7 @@ def r_cover_hook(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
     x0, y0, x1, y1 = tpl.box("cover", "title")
     fnt, lines, lh = fit(d, page.headline, x1 - x0, y1 - y0, tpl.font_px("hook_title", 0.13), tpl.font_px("title_min", 0.06), 3,
                          bold=True, spacing=1.15)
+    lines = balanced(d, page.headline, fnt, x1 - x0, lines)      # 마지막 줄에 '중' 처럼 한 글자만 남지 않게
     draw_text(d, lines, fnt, lh, (x0, y0, x1, y1), align="left", valign="middle", fill=tpl.color("cover_ink"),
               stroke=max(4, int(fnt.size * 0.09)) if hasattr(fnt, "size") else 4, stroke_fill=(255, 255, 255),
               emphasis=page.emphasis, emphasis_fill=tpl.color("hot", "#E5484D"))
