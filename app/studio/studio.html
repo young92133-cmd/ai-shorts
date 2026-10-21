@@ -96,7 +96,8 @@ button.danger { color:var(--err); }
   <section id="v-project" hidden>
     <div class="top">
       <h2 id="p-title"></h2>
-      <button class="act" id="undo" onclick="undo()" title="마지막 편집(문구·장면·순서·추가·삭제·이미지)을 되돌립니다">↶ 실행 취소</button>
+      <button class="act" id="undo" onclick="undo()" title="마지막 편집(문구·종류·장면·순서·추가·삭제·이미지)을 되돌립니다">↶ 실행 취소</button>
+      <button class="act" id="redo" onclick="redo()" title="실행 취소한 편집을 다시 적용합니다">↷ 다시 실행</button>
       <button onclick="exportZip()">PNG 전부 저장 (ZIP)</button>
       <button onclick="copyCaption()">캡션 복사</button>
     </div>
@@ -196,6 +197,7 @@ async function openProject(pid, page = 1) {
   history.replaceState(null, "", `#${P.project_id}/${cur}`);
   $("add-comic").hidden = P.format === "card_news";
   $("undo").textContent = `↶ 실행 취소${P.undo_count ? ` (${P.undo_count})` : ""}`; $("undo").disabled = !P.undo_count;
+  $("redo").textContent = `↷ 다시 실행${P.redo_count ? ` (${P.redo_count})` : ""}`; $("redo").disabled = !P.redo_count;
 }
 
 function drawStrip() {
@@ -205,6 +207,8 @@ function drawStrip() {
 
 const opt = (list, v) => list.map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("")
   + (v && !list.includes(v) ? `<option selected>${esc(v)}</option>` : "");
+const TYPE_NAMES = {cover: "표지", hook: "훅(질문)", info_card: "정보", checklist: "체크리스트", comparison: "비교",
+                    quote: "인용", summary: "요약(번호 목록)", cta: "마무리(저장·공유 유도)"};
 const field = (key, label, v, area) => `<label>${label}</label>` + (area
   ? `<textarea data-k="${key}">${esc(v)}</textarea>` : `<input type="text" data-k="${key}" value="${esc(v)}">`);
 
@@ -218,8 +222,19 @@ function select(n) {
   $("clear-img").disabled = !im;
   let h = "";
   if (p.kind === "card") {
+    h += `<label>카드 종류</label><select data-k="type">${(P.card_types || []).map(t =>
+      `<option value="${t}" ${t === p.type ? "selected" : ""}>${TYPE_NAMES[t] || t}</option>`).join("")}</select>`
+      + `<p class="hint" style="margin:4px 0 0">종류를 바꾸면 필요한 칸은 지금 문구로 채웁니다. 저장하면 다시 그립니다.</p>`;
     h += field("headline", "제목", d.headline) + field("body", "본문", d.body, true);
-    if (d.items && d.items.length || ["checklist", "summary"].includes(p.type)) h += field("items", "항목 (한 줄에 하나)", (d.items || []).join("\n"), true);
+    if ((d.items && d.items.length && p.type !== "comparison") || ["checklist", "summary"].includes(p.type)) h += field("items", "항목 (한 줄에 하나)", (d.items || []).join("\n"), true);
+    if (p.type === "comparison" && d.compare) {
+      const c = d.compare, cf = (k, label, v, area) => `<label>${label}</label>` + (area
+        ? `<textarea data-c="${k}">${esc(v)}</textarea>` : `<input type="text" data-c="${k}" value="${esc(v)}">`);
+      h += `<div class="panel-ed"><strong>비교</strong>` + cf("left_label", "왼쪽 제목", c.left_label)
+        + cf("left_points", "왼쪽 항목 (한 줄에 하나)", (c.left_points || []).join("\n"), true)
+        + cf("right_label", "오른쪽 제목", c.right_label) + cf("right_points", "오른쪽 항목 (한 줄에 하나)", (c.right_points || []).join("\n"), true)
+        + `</div>`;
+    }
     h += field("label", "작은 태그", d.label) + field("emphasis", "강조할 단어·숫자", d.emphasis);
   } else {
     h += field("headline", "상단 캡션", d.headline) + field("caption", "하단 설명", d.caption, true);
@@ -242,6 +257,11 @@ function collect() {
   const panels = [...$("editor").querySelectorAll("[data-panel]")].map(div => {
     const o = {}; div.querySelectorAll("[data-k]").forEach(el => o[el.dataset.k] = el.value); return o; });
   if (panels.length) f.panels = panels;
+  const cmp = $("editor").querySelectorAll("[data-c]");
+  if (cmp.length) {
+    f.compare = {title: (P.pages[cur - 1].data.compare || {}).title || ""};
+    cmp.forEach(el => f.compare[el.dataset.c] = el.dataset.c.endsWith("_points") ? el.value.split("\n").map(s => s.trim()).filter(Boolean) : el.value);
+  }
   return f;
 }
 
@@ -251,7 +271,7 @@ async function busy(fn, done = n => `${n}장을 다시 그렸습니다.`, next =
   try { await fn(); const n = next(); await openProject(P.project_id, n); $("ed-msg").innerHTML = `<span class="ok">${esc(done(n))}</span>`; }
   catch (e) { $("ed-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   finally { acts.forEach(b => b.disabled = false); if (P) { $("add-comic").hidden = P.format === "card_news";
-    $("undo").disabled = !P.undo_count; $("clear-img").disabled = !(P.pages[cur - 1] || {}).image; } }
+    $("undo").disabled = !P.undo_count; $("redo").disabled = !P.redo_count; $("clear-img").disabled = !(P.pages[cur - 1] || {}).image; } }
 }
 const post = (path, body) => api(`/api/studio/projects/${P.project_id}/${path}`, {method: "POST", body: body ? JSON.stringify(body) : undefined});
 function movePage(d) {
@@ -261,6 +281,7 @@ function movePage(d) {
 }
 const addPage = kind => busy(() => post("pages-add", {after: cur, kind}), n => `${n}장에 새 ${kind === "comic" ? "만화 컷을" : "카드를"} 넣었습니다. 문구를 고친 뒤 저장하세요.`, () => cur + 1);
 const undo = () => busy(() => post("undo"), () => "마지막 편집을 되돌렸습니다.", () => cur);
+const redo = () => busy(() => post("redo"), () => "되돌린 편집을 다시 적용했습니다.", () => cur);
 function pickImage() { $("imgfile").value = ""; $("imgfile").click(); }
 let lastImage = null;
 $("imgfile").onchange = () => {

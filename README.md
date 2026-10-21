@@ -2,6 +2,7 @@
 
 주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4(와 카드뉴스·인스타툰 PNG)를 자동으로 만드는 개인용 도구.
 현재 상태·한계는 [HANDOFF.md](HANDOFF.md) 맨 위, benchmark 현황은 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) 맨 위를 봅니다.
+카드뉴스·인스타툰 PC 스튜디오(V1.0) 사용법은 [docs/STUDIO_GUIDE_V1.md](docs/STUDIO_GUIDE_V1.md).
 
 ## 가장 많이 쓰는 말 (Claude Code / Codex 채팅)
 

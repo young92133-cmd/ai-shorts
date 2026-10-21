@@ -14,7 +14,8 @@ from typing import Any
 
 from ..carousel import characters as charmod
 from ..carousel.pipeline import MANIFEST, carousel_settings, render_kit, render_one, write_results
-from ..carousel.schema import CAROUSEL_FORMATS, EMOTIONS, CardPage, CarouselPlan, ComicBeat, ComicPage, MasterContent
+from ..carousel.schema import (CARD_TYPES, CAROUSEL_FORMATS, EMOTIONS, CardPage, CarouselPlan, ComicBeat, ComicPage,
+                               Comparison, MasterContent)
 from ..carousel.scenes import SCENES
 from ..carousel.templates import load_template
 from ..factory import core
@@ -105,6 +106,7 @@ def load(project_id: str) -> dict[str, Any]:
             "topic": manifest.get("topic") or state.get("topic", ""), "template": plan.template,
             "characters": manifest.get("characters", []), "pages": pages, "caption": caption,
             "pose_gaps": manifest.get("pose_gaps", []), "undo_count": len(_snapshots(out_dir)),
+            "redo_count": len(_snapshots(out_dir, REDO)), "card_types": list(CARD_TYPES),
             "options": options(manifest)}
 
 
@@ -134,10 +136,46 @@ def _clean(field: str, value: Any) -> Any:
     return text[:LIMITS.get(field, 40)]
 
 
+def _sentences(text: str) -> list[str]:
+    import re
+    parts = [x.strip(" -·•") for x in re.split(r"[.\n!?]|, ", text or "")]
+    return [x[:40] for x in parts if len(x) >= 2][:5]
+
+
+def _retype(page: CardPage, new_type: str) -> CardPage:
+    """카드 종류만 바꾸고, 새 종류에 꼭 필요한 칸은 기존 문구에서 채운다 (기존 문구는 지우지 않음)."""
+    if new_type not in CARD_TYPES:
+        raise FactoryError("invalid", f"카드 종류는 {', '.join(CARD_TYPES)} 중 하나입니다.")
+    upd: dict[str, Any] = {"type": new_type, "layout": ""}       # 예전 종류의 레이아웃 지정은 버린다
+    if new_type in ("checklist", "summary") and not page.items:
+        upd["items"] = _sentences(page.body) or [page.headline or "항목을 입력하세요"]
+    if new_type == "comparison" and page.compare is None:
+        pts = page.items or _sentences(page.body)
+        half = max(1, (len(pts) + 1) // 2)
+        upd["compare"] = Comparison(title=page.headline, left_label="이전", right_label="이후",
+                                    left_points=pts[:half] or ["내용을 입력하세요"], right_points=pts[half:] or ["내용을 입력하세요"])
+    return page.model_copy(update=upd)
+
+
+def _compare(value: Any) -> Comparison:
+    if not isinstance(value, dict):
+        raise FactoryError("invalid", "비교 카드 내용이 올바르지 않습니다.")
+    lines = lambda v: [str(x).strip()[:40] for x in (v or []) if str(x).strip()][:4]
+    return Comparison(title=str(value.get("title") or "").strip()[:40],
+                      left_label=str(value.get("left_label") or "").strip()[:16] or "왼쪽",
+                      right_label=str(value.get("right_label") or "").strip()[:16] or "오른쪽",
+                      left_points=lines(value.get("left_points")), right_points=lines(value.get("right_points")))
+
+
 def _apply(page, fields: dict[str, Any]):
     if isinstance(page, CardPage):
         upd = {k: _clean(k, v) for k, v in fields.items() if k in CARD_FIELDS}
-        return page.model_copy(update=upd)
+        if "compare" in fields:
+            upd["compare"] = _compare(fields["compare"])
+        page = page.model_copy(update=upd)
+        if fields.get("type") and fields["type"] != page.type:
+            page = _retype(page, str(fields["type"]))
+        return page
     upd = {k: _clean(k, v) for k, v in fields.items() if k in COMIC_FIELDS}
     panels = list(page.panels)
     for k, pf in enumerate(fields.get("panels") or []):
@@ -180,19 +218,36 @@ async def rerender(project_id: str, page_no: int) -> dict[str, Any]:
 
 # ---------- 순서 바꾸기 · 추가 · 삭제 ----------
 
-def _backup(out_dir: Path) -> None:
-    """바꾸기 전 plan·manifest 를 history/ 에 남긴다 = 실행 취소 목록 (지우지 않음)."""
-    hist = out_dir / "history"
-    hist.mkdir(exist_ok=True)
+UNDO, REDO, ARCHIVE = "history", "history/redo", "history/undone"   # 실행 취소 목록 · 다시 실행 목록 · 쓴 기록 보관
+
+
+def _snapshot(out_dir: Path, folder: str) -> None:
+    """지금 plan·manifest 를 folder 에 저장 시점으로 남긴다."""
+    dest = out_dir / folder
+    dest.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     for name in ("plan.json", MANIFEST):
         if (out_dir / name).is_file():
-            (hist / f"{stamp}_{name}").write_bytes((out_dir / name).read_bytes())
+            (dest / f"{stamp}_{name}").write_bytes((out_dir / name).read_bytes())
 
 
-def _snapshots(out_dir: Path) -> list[str]:
-    """실행 취소할 수 있는 저장 시점 (오래된 것부터). plan 과 manifest 가 둘 다 있는 것만."""
-    hist = out_dir / "history"
+def _archive(out_dir: Path, folder: str, stamp: str) -> None:
+    (out_dir / ARCHIVE).mkdir(parents=True, exist_ok=True)
+    for name in (f"{stamp}_plan.json", f"{stamp}_{MANIFEST}"):
+        if (out_dir / folder / name).is_file():
+            shutil.move(str(out_dir / folder / name), str(out_dir / ARCHIVE / name))
+
+
+def _backup(out_dir: Path) -> None:
+    """새 편집 직전: 지금 상태를 실행 취소 목록에 넣고, 다시 실행 목록은 보관함으로 옮긴다(새 편집 뒤에는 다시 실행할 수 없음)."""
+    _snapshot(out_dir, UNDO)
+    for stamp in _snapshots(out_dir, REDO):
+        _archive(out_dir, REDO, stamp)
+
+
+def _snapshots(out_dir: Path, folder: str = UNDO) -> list[str]:
+    """folder 의 저장 시점 (오래된 것부터). plan 과 manifest 가 둘 다 있는 것만."""
+    hist = out_dir / folder
     stamps = sorted(f.name[:-len("_plan.json")] for f in hist.glob("*_plan.json")) if hist.is_dir() else []
     return [t for t in stamps if (hist / f"{t}_{MANIFEST}").is_file()]
 
@@ -240,20 +295,29 @@ async def _restructure(project_id: str, change) -> dict[str, Any]:
     return load(project_id)
 
 
-async def undo(project_id: str) -> dict[str, Any]:
-    """마지막 편집(문구·장면·순서·추가·삭제·이미지) 직전 상태로 되돌린다. 쓴 저장 시점은 history/undone/ 으로 옮긴다."""
+async def _step(project_id: str, src: str, keep: str, empty: str) -> dict[str, Any]:
+    """src 목록의 마지막 저장 시점으로 전체를 다시 그린다. 그 전에 지금 상태를 keep 목록에 넣어 반대 방향으로 돌아갈 수 있게 한다."""
     job, state, fmt, out_dir = _paths(project_id)
-    stamps = _snapshots(out_dir)
+    stamps = _snapshots(out_dir, src)
     if not stamps:
-        raise FactoryError("not_ready", "되돌릴 편집 기록이 없습니다.")
-    hist, stamp = out_dir / "history", stamps[-1]
-    plan = CarouselPlan.model_validate(_read(hist / f"{stamp}_plan.json"))
-    manifest = _read(hist / f"{stamp}_{MANIFEST}", {}) or {}
+        raise FactoryError("not_ready", empty)
+    stamp = stamps[-1]
+    plan = CarouselPlan.model_validate(_read(out_dir / src / f"{stamp}_plan.json"))
+    manifest = _read(out_dir / src / f"{stamp}_{MANIFEST}", {}) or {}
+    _snapshot(out_dir, keep)
     await _render_pages(job, state, fmt, out_dir, plan, manifest, _items(plan, manifest))
-    (hist / "undone").mkdir(exist_ok=True)
-    for name in (f"{stamp}_plan.json", f"{stamp}_{MANIFEST}"):
-        shutil.move(str(hist / name), str(hist / "undone" / name))
+    _archive(out_dir, src, stamp)          # 쓴 저장 시점은 지우지 않고 history/undone/ 으로
     return load(project_id)
+
+
+async def undo(project_id: str) -> dict[str, Any]:
+    """마지막 편집(문구·종류·장면·순서·추가·삭제·이미지) 직전 상태로 되돌린다."""
+    return await _step(project_id, UNDO, REDO, "되돌릴 편집 기록이 없습니다.")
+
+
+async def redo(project_id: str) -> dict[str, Any]:
+    """실행 취소한 편집을 다시 적용한다. 실행 취소 뒤에 새로 편집하면 다시 실행 목록은 비워진다(보관함으로 이동)."""
+    return await _step(project_id, REDO, UNDO, "다시 실행할 편집이 없습니다.")
 
 
 # ---------- 카드 이미지 직접 올리기 · 빼기 ----------
@@ -374,8 +438,9 @@ def _page(project_id: str, page_no: int):
 async def update_page(project_id: str, page_no: int, fields: dict[str, Any]) -> dict[str, Any]:
     """카드 문구·컷 대사 등을 고치고 그 장만 다시 그린다."""
     out_dir, plan, page = _page(project_id, page_no)
+    page = _apply(page, fields)       # 먼저 검사 — 거절된 편집은 실행 취소 기록을 남기지 않는다
     _backup(out_dir)
-    _save_page(out_dir, plan, page_no, _apply(page, fields))
+    _save_page(out_dir, plan, page_no, page)
     return await rerender(project_id, page_no)
 
 

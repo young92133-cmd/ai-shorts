@@ -5,6 +5,7 @@
 **이 채팅이 메인 화면**이다. 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
 카드뉴스·인스타툰 스튜디오(`카드뉴스 스튜디오 실행.cmd` → http://127.0.0.1:8765/studio)는 혼자 쓰는 PC 화면: 주제→만들기→카드별 문구 수정·장면 바꾸기→ZIP 저장. 엔진 `app/studio/project.py`(Factory make·carousel 재사용), 화면·경로 `app/studio/{api.py,studio.html}`.
+스튜디오는 V1.0 기능 기준선(2026-10-21, `docs/STUDIO_GUIDE_V1.md`)이다. 이후에는 새 기능보다 콘텐츠 품질·안정성 개선을 먼저 하고, 기능 추가는 사용자 요청이 있을 때만.
 새 대형 기능(Global Trend Radar·Localization·Vision Clip Analyzer·성과 학습·자동 게시)은 사용자의 별도 요청 전에는 시작하지 않는다.
 
 ```
@@ -205,7 +206,7 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
 - 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (Codex 환경은 `scripts/factory.ps1` 과 같은 Python). 2026-10-20 기준 402개. ffmpeg 가 없는 환경에서는 실제 FFmpeg 테스트 3개가 skip 된다. 최신 결과는 `HANDOFF.md` 맨 위.
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (Codex 환경은 `scripts/factory.ps1` 과 같은 Python). 2026-10-21 기준 405개. ffmpeg 가 없는 환경에서는 실제 FFmpeg 테스트 3개가 skip 된다. 최신 결과는 `HANDOFF.md` 맨 위.
 - 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.

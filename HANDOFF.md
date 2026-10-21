@@ -3,54 +3,44 @@
 > 규칙: AGENTS.md '작업 시작 · 종료'. 이 파일은 80줄 이하로 유지하고, 끝난 기록은 `docs/history/` 로 옮긴다.
 > 2026-10-08 이전 상세 기록: `docs/history/HANDOFF_2026-09_10.md`, 옛 계획: `docs/history/IMPLEMENTATION_PLAN_2026-09_10.md`.
 
-## 현재 상태 (2026-10-19, Claude)
+## 현재 상태 (2026-10-21, Claude)
 
-- 저장소 `young92133-cmd/ai-shorts`, 브랜치 `feature/agent-content-factory`. 2026-10-19 일반 push 2회(강제 push 없음):
-  `acc4ac2` 경량화 · `95d1f2e` 스튜디오 · `93b03d5` 인스타툰 품질 · `93307ff` 카드 순서·추가·삭제 + 실제 제작 버그 수정.
-  2026-10-20: 그 다음 커밋 = 실행 취소·이미지 넣기·화면 개선(이 HANDOFF 포함), 사용자 승인 후 일반 push.
+- 저장소 `young92133-cmd/ai-shorts`, 브랜치 `feature/agent-content-factory`. 2026-10-19~21 일반 push(강제 push 없음):
+  `acc4ac2` 경량화 · `95d1f2e` 스튜디오 · `93b03d5` 인스타툰 품질 · `93307ff` 카드 순서·추가·삭제 · `ed75434` 실행 취소·이미지·화면
+  · 그 다음 커밋 = V1.0 기준선(카드 종류·다시 실행·단어 보존·사용 안내, 이 HANDOFF 포함). 모두 일반 push.
   확인: `git fetch` 후 `git status -sb` 에 ahead/behind 가 없으면 GitHub 와 일치.
 - 계획 문서: `docs/OPTIMIZATION_PLAN_2026-10-14.md`(5·6단계 승인 대기), `docs/STUDIO_PLAN_2026-10-16.md`.
 
 ### 지난 기록 (커밋됨)
 - 스튜디오 S1~S4·인스타툰 품질 개선·백업 상세: `docs/history/HANDOFF_2026-10-16_18_studio.md`
+- 카드 순서·추가·삭제, 실행 취소·이미지 넣기·화면(커밋 93307ff·ed75434): `docs/history/HANDOFF_2026-10-19_20_studio_edit.md`
 - 경량화 1~4단계: `docs/history/HANDOFF_2026-10-16_optimization.md`
 
-### 완료 (2026-10-19, 사용자 승인 후 커밋·push)
-
-- 실제 제작(스튜디오 '새로 만들기', Claude 구독 각 3회, 유료 API·이미지 생성 0, 공개 사진 검색은 무료지만 맞는 사진 0):
-  카드뉴스 8장 `output/20261019_002939_0340/card_news` · 혼합형 8장(카드4+만화4) `output/20261019_003120_1108/hybrid`,
-  각 폴더 `overview.png`(한눈에 보기)·ZIP. fallback 0. 기존 인스타툰 결과는 그대로(백업과 diff 일치).
-- 새 편집: 카드 순서 바꾸기(◀ 앞으로/뒤로 ▶)·카드 추가(+ 카드 / + 만화 컷, 카드뉴스는 만화 불가)·삭제(3~10장).
-  `studio/project.py` `_restructure`: plan 순서 변경 → 사진·업로드 고정 그림도 같이 이동 → 전체 새 번호로 다시 그림 →
-  남는 옛 card_NN 정리 → manifest·sources·caption 다시 씀. 바꾸기 전 plan·manifest 는 `<형식>/history/` 에 보존.
-  manifest·출처·캡션 쓰기는 `carousel/pipeline.write_results` 하나(제작·1장 수정·구조 편집 공용, 사진 크레딧 장 번호 자동 갱신).
-- 시연(카드뉴스 프로젝트): 7장 제목 수정 → 6장 앞으로 → 7장 뒤 카드 추가·문구 저장 → 삭제 → 원래 순서로 → ZIP.
-  plan·manifest·PNG 파일명·ZIP 내용 일치 확인.
-- 실제 결과에서 고친 렌더 버그(`carousel/render.py`): 인용 카드에 인용문이 본문 칸에만 있으면 큰 따옴표만 남던 문제,
-  훅 표지 부제가 캐릭터 밑으로 들어가 잘리던 문제(캐릭터 실제 왼쪽 끝까지로 줄이고 3줄 허용).
-- 수정 파일: app/carousel/{pipeline,render}.py, app/studio/{project,api}.py, studio.html, tests/test_{studio,carousel}.py
-
-### 완료 (2026-10-20, 사용자 승인 후 커밋·push) — 스튜디오 사용성
-- 실행 취소: `history/` 저장 시점을 그대로 실행 취소 목록으로 씀. 문구 수정·장면 바꾸기·순서·추가·삭제·이미지 넣기/빼기 전에
-  저장 → `studio.undo` 가 마지막 시점으로 전체 다시 그림(`_render_pages`, 순서 편집과 같은 경로), 쓴 시점은 `history/undone/` 으로 이동.
-- 이미지 직접 넣기·교체·빼기: `studio.set_image/clear_image`. 권리 확인(화면 확인창) 필수, PNG·JPG·WEBP 20MB,
-  확장자와 실제 형식 일치·4천만 화소 이하(엔진에서 검사), 저장 이름은 앱이 만듦(사용자 파일명은 표시용 이름만),
-  `uploads/studio/` 로 복사 + 출처 대장 등록(`core._own_rights`). 그 페이지 manifest `image`(upload·name) 로 남아 순서 변경·다시 그리기·실행 취소에도
-  따라감. 만화 페이지는 첫 컷 그림으로 쓰임(`pipeline.render_one`). `_page_record` 가 upload·name 을 버리던 문제 수정.
-- 화면: 편집 버튼을 미리보기 옆 세로 줄로, 미리보기·편집 칸을 창 높이에 맞춤(저장 버튼 고정), 상단 '↶ 실행 취소(n)',
-  `/studio#<프로젝트>/<장>` 바로 열기, `/studio` 캐시 안 함. 1280×800 에서 페이지 높이 1,621→838px.
-- 확인: 실제 스튜디오(복사본 프로젝트)에서 이미지 넣기 → 순서 이동(이미지 따라감) → 실행 취소 2회 → 원본과 문구·PNG 8장 바이트 동일, ZIP=파일. 복사본은 삭제.
-- 수정 파일: app/studio/{project,api}.py, studio.html, app/carousel/pipeline.py, tests/test_studio.py
+### 완료 (2026-10-21, 사용자 승인 후 커밋·push) — 스튜디오 V1.0 기능 기준선
+- V1.0 = 이 커밋의 기능(만들기·문구/종류/장면 편집·순서/추가/삭제·이미지·실행 취소/다시 실행·ZIP). 사용법 `docs/STUDIO_GUIDE_V1.md`.
+  버전은 문서로만 표기(Git 태그·Release 없음, 만들려면 별도 승인). 이후는 새 기능보다 품질·안정성 우선(AGENTS.md).
+- 카드 종류 바꾸기: 편집 칸 '카드 종류'(카드 8종, 만화↔카드는 안 함). `studio._retype` 가 새 종류에 필요한 칸만 기존 문구로 채움
+  (체크리스트·요약=본문 문장→항목, 비교=항목 반씩), 비교 카드는 왼쪽·오른쪽 제목·항목 편집 칸. 8종×템플릿 2개 렌더 대체 없음 확인.
+- 다시 실행(redo): `history/redo/` 목록. 실행 취소 전 지금 상태를 redo 에, 다시 실행 전 지금 상태를 history 에 넣고(`_step`),
+  새 편집이면 redo 목록을 `history/undone/` 으로 옮김(삭제 없음). 거절된 편집은 기록을 남기지 않게 검사 순서 수정.
+- 렌더 버그: 줄 균등(`balanced`)이 폭을 좁혀 '자동이체부 / 터' 처럼 단어를 자르던 문제 → 가장 긴 단어보다 좁히지 않음 + `fit` 도 단어 보존.
+- 실제 제작 5편(스튜디오 API = '새로 만들기'와 같은 경로, Claude 구독 2~4회씩, 유료 API·이미지 생성 0, 각 65~150초, 대체 레이아웃 0):
+  카드뉴스 `20261019_232015_b625`(신용점수)·`20261019_232120_c27f`(연말정산), 인스타툰 `20261019_232350_20cb`(점심값)·
+  `20261019_232526_4972`(관리비), 혼합형 `20261019_232656_1ae7`(구독료). 각 `<형식>/overview.png`. 렌더 버그 수정 뒤 5편 다시 그림(AI 호출 없음).
+- 평가 요약: 혼합형·관리비 툰·카드뉴스 2편은 게시 가능 수준(사람이 수치 확인 후). 점심값 툰은 이야기 연결 약함.
+  공통 과제 ① 표정 그림 부족(만화 3편 모두 놀람·슬픔 등 대체) ② 공개 사진 0건 → 카드가 그래픽 위주로 단조
+  ③ AI 문구의 구체 수치(판매량·공제율 등)는 게시 전 확인 필요 ④ 출처 이름이 '자료 1' 처럼 불명확한 경우.
+- 수정 파일: app/studio/{project,api}.py, studio.html, app/carousel/render.py, tests/test_{studio,carousel}.py,
+  docs/STUDIO_GUIDE_V1.md(새), README·AGENTS(안내 한 줄)
 
 ### 테스트
 
-- 2026-10-20 전체 `unittest discover`: **402개 통과**(실행 취소·이미지 넣기·만화 이미지 3개 추가, API·업로드 검증 테스트 확장).
-- 글꼴 순서: Windows 에서는 전과 같이 `malgunbd.ttf` 가 먼저 잡힌다. 다른 OS 대체 순서만 하나로 합쳐짐.
+- 2026-10-21 전체 `unittest discover`: **405개 통과**(종류 바꾸기·다시 실행·단어 보존 3개 추가).
 
-## 남은 작업 / 다음 작업
+## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)
 
-- 다음 후보(승인 후): 카드 종류 바꾸기(새 카드는 info_card 고정), 공개 사진 다시 찾기, 다시 실행(redo),
-  감정 포즈 그림 추가(목록 `characters/hamtorich_01/README.md`), toon(검증 사실 스토리 작가) 화면 연결.
+- V1.0 전 권장: 햄토리치 감정 포즈(슬픔·놀람·무표정·생각) 그림 추가(목록 `characters/hamtorich_01/README.md`, 사용자 제작),
+  게시 전 수치 확인 습관(카드에 나온 숫자를 출처와 대조), 카드뉴스는 직접 찍은 사진·그림을 '이미지 넣기'로 보강.
 - [승인 대기] 최적화 5단계: 옛 MVP 데모·verify 스크립트 4개 `scripts/legacy/` 이동 또는 삭제.
 - [승인 대기] 최적화 6단계: Git 밖 대용량(reference.mp4 1GB, output 319MB) 정리 — 사용자 데이터.
 - [보류] Gemini 포즈·배경 54장 생성은 중단 상태. `--confirm-cost` 와 사용자 승인 없이는 호출하지 않는다.

@@ -174,6 +174,14 @@ async def undo(pid: str):
         raise _err(e)
 
 
+@router.post("/api/studio/projects/{pid}/redo")
+async def redo(pid: str):
+    try:
+        return await _in_thread(studio.redo, pid)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
 @router.post("/api/studio/projects/{pid}/pages/{n}/image")
 async def upload_image(pid: str, n: int, file: UploadFile = File(...), confirm_rights: bool = Form(False)):
     """카드 n 에 PC 이미지를 넣는다(교체). 임시 파일로 받은 뒤 프로젝트 uploads/studio/ 로 복사한다."""

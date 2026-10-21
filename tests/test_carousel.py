@@ -926,6 +926,15 @@ class BalancedWrapTests(unittest.TestCase):
         cut = ["가나다", "라마…"]
         self.assertEqual(render.balanced(draw, "가나다 라마바사", fnt, width, cut), cut)   # 말줄임 줄은 그대로
 
+    def test_balancing_never_splits_a_word(self):
+        """2026-10-20 실제 카드뉴스: 줄 균등이 폭을 좁혀 '자동이체부 / 터 걸어두기' 로 단어를 자르던 문제."""
+        draw = render.ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        fnt = render.font(96)
+        text = "자동이체부터 걸어두기"
+        width = draw.textlength("자동이체부터", font=fnt) + 40
+        lines = render.balanced(draw, text, fnt, width, render._wrap(draw, text, fnt, width))
+        self.assertEqual(lines, ["자동이체부터", "걸어두기"])
+
 
 class ToonQualityTests(unittest.TestCase):
     """2026-10-18 인스타툰 품질: 상대역 모양 구별 · 장면 시간대 · 표정 그림 일치 기록 · 말풍선 높이 측정."""

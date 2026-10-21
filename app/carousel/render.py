@@ -68,7 +68,9 @@ def fit(draw, text: str, max_w: float, max_h: float, start: int, min_size: int, 
         fnt = font(size, bold)
         lines = _wrap(draw, text, fnt, max_w)
         line_h = int(size * spacing)
-        if (len(lines) <= max_lines and line_h * len(lines) <= max_h) or size <= min_size:
+        # 한 단어가 줄보다 길면 글자 단위로 잘린다('자동이체부 / 터') → 최소 크기 전까지는 글자를 줄여 단어를 지킨다
+        word_cut = any(draw.textlength(w, font=fnt) > max_w for w in _clean(text).split())
+        if (len(lines) <= max_lines and line_h * len(lines) <= max_h and not word_cut) or size <= min_size:
             limit = max(1, min(max_lines, int(max_h // line_h) or 1))
             if len(lines) > limit:
                 lines = lines[:limit]
@@ -81,7 +83,10 @@ def balanced(draw, text: str, fnt, max_w: float, lines: list[str]) -> list[str]:
     """같은 줄 수를 유지하면서 가장 좁은 폭으로 다시 줄바꿈해 마지막 줄에 단어 하나만 남지 않게 한다."""
     if len(lines) < 2 or lines[-1].endswith("…"):
         return lines
-    lo, hi, best = max_w * 0.4, max_w, lines
+    widest = max((draw.textlength(w, font=fnt) for w in _clean(text).split()), default=0)
+    lo, hi, best = max(max_w * 0.4, widest + 1), max_w, lines      # 가장 긴 단어보다 좁히면 단어가 글자 단위로 잘린다
+    if lo >= hi:
+        return lines
     for _ in range(12):
         mid = (lo + hi) / 2
         trial = _wrap(draw, text, fnt, mid)

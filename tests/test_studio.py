@@ -58,7 +58,7 @@ class StudioTests(FactoryTestCase):
         folder = studio.core.output_root() / pid / "card_news"
         before = {p.name: p.stat().st_mtime_ns for p in folder.glob("card_*.png")}
         page = studio.load(pid)["pages"][2]
-        rec = await studio.update_page(pid, 3, {"headline": "바꾼 제목", "body": "바꾼 본문", "type": "cta", "kind": "comic"})
+        rec = await studio.update_page(pid, 3, {"headline": "바꾼 제목", "body": "바꾼 본문", "kind": "comic", "source": "x"})
         self.assertEqual(rec["headline"], "바꾼 제목")
         plan = json.loads((folder / "plan.json").read_text(encoding="utf-8"))
         self.assertEqual(plan["pages"][2]["headline"], "바꾼 제목")
@@ -235,6 +235,73 @@ class StudioTests(FactoryTestCase):
         with self.assertRaises(FactoryError):
             await studio.undo(pid)
         self.assertEqual(len(list((folder / "history" / "undone").glob("*_plan.json"))), 4)   # 쓴 기록도 지우지 않음
+        with zipfile.ZipFile(studio.export_zip(pid)) as z:
+            for name in [f"card_{i:02d}.png" for i in range(1, 8)]:
+                self.assertEqual(z.read(name), (folder / name).read_bytes())
+
+    async def test_change_card_type_keeps_text_and_fills_needed_fields(self):
+        pid = await self._make()
+        n = self._card_with_image_slot(pid)
+        before = studio.load(pid)["pages"][n - 1]["data"]
+        rec = await studio.update_page(pid, n, {"type": "checklist"})
+        folder, _, manifest = self._state(pid)
+        self.assertEqual(rec["type"], "checklist")
+        self.assertFalse(rec["fallback_used"], rec.get("fallback_reason"))
+        page = studio.load(pid)["pages"][n - 1]["data"]
+        self.assertEqual((page["headline"], page["body"]), (before["headline"], before["body"]))   # 문구는 그대로
+        self.assertTrue(page["items"])                                                         # 필요한 칸은 채움
+
+        rec = await studio.update_page(pid, n, {"type": "comparison"})
+        self.assertFalse(rec["fallback_used"], rec.get("fallback_reason"))
+        cmp_ = studio.load(pid)["pages"][n - 1]["data"]["compare"]
+        self.assertTrue(cmp_["left_points"] and cmp_["right_points"])
+        await studio.update_page(pid, n, {"compare": {"left_label": "전", "right_label": "후",
+                                                      "left_points": ["남으면 저축"], "right_points": ["먼저 저축"]}})
+        cmp_ = studio.load(pid)["pages"][n - 1]["data"]["compare"]
+        self.assertEqual((cmp_["left_label"], cmp_["right_points"]), ("전", ["먼저 저축"]))
+        undo_before = studio.load(pid)["undo_count"]
+        with self.assertRaises(FactoryError):
+            await studio.update_page(pid, n, {"type": "comic_scene"})                 # 카드↔만화 바꾸기는 안 함
+        self.assertEqual(studio.load(pid)["undo_count"], undo_before)               # 거절된 편집은 기록하지 않음
+        for _ in range(3):
+            await studio.undo(pid)
+        self.assertEqual(studio.load(pid)["pages"][n - 1]["type"], "info_card")
+        self._state(pid)
+
+    async def test_redo_after_undo_and_new_edit_clears_redo(self):
+        pid = await self._make()
+        folder, original, _ = self._state(pid)
+        n = self._card_with_image_slot(pid)
+        await studio.set_image(pid, n, self._png(), "mine.png", confirm_rights=True)
+        await studio.move_page(pid, n, 6)
+        after_move = self._state(pid)[1]
+        await studio.undo(pid)
+        await studio.undo(pid)
+        self.assertEqual(self._state(pid)[1], original)
+        self.assertEqual(studio.load(pid)["redo_count"], 2)
+
+        await studio.redo(pid)                                      # 이미지 다시 넣기
+        _, heads, manifest = self._state(pid)
+        self.assertEqual(heads, original)
+        self.assertEqual(manifest["pages"][n - 1]["image"]["name"], "mine.png")
+        await studio.redo(pid)                                      # 순서 다시 바꾸기 → 이미지도 같이
+        _, heads, manifest = self._state(pid)
+        self.assertEqual(heads, after_move)
+        self.assertEqual(manifest["pages"][5]["image"]["name"], "mine.png")
+        self.assertIn("6장 직접 올린 이미지", (folder / "caption.txt").read_text(encoding="utf-8"))
+        self.assertIn(manifest["pages"][5]["image"]["path"],
+                      [r.get("path") for r in json.loads((folder / "sources.json").read_text(encoding="utf-8"))])
+        with self.assertRaises(FactoryError):
+            await studio.redo(pid)
+
+        await studio.undo(pid)
+        self.assertEqual(studio.load(pid)["redo_count"], 1)
+        await studio.update_page(pid, 1, {"headline": "새 편집"})        # 새 편집 → 다시 실행 목록은 보관함으로
+        state = studio.load(pid)
+        self.assertEqual((state["redo_count"], state["undo_count"]), (0, 2))
+        with self.assertRaises(FactoryError):
+            await studio.redo(pid)
+        self.assertGreaterEqual(len(list((folder / "history" / "undone").glob("*_plan.json"))), 4)   # 지우지 않고 보관
         with zipfile.ZipFile(studio.export_zip(pid)) as z:
             for name in [f"card_{i:02d}.png" for i in range(1, 8)]:
                 self.assertEqual(z.read(name), (folder / name).read_bytes())
