@@ -61,8 +61,6 @@ def compliance(topic: Topic) -> list[str]:
         flags.append('금융 보장·단정 표현 검토 필요')
     if re.search(r'광고|협찬|홍보|제휴', text):
         flags.append('광고: 사업자 서비스·자격·표시·주장 검증 필요')
-    if topic.character_rights not in ('owned', 'licensed'):
-        flags.append('캐릭터 사용 권한 미확인')
     return list(dict.fromkeys(flags))
 
 

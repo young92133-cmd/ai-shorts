@@ -1,11 +1,10 @@
 """Chat-facing CLI for Topic Strategy; existing make/trends/batch are unchanged."""
 from __future__ import annotations
 
-import argparse
 import json
+import re
 
 from . import core, batch
-from .intent import detect_topic_request
 from ..topics import discovery, calendar
 from ..topics.config import DEFAULTS
 from ..topics.engine import Engine
@@ -14,7 +13,7 @@ from ..topics.schema import CATEGORIES
 
 
 def add_parser(sub):
-    p = sub.add_parser('topics', help='주제 수집·검증·추천·승인·스토리·콘텐츠 캘린더')
+    p = sub.add_parser('topics', help='주제 수집·검증·추천·승인·쇼츠 제작·콘텐츠 캘린더')
     commands = p.add_subparsers(dest='topics_cmd', required=True)
     collect = commands.add_parser('collect', help='공개 뉴스·공식 자료·RSS·기존 discovery 수집')
     collect.add_argument('--category', choices=('all', *CATEGORIES), default='all')
@@ -35,7 +34,7 @@ def add_parser(sub):
     cal.add_argument('--weeks', type=int, choices=(1,2,3,4), default=1)
     cal.add_argument('--count', type=int)
     cal.add_argument('--start', help='시작 날짜 YYYY-MM-DD (기본 다음 월요일)')
-    for name in ('inspect', 'verify', 'approve', 'exclude', 'hold', 'release', 'review', 'published', 'edit', 'schedule', 'plan', 'create'):
+    for name in ('inspect', 'verify', 'approve', 'exclude', 'hold', 'release', 'review', 'published', 'edit', 'schedule', 'create'):
         command = commands.add_parser(name)
         group = command.add_mutually_exclusive_group(required=True)
         group.add_argument('--id', dest='topic_id')
@@ -48,26 +47,36 @@ def add_parser(sub):
         if name == 'edit':
             command.add_argument('--title')
             command.add_argument('--direction')
-            command.add_argument('--character')
             command.add_argument('--facts', help='근거·기준일·단위·적용대상 포함 Fact 배열 JSON')
             command.add_argument('--followup', action='store_true', default=None)
             command.add_argument('--series-parent')
             command.add_argument('--update-of')
         if name == 'schedule':
             command.add_argument('--date', required=True)
-        if name in ('plan', 'create'):
-            command.add_argument('--format', choices=('hybrid','insta_toon','card_news', *(['shorts','all'] if name=='create' else [])), default='hybrid')
-            command.add_argument('--pages', type=int, choices=(8,), default=8)
-        if name == 'plan':
-            command.add_argument('--preview', action='store_true')
         if name == 'create':
-            command.add_argument('--dry-run', action='store_true', help='제작 엔진 전달 JSON만 출력, 렌더/API 호출 없음')
-            command.add_argument('--also', action='append', choices=('shorts','card_news','insta_toon','hybrid'), default=[])
-    request = commands.add_parser('request', help='기존 intent 모듈로 자연어 전략 명령 처리')
+            command.add_argument('--dry-run', action='store_true', help='make 에 넘길 지시문만 출력, 렌더/API 호출 없음')
+            command.add_argument('--review', action='store_true', help='대본까지만 만들고 승인 대기')
+            command.add_argument('--seconds', type=int)
+            command.add_argument('--preset', default='daily')
+    request = commands.add_parser('request', help='자연어 전략 명령 처리 (추천·목록·캘린더·번호 제작)')
     request.add_argument('text')
     request.add_argument('--selection')
     request.add_argument('--dry-run', action='store_true')
     return p
+
+
+def detect_topic_request(text: str) -> dict:
+    """'추천 3개', '2주 캘린더', '1번으로 만들어줘'. 번호는 사용자가 본 selection_id 와 함께만 쓴다."""
+    t = re.sub(r'\s+', ' ', text.lower()).strip()
+    match = re.search(r'(\d+)\s*개', t)
+    weeks = re.search(r'(\d+)\s*주', t)
+    select = re.search(r'(\d+)\s*번', t)
+    category = 'housing' if any(w in t for w in ('부동산', '주거', '전세', '월세')) else 'finance' if '재테크' in t else 'economy' if '경제 뉴스' in t else 'all'
+    action = ('calendar' if any(w in t for w in ('캘린더', '일정')) else 'create' if select and any(w in t for w in ('만들', '제작')) else
+              'recommend' if any(w in t for w in ('추천', '영업')) else 'list' if any(w in t for w in ('보여', '목록')) else 'unknown')
+    return {'action':action, 'category':category, 'limit':int(match[1]) if match else 3 if action=='recommend' else 10,
+            'weeks':int(weeks[1]) if weeks else 1, 'select':int(select[1]) if select else None,
+            'review':'검토' in t or '대본만' in t, 'b2b':'b2b' in t or '영업' in t}
 
 
 def engine() -> Engine:
@@ -141,7 +150,7 @@ async def dispatch(a, log=print):
                 key = e.select(intent['select'], a.selection)
                 # "1번으로 만들어줘" explicitly approves the seen choice; factual gates still apply.
                 await e.approve(key)
-                return await e.create(key, fmt=intent['format'], pages=intent['pages'], dry_run=a.dry_run, log=log)
+                return await e.create(key, review=intent['review'], dry_run=a.dry_run, log=log)
             raise ValueError('전략 요청을 알아보지 못했습니다. 추천/목록/캘린더/번호 제작을 지정해 주세요')
         key = a.topic_id or e.select(a.select, a.selection)
         if cmd == 'inspect':
@@ -160,14 +169,12 @@ async def dispatch(a, log=print):
             if a.facts:
                 with open(a.facts, encoding='utf-8') as file:
                     facts = json.load(file)
-            topic = e.edit(key, title=a.title, direction=a.direction, character=a.character, facts=facts,
+            topic = e.edit(key, title=a.title, direction=a.direction, facts=facts,
                            followup=a.followup, series_parent_id=a.series_parent, update_of=a.update_of)
         elif cmd == 'schedule':
             topic = calendar.reschedule(e.store, key, a.date)
-        elif cmd == 'plan':
-            return {'status':'planned', 'plan':(await e.plan(key, fmt=a.format, pages=a.pages, preview=a.preview)).model_dump()}
         elif cmd == 'create':
-            return await e.create(key, fmt=a.format, pages=a.pages, dry_run=a.dry_run, also=a.also, log=log)
+            return await e.create(key, dry_run=a.dry_run, review=a.review, seconds=a.seconds, preset=a.preset, log=log)
         else:
             raise ValueError('지원하지 않는 전략 명령')
         return {'status':'ok', 'topic':topic.model_dump()}

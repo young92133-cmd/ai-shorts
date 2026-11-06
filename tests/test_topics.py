@@ -265,35 +265,32 @@ class VerificationScoringTests(StoreCase):
         self.assertFalse(self.store.get(a.topic_id).duplicate_of)
 
 
-class StoryTests(StoreCase):
-    def test_eight_pages_character_registry_and_shared_schema(self):
-        from app.topics.story import build_story, ROLES
+class BriefTests(StoreCase):
+    def test_brief_uses_only_verified_facts_with_sources(self):
+        from app.topics.brief import shorts_brief
         from app.topics.verification import verify
-        from app.carousel.schema import CarouselPlan, MasterContent, ComicPage
         t = verify(self.store, topic_fixture(self.store), at=TODAY)
-        p = build_story(t, self.store.evidence(t), at=TODAY)
-        self.assertEqual([r.role for r in p.pages], list(ROLES))
-        self.assertEqual(len(p.pages), 8)
-        self.assertEqual(p.character_id, 'tory_01')
-        self.assertTrue(any(isinstance(page, ComicPage) for page in CarouselPlan.model_validate(p.carousel_plan).pages))
-        self.assertEqual(MasterContent.model_validate(p.master).facts[0].text, t.facts[0].claim)
-        self.assertTrue(p.pages[3].fact_ids)
-        self.assertIn('창작', p.dialogue_disclaimer)
-        for mode in ('card_news', 'insta_toon'):
-            q = build_story(t, self.store.evidence(t), fmt=mode, at=TODAY)
-            cards = CarouselPlan.model_validate(q.carousel_plan)
-            self.assertEqual(sum(isinstance(page, ComicPage) for page in cards.pages), 6 if mode == 'insta_toon' else 0)
+        b = shorts_brief(t, self.store.evidence(t), at=TODAY)
+        self.assertEqual(b['title'], t.title)
+        self.assertIn(t.facts[0].claim, b['instructions'])
+        self.assertIn('지어내지 마라', b['instructions'])
+        self.assertIn('주거 교육 자료', b['instructions'])          # 출처는 주소 대신 자료명
+        self.assertEqual(b['fact_ids'], ['f1'])
+        self.assertEqual(b['provenance']['model'], 'none')
 
-    def test_missing_character_and_unauthorized_reference(self):
-        from app.topics.story import build_story
-        from app.topics.verification import verify
-        t = verify(self.store, topic_fixture(self.store, character_id='missing_01'), at=TODAY)
-        with self.assertRaises(KeyError):
-            build_story(t, self.store.evidence(t), at=TODAY)
-        t.character_id, t.character_rights = 'tory_01', 'benchmark_account'
-        verify(self.store, t, at=TODAY)
+    def test_unverified_topic_has_no_brief(self):
+        from app.topics.brief import shorts_brief
+        t = topic_fixture(self.store)
         with self.assertRaises(ValueError):
-            build_story(t, self.store.evidence(t), at=TODAY)
+            shorts_brief(t, self.store.evidence(t), at=TODAY)
+
+    def test_old_card_fields_in_saved_topics_are_ignored(self):
+        t = topic_fixture(self.store)
+        path = self.store.path('topics', t.topic_id)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        data.update(character_id='tory_01', character_rights='owned')
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+        self.assertEqual(self.store.get(t.topic_id).title, t.title)
 
 
 class WorkflowTests(unittest.IsolatedAsyncioTestCase):
@@ -316,66 +313,45 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.engine.create(self.t.topic_id, dry_run=True, at=TODAY)
         await self.prepare()
-        out = await self.engine.create(self.t.topic_id, dry_run=True, at=TODAY, fmt='all', also=['card_news'])
-        self.assertEqual([r['format'] for r in out['delivery']], ['hybrid', 'shorts', 'card_news'])
-        self.assertEqual(self.store.get(self.t.topic_id).status, 'planned')
+        out = await self.engine.create(self.t.topic_id, dry_run=True, at=TODAY)
+        self.assertEqual(out['engine'], 'app.factory.core.make')
+        self.assertIn(self.t.facts[0].claim, out['brief']['instructions'])
         self.assertFalse(out['generated'])
+        self.assertTrue(self.store.path('briefs', self.t.topic_id).is_file())
 
-    async def test_approved_plan_reaches_existing_engine_without_replanning(self):
+    async def test_approved_topic_reaches_shorts_make_with_verified_facts(self):
         from app.factory import core
-        from app.carousel import pipeline
         await self.prepare()
-        captures = []
-        async def fake_carousel(job_dir, **kw):
-            captures.append(kw)
-            d = job_dir / 'hybrid'
-            d.mkdir(parents=True)
-            paths = []
-            for i in range(8):
-                p = d / f'card_{i+1:02d}.png'
-                p.write_bytes(b'test fixture')
-                paths.append(str(p))
-            m = d / 'manifest.json'
-            m.write_text('{}', encoding='utf-8')
-            return {'format':'hybrid', 'dir':str(d), 'pages':paths, 'manifest':str(m), 'title':kw['text']}
-        with patch.object(core, 'output_root', return_value=self.store.root / 'output'), \
-             patch.object(pipeline, 'run_carousel', new=fake_carousel), \
-             patch.object(pipeline, 'build_master', new=AsyncMock(side_effect=AssertionError('no AI'))), \
-             patch.object(pipeline, 'plan_pages', new=AsyncMock(side_effect=AssertionError('no AI'))):
-            out = await self.engine.create(self.t.topic_id, at=TODAY, log=lambda _:None)
+        project = self.store.root / 'output' / 'p1'
+        project.mkdir(parents=True)
+        done = {'status': 'render_complete', 'project_id': 'p1', 'project_dir': str(project)}
+        with patch.object(core, 'make', new=AsyncMock(return_value=done)) as make:
+            out = await self.engine.create(self.t.topic_id, review=True, seconds=40, at=TODAY, log=lambda _:None)
+        kw = make.call_args.kwargs
+        self.assertEqual(kw['topic'], self.t.title)
+        self.assertIn(self.t.facts[0].claim, kw['instructions'])
+        self.assertEqual((kw['review'], kw['seconds']), (True, 40))
         self.assertEqual(out['status'], 'generated')
-        self.assertEqual(len(captures[0]['prepared_plan'].pages), 8)
-        self.assertEqual(captures[0]['prepared_master'].topic, self.t.title)
-        self.assertFalse(captures[0]['image_search'])
-        self.assertEqual(captures[0]['cfg']['carousel']['image_provider'], 'none')
+        self.assertTrue((project / 'topic_strategy.json').is_file())
         self.engine.transition(self.t.topic_id, 'review')
         t = await self.engine.record_published(self.t.topic_id, at=TODAY)
         self.assertEqual(t.status, 'published')
         self.assertEqual(len(self.store.history()), 1)
 
-    async def test_shared_carousel_uses_prepared_content(self):
-        from app.carousel import pipeline
-        from app.carousel.schema import MasterContent, CarouselPlan
+    async def test_script_review_pause_is_reported(self):
+        from app.factory import core
         await self.prepare()
-        plan = await self.engine.plan(self.t.topic_id, at=TODAY)
-        def fake_render(page, tpl, out, assets):
-            out.write_bytes(b'fixture')
-            return {'path':str(out), 'fallback_used':False, 'image_use':'mascot' if hasattr(page, 'panels') else 'graphic'}
-        with patch.object(pipeline, 'build_master', new=AsyncMock(side_effect=AssertionError('must bypass'))), \
-             patch.object(pipeline, 'plan_pages', new=AsyncMock(side_effect=AssertionError('must bypass'))), \
-             patch.object(pipeline, 'gather_inputs', new=AsyncMock(side_effect=AssertionError('must bypass'))), \
-             patch.object(pipeline, 'render_page', side_effect=fake_render):
-            out = await pipeline.run_carousel(self.store.root / 'prod', fmt='hybrid', mode='topic_strategy', text=self.t.title,
-                cfg={'llm':{}, 'carousel':{'image_provider':'none'}}, inputs={'topic':self.t.title, 'docs':[]}, image_search=False,
-                prepared_master=MasterContent.model_validate(plan.master), prepared_plan=CarouselPlan.model_validate(plan.carousel_plan),
-                progress=lambda *args:None)
-        self.assertEqual(out['page_count'] if 'page_count' in out else len(out['pages']), 8)
+        pending = {'status': 'script_review', 'project_id': 'p2'}
+        with patch.object(core, 'make', new=AsyncMock(return_value=pending)):
+            out = await self.engine.create(self.t.topic_id, review=True, at=TODAY, log=lambda _:None)
+        self.assertEqual(out['status'], 'script_review')
+        self.assertEqual(self.store.get(self.t.topic_id).status, 'planned')
 
     async def test_conflicting_or_modified_topic_cannot_create(self):
         from app.factory import core
         await self.prepare()
         self.engine.edit(self.t.topic_id, title='전세 월세 비교 새 제목')
-        with patch.object(core, 'make_planned_carousel', new=AsyncMock()) as render:
+        with patch.object(core, 'make', new=AsyncMock()) as render:
             with patch.object(discovery, 'fetch_evidence', new=AsyncMock(return_value=evidence())):
                 with self.assertRaises(ValueError):
                     await self.engine.create(self.t.topic_id, at=TODAY)
@@ -407,7 +383,7 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         t = self.store.get(self.t.topic_id)
         t.facts[0].citations[0].result = 'contradicts'
         self.store.save_topic(t)
-        with patch.object(core, 'make_planned_carousel', new=AsyncMock()) as factory:
+        with patch.object(core, 'make', new=AsyncMock()) as factory:
             with self.assertRaises(ValueError):
                 await self.engine.create(t.topic_id, at=TODAY)
             factory.assert_not_called()
@@ -469,18 +445,17 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.get(broken.topic_id).verification, 'needs_review')
         self.assertTrue(result['storage_errors'])
 
-    async def test_regenerate_after_failure_and_plan_revision_preserved(self):
+    async def test_regenerate_after_failure(self):
         from app.factory import core
         await self.prepare()
         failed = {'status':'failed', 'message':'temporary'}
         good = {'status':'render_complete', 'project_id':'fixture_success'}
-        with patch.object(core, 'make_planned_carousel', new=AsyncMock(side_effect=[failed, good])):
+        with patch.object(core, 'make', new=AsyncMock(side_effect=[failed, good])):
             result = await self.engine.create(self.t.topic_id, at=TODAY, log=lambda _:None)
             self.assertEqual(result['status'], 'partial_failure')
             result = await self.engine.create(self.t.topic_id, at=TODAY, log=lambda _:None)
             self.assertEqual(result['status'], 'generated')
         self.assertEqual(len(self.store.get(self.t.topic_id).projects), 2)
-        self.assertTrue(list((self.store.root / 'plan_history').rglob('*.json')))
         self.engine.transition(self.t.topic_id, 'review')
         t = await self.engine.record_published(self.t.topic_id, at=TODAY)
         self.assertEqual(t.status, 'published')
@@ -502,11 +477,14 @@ class TopicCliTests(unittest.IsolatedAsyncioTestCase):
         parser = self.cli._parser()
         for cmd in (['topics','collect','--category','all'], ['topics','rank','--limit','10'],
                     ['topics','recommend','--limit','3'], ['topics','calendar','--weeks','4'],
-                    ['topics','approve','--id','topic_abc'], ['topics','create','--id','topic_abc','--format','hybrid']):
+                    ['topics','approve','--id','topic_abc'], ['topics','create','--id','topic_abc','--review']):
             self.assertEqual(parser.parse_args(cmd).cmd, 'topics')
         old = parser.parse_args(['make','--topic','x','--format','information'])
         self.assertEqual(old.content_format, 'information')
-        self.assertIsNone(old.output_format)
+        for removed in (['make','--topic','x','--format','card_news'], ['toon','x'], ['characters'],
+                        ['topics','plan','--id','topic_abc']):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(removed)
 
     async def test_cli_rank_approve_create_dry_run(self):
         from app.factory import topics
@@ -517,14 +495,15 @@ class TopicCliTests(unittest.IsolatedAsyncioTestCase):
             await self.cli._dispatch(self.cli._parser().parse_args(['topics','approve','--id',t.topic_id]))
             packet = await self.cli._dispatch(self.cli._parser().parse_args(['topics','create','--id',t.topic_id,'--dry-run']))
         self.assertFalse(packet['generated'])
-        self.assertEqual(len(packet['delivery'][0]['story_plan']['pages']), 8)
+        self.assertEqual(packet['brief']['title'], t.title)
 
     async def test_natural_intents_and_number_selection_context(self):
-        from app.factory.intent import detect_topic_request as detect
-        self.assertEqual(detect('오늘 인스타툰 만들 주제 5개 추천해줘')['limit'], 5)
+        from app.factory.topics import detect_topic_request as detect
+        self.assertEqual(detect('오늘 쇼츠 만들 주제 5개 추천해줘')['limit'], 5)
         self.assertEqual(detect('이번 주 부동산 주제만 보여줘')['category'], 'housing')
         self.assertEqual(detect('이번 주 콘텐츠 캘린더 만들어줘')['action'], 'calendar')
-        self.assertEqual(detect('1번 주제로 8장 하이브리드 인스타툰 만들어줘')['format'], 'hybrid')
+        self.assertEqual(detect('1번 주제로 쇼츠 만들어줘')['action'], 'create')
+        self.assertTrue(detect('1번 주제로 대본만 만들어줘')['review'])
         self.assertTrue(detect('B2B 영업에 쓰기 좋은 주제 추천해줘')['b2b'])
         from app.factory import topics, core
         with patch.object(topics, 'engine', return_value=self.engine):
@@ -714,7 +693,7 @@ class OfflineDemoTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as d, \
              patch.object(discovery, 'fetch_evidence', new=AsyncMock(side_effect=AssertionError('no network'))), \
              patch.object(scoring, 'ask_structured', new=AsyncMock(side_effect=AssertionError('no AI'))), \
-             patch.object(core, 'make_planned_carousel', new=AsyncMock(side_effect=AssertionError('no rendering'))):
+             patch.object(core, 'make', new=AsyncMock(side_effect=AssertionError('no rendering'))):
             first = await run(Path(d))
             original = Path(first['dir']) / 'recommendations.json'
             saved = original.read_bytes()
@@ -722,10 +701,10 @@ class OfflineDemoTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(first['dir'], second['dir'])
             self.assertEqual(original.read_bytes(), saved)
             for result in (first, second):
-                self.assertEqual(result['story_pages'], 8)
+                self.assertEqual(result['brief_facts'], 3)
                 self.assertEqual(result['cost'], 0)
                 for filename in ('recommendations.json', 'calendar_1week.json', 'calendar_4weeks.json',
-                                 'engine_delivery.json', 'story_plan.json'):
+                                 'engine_delivery.json'):
                     data = json.loads((Path(result['dir']) / filename).read_text(encoding='utf-8'))
                     self.assertEqual(data['notice'], NOTICE)
 

@@ -1,6 +1,6 @@
 # Topic Strategy Engine V1
 
-주제 발굴부터 사람의 제작 승인까지 연결한다. `make`, `trends`, `batch`, 쇼츠·캐러셀의 기존 기본값은 그대로다.
+주제 발굴부터 사람의 제작 승인까지 연결한다. `make`, `trends`, `batch` 의 기존 기본값은 그대로다. 제작은 쇼츠 `make` 로만 연결한다(카드뉴스·인스타툰은 2026-11-05 제거).
 게시 API는 없다. `published`는 사용자가 이미 게시한 결과를 이력에 기록하는 명령이다.
 
 ## 운영 순서
@@ -28,9 +28,8 @@ python -m app.factory topics edit --id TOPIC_ID --title "수정 제목" --direct
 python -m app.factory topics edit --id TOPIC_ID --facts facts.json
 python -m app.factory topics verify --id TOPIC_ID
 python -m app.factory topics approve --id TOPIC_ID
-python -m app.factory topics plan --id TOPIC_ID --format hybrid
-python -m app.factory topics create --id TOPIC_ID --format hybrid --dry-run
-python -m app.factory topics create --id TOPIC_ID --format hybrid --also shorts --also card_news
+python -m app.factory topics create --id TOPIC_ID --dry-run
+python -m app.factory topics create --id TOPIC_ID --review --seconds 45
 python -m app.factory topics calendar --weeks 1
 python -m app.factory topics calendar --weeks 4 --count 3
 python -m app.factory topics schedule --id TOPIC_ID --date 2026-10-20
@@ -88,20 +87,16 @@ statistic_original_url, conflict_key, value, verification, checks를 갖는다. 
 
 discovered → verified → scored → shortlisted → approved → planned → generated → reviewed → published.
 별도로 excluded/held가 있다. 점수가 높아도 미검증·충돌·만료·중복·사용 권한 문제는 승인되지 않는다.
-제목/방향/캐릭터/사실 수정은 승인을 무효화한다. 원자료와 승인 대상의 fingerprint로 변경을 추적한다.
+제목/방향/사실 수정은 승인을 무효화한다. 원자료와 승인 대상의 fingerprint로 변경을 추적한다.
 `release` 후 다시 rank/verify/approve하면 보류된 주제를 재검토할 수 있다.
 후속편: `approve --followup`, 또는 `edit --followup/--series-parent/--update-of`로 관계를 남긴다.
 
-스토리는 V1에서 8장. Hook/Situation/Conflict/Explanation/Key Point 1/Key Point 2/Solution/Summary+CTA.
-경제 뉴스는 정보 카드 비중을 높이고, 재테크/주거는 공감·교육 하이브리드, 사연 제작은 insta_toon으로 선택한다.
-각 페이지의 source_refs/fact_ids가 원근거를 가리킨다. 창작 대사는 실제 뉴스 관계자 발언으로 표시하지 않는다.
-Character Registry의 자체 캐릭터를 쓰며 벤치마킹 캐릭터 권한은 승인 게이트에서 차단한다.
+## 제작 (topics create → 쇼츠 make)
 
-캐러셀 제작은 기존 `run_carousel(prepared_master, prepared_plan)` 경로로 넘어간다. Master/Planner를 재호출하지 않는다.
-전략 V1은 원문 검증을 유지하기 위해 자체 그래픽·마스코트로 렌더하고 이미지 API·사진 검색을 켜지 않는다.
-쇼츠 파생은 검증된 원고를 기존 `core.make`로 전달한다(기존 장면 설계 LLM·무료 TTS가 실행될 수 있음).
-`--dry-run`은 전달 JSON만 내며 generated로 승격하거나 렌더링하지 않는다. `all`은 하이브리드+쇼츠다.
-계획과 점수·근거는 `topic_strategy.json`, 캐러셀 manifest 및 감사 기록에 남고 재렌더로 소실되지 않는다.
+승인된 주제만 제작한다. `app/topics/brief.shorts_brief` 가 검증된 사실(전망·의견 표시, 발표일·적용 대상, 출처 자료명)과
+방향·시청자를 지시문으로 묶고, `core.make(topic=제목, instructions=지시문, review=…)` 로 기존 쇼츠 엔진에 넘긴다(LLM 추가 호출 없음).
+지시문은 `briefs/<topic_id>.json` 과 프로젝트 폴더 `topic_strategy.json` 에 남는다. `--dry-run` 은 지시문만 내고 렌더·API 호출이 없다.
+`--review` 면 대본까지 만들고 멈추며(`script_review`), 이후 `resume <project_id>` 로 완성한다. 실패하면 다시 `create` 하면 된다.
 
 ## 캘린더와 기록
 
@@ -110,40 +105,37 @@ Character Registry의 자체 캐릭터를 쓰며 벤치마킹 캐릭터 권한�
 채울 수 없으면 unfilled_dates를 반환한다. 수집량이 적다고 낮은 점수·미검증 주제를 끼워 넣지 않는다.
 뉴스 예약은 발행일 재검증 대상으로 표시한다. B2B는 교육용 업종·사례·납품물·리스크를 제안하고, 주별 적격 샘플이 없으면 null을 남긴다.
 
-저장: `output/_factory/topics/`의 topics, evidence, evidence_history, audit, plans, plan_history, calendars, selections,
+저장: `output/_factory/topics/`의 topics, evidence, evidence_history, audit, briefs, calendars, selections,
 publication_history.json, duplicate_clusters.json, evaluations. JSON 교체는 원자적이며 원문 갱신 전 스냅샷을 보존한다.
 단일 사용자 로컬 CLI용이다. 동시 프로세스에서 같은 레코드를 수정하는 다중 사용자 DB 기능은 제공하지 않는다.
 
 ## 자연어
 
 ```powershell
-python -m app.factory topics request "오늘 인스타툰 만들 주제 5개 추천해줘"
+python -m app.factory topics request "오늘 쇼츠 만들 주제 5개 추천해줘"
 python -m app.factory topics request "이번 주 부동산 주제만 보여줘"
 python -m app.factory topics request "이번 주 콘텐츠 캘린더 만들어줘"
 python -m app.factory topics request "B2B 영업에 쓰기 좋은 주제 추천해줘"
-python -m app.factory topics request "1번 주제로 8장 하이브리드 인스타툰 만들어줘" --selection selection_ID
+python -m app.factory topics request "1번 주제로 쇼츠 만들어줘" --selection selection_ID
 ```
 
-형식은 기존 `intent.detect_output_format`을 재사용한다. 후보 번호는 사용자가 본 selection_ID에 반드시 연결한다.
+의도 판별은 `app/factory/topics.detect_topic_request`. "대본만"·"검토"가 있으면 `--review` 로 멈춘다. 후보 번호는 사용자가 본 selection_ID에 반드시 연결한다.
 번호 제작 요청은 그 선택의 사용자 승인으로 처리하지만 검증 게이트는 통과해야 한다.
 후보가 비어 있으면 추천 요청은 공개 수집·규칙 평가를 먼저 한다. 이미 저장된 후보가 있으면 추가 LLM 호출 없이 목록을 사용한다.
 
 ## 오프라인 예시
 
 `python -m scripts.demo_topic_strategy` → 별도 output 폴더의 REPORT.md, recommendations.json,
-calendar_1week.json, calendar_4weeks.json, story_plan.json, engine_delivery.json.
+calendar_1week.json, calendar_4weeks.json, engine_delivery.json(make 에 넘길 지시문).
 공식 자료를 가장하지 않도록 `.example` 도메인의 **가상 자료**와 격리된 데모 설정을 사용한다.
-실제 운영의 공식 도메인 설정에서는 이 가상 자료가 verified가 되지 않는다. Claude/API/PNG 호출 0회.
+실제 운영의 공식 도메인 설정에서는 이 가상 자료가 verified가 되지 않는다. Claude/API/렌더 호출 0회.
 모든 배포용 데모 JSON의 notice는 가상 근거 안내로 고정한다. 재실행은 새 하위 폴더를 써 이전 데모를 보존한다.
 
-## 구현과 검증 상태 (2026-10-08 Codex)
+## 구현과 검증 상태
 
-- V1 수집·주장/근거 검증·100점 평가·사건 중복/발행 이력·8장 스토리·기존 캐러셀 연결·1~4주 캘린더·CLI 구현 완료.
+- 2026-11-05: 카드 기획(plan·8장 스토리·캐릭터)을 빼고 create 를 쇼츠 make 로 직접 연결. `tests/test_topics.py` 58개.
+- 2026-10-08 Codex: V1 수집·주장/근거 검증·100점 평가·사건 중복/발행 이력·1~4주 캘린더·CLI 구현.
 - 의미 중복은 기본 규칙 병합과 `rank --ai`의 사람 검토용 LLM 제안이다. 의미 이해에 따른 자동 검증·자동 병합 완료로 해석하지 않는다.
-- 캐릭터 추가 전 전체 자동 테스트365개 통과·실패/오류/skip 0. 외부 서비스는 mock, 기존 FFmpeg 회귀3개는 임시 자료로 실행했다.
-  최신 정의 수는 Codex 저장 후보365개·별도 햄토리치 미커밋 작업 포함368개다. 각 전체 실행 결과는 HANDOFF 맨 위 참조.
-  소스 사본에서 실제 외부 호출과 원본 쓰기를 차단한 결과이며 실행 기록은 HANDOFF 맨 위의 백업 폴더에 있다.
-- 다른 세션이 만든 기존 8장 하이브리드 결과의 상태·PNG 규격·근거 manifest를 재확인했다. 이번에는 새 콘텐츠를 만들지 않았다.
-  실제 Claude 평가·의미 중복 AI·Topic→쇼츠 및 K-pop 인용 제작은 이번 검증 범위에 포함하지 않는다.
-- 실 뉴스 수집/캐러셀 선행 검증 기록과 알려진 한계는 `OPS_VALIDATION_2026-10-08.md`.
+- 실제 Claude 평가·의미 중복 AI·Topic→쇼츠 실제 제작은 아직 실영상으로 검증하지 않았다 (mock 테스트만).
+- 실 뉴스 수집/캐러셀 선행 검증 기록과 알려진 한계는 `history/carousel_2026-10/OPS_VALIDATION_2026-10-08.md`.
   공식 원문 자동 연결·사건일·상시 주제 분류·JS 본문·제목/CTA 및 강조 숫자 맥락은 후속 개선 대상이다.

@@ -4,14 +4,13 @@
 """
 from __future__ import annotations
 
-import asyncio
 import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 from .media import extract_frames, probe_duration
-from .models import Asset, Scene, SourcedImage
+from .models import Asset, Scene
 from .vision import describe_all, match_assets_to_scenes, vision_available
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -133,21 +132,6 @@ async def plan_assets(llm: dict[str, Any], assets: list[Asset], scenes: list[Sce
         if m.scene_index in out:
             continue
         out[m.scene_index] = assets[m.asset_index]
-    return out
-
-
-def plan_sourced(images: list[SourcedImage], scenes: list[Scene],
-                 taken: set[int]) -> dict[int, SourcedImage]:
-    """수집 이미지를 아직 비어 있는 장면에 앞에서부터 채운다.
-
-    og:image 가 맨 앞이라 대표성이 높은 순서대로 들어간다.
-    """
-    out: dict[int, SourcedImage] = {}
-    pool = list(images)
-    for i in range(len(scenes)):
-        if i in taken or not pool:
-            continue
-        out[i] = pool.pop(0)
     return out
 
 

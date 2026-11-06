@@ -64,6 +64,7 @@ $("#submit").addEventListener("click", async () => {
         visual_mode: mode === "url" && $("#opt-related").checked && /(?:youtu\.be|youtube\.com)\//i.test($("#input").value)
           ? "broll" : undefined,
         instructions: $("#instructions").value.trim() || undefined,
+        benchmark: benchPlan && benchPlan.topic === $("#input").value.trim() ? benchPlan.benchmark : undefined,
         subtitles: $("#opt-subtitles").checked,
         titles: $("#opt-titles").checked,
         style_id: $("#opt-style").value || undefined,
@@ -632,7 +633,7 @@ const jsonOpts = (method, body) => ({ method, headers: { "Content-Type": "applic
 
 // ---------- 단계 이동 ----------
 function stepEnabled(s, j = currentJob()) {
-  if (s === "projects" || s === "settings") return true;
+  if (s === "projects" || s === "settings" || s === "bench") return true;
   if (s === "source" || s === "style") return !j;
   if (REVIEW_STEPS.includes(s)) return !!j && j.status === "awaiting_review" && !!j.script;
   if (DONE_STEPS.includes(s)) return hasVideo(j) && j.status !== "error";
@@ -651,6 +652,7 @@ function go(s) {
   if (s === "visuals") renderVisuals();
   if (s === "captions") loadCaptions();
   if (s === "export") renderExport();
+  if (s === "bench") loadChannels();
   updateNav();
   window.scrollTo(0, 0);
 }
@@ -1340,3 +1342,80 @@ window.addEventListener("beforeunload", e => { if (capDirty) { e.preventDefault(
   if (active) selectJob(active.id);
   else go(list.length ? "projects" : "source");
 })();
+
+// ---------- 경쟁 채널 벤치마킹 (분석은 서버 캐시, 제작은 ② 소재 화면 그대로) ----------
+let benchPlan = null;   // 추천 주제에서 고른 제작 구조 {topic, benchmark}
+const num = n => n == null ? "비공개" : Number(n).toLocaleString("ko-KR");
+
+async function loadChannels() {
+  const data = await api("/api/channels").catch(() => ({ channels: [] }));
+  $("#bench-list").innerHTML = data.channels.length ? data.channels.map(c => `
+    <label class="job-row" style="grid-template-columns:auto minmax(0,1fr) auto">
+      <input type="checkbox" class="bench-pick" value="${esc(c.channel_id)}">
+      <span><strong class="title">${esc(c.name)}</strong>
+        <span class="hint">${c.videos}편 · 조회수 중앙값 ${num(c.median_views)} · ${esc(c.patterns.join(", ") || "패턴 분석 전")} · ${esc(c.scanned_at.slice(0, 16))}</span></span>
+      <button type="button" class="link" data-show="${esc(c.channel_id)}">결과 보기</button>
+    </label>`).join("") : `<p class="hint">아직 분석한 채널이 없습니다.</p>`;
+  $$("#bench-list [data-show]").forEach(b => b.addEventListener("click", async e => {
+    e.preventDefault();
+    renderChannel(await api(`/api/channels/${b.dataset.show}`));
+  }));
+}
+
+function renderChannel(d) {
+  const s = d.stats, a = d.analysis;
+  const rows = d.top_videos.map(v => `<tr><td>${esc(v.title)}</td><td>${num(v.views)}</td><td>${Math.round(v.age_days)}일</td>
+    <td>${v.age_adjusted}배</td><td>${v.duration || "?"}초</td><td>${esc(v.groups.join(", "))}</td><td>${esc(v.hook_3s || "")}</td></tr>`).join("");
+  const patterns = a ? a.patterns.map((p, i) => `<div class="card"><strong>${i + 1}. ${esc(p.type)} · ${esc(p.name)}</strong>
+    <p class="hint">근거 ${p.stats.videos}편 · 조회수 중앙값 ${num(p.stats.median_views)} · 나이 보정 ${p.stats.median_age_adjusted}배 · 권장 ${p.recommended_seconds}초</p>
+    <p>첫 3초: ${esc(p.hook_formula)}</p><p>구성: ${esc(p.retention_structure)}</p>
+    <p>공개 순서: ${esc(p.reveal_order.join(" → "))} · 반전: ${esc(p.twist_position)}</p>
+    <p class="hint">관찰: ${esc(p.observed.join(" / "))}</p><p class="hint warn">가설: ${esc(p.hypotheses.join(" / "))}</p></div>`).join("")
+    : `<p class="hint warn">AI 패턴 분석이 없습니다 (Claude 로그인 확인 후 다시 분석).</p>`;
+  $("#bench-detail").innerHTML = `<h3>${esc(d.channel.name)}</h3>
+    <p class="hint">${esc(d.source)} · 목록 ${d.coverage.listed}개 중 ${d.coverage.detailed}개 상세 · 공개 자막 ${d.coverage.transcripts || 0}편 · 댓글 ${d.coverage.comments || 0}개</p>
+    <p>구독자 ${num(s.subscribers)} · 조회수 중앙값 ${num(s.median_views)} (최신 ${num(s.median_views_latest)} / 인기 상위10 ${num(s.median_views_top10)}) ·
+      길이 중앙값 ${s.median_duration}초 · 주당 ${s.uploads_per_week}편 · 주요 시간 ${esc(s.upload_hours_kst.join(", "))}</p>
+    <p class="hint">${esc(s.notes.join(" · "))}${a ? " · 미수집: " + esc(a.uncollected.join(", ")) : ""}</p>
+    <div style="overflow-x:auto"><table class="bench-table"><tr><th>제목</th><th>조회수</th><th>경과</th><th>나이 보정</th><th>길이</th><th>그룹</th><th>첫 3초 (공개 자막)</th></tr>${rows}</table></div>
+    ${a ? `<p>${esc(a.summary)}</p><p class="hint">반복 소재: ${esc(a.recurring_topics.join(", "))} · 내레이션: ${esc(a.narration)}</p>` : ""}${patterns}`;
+}
+
+$("#bench-run").addEventListener("click", async () => {
+  const btn = $("#bench-run"), msg = $("#bench-msg");
+  btn.disabled = true; msg.textContent = "분석 중입니다. 1~3분 걸립니다...";
+  try {
+    const d = await api("/api/channels/analyze", jsonOpts("POST", { channel: $("#bench-url").value.trim(), refresh: $("#bench-refresh").checked }));
+    msg.textContent = d.reused_cache ? "최근 분석을 다시 사용했습니다 (새로 수집하려면 체크)." : "분석 완료";
+    renderChannel(d);
+    loadChannels();
+  } catch (e) { msg.textContent = "오류: " + e.message; }
+  btn.disabled = false;
+});
+
+$("#bench-topics").addEventListener("click", async () => {
+  const ids = $$(".bench-pick:checked").map(x => x.value);
+  if (!ids.length) { $("#bench-ideas").innerHTML = `<p class="hint warn">채널을 하나 이상 골라 주세요.</p>`; return; }
+  try {
+    const d = await api("/api/channels/topics", jsonOpts("POST", { channels: ids }));
+    const common = d.compare ? `<p class="hint">공통 패턴: ${esc(d.compare.common_types.join(", "))} — ${esc(d.compare.note)}</p>` : "";
+    $("#bench-ideas").innerHTML = `<h3>추천 주제</h3>${common}` + (d.candidates.map((c, i) => `<div class="card">
+      <strong>${c.number}. ${esc(c.topic)}</strong> <span class="badge">${esc(c.pattern)}</span>${c.too_similar ? `<span class="badge">원본 제목과 비슷함</span>` : ""}
+      <p class="hint">${esc(c.angle)} · ${esc(c.why)}</p>
+      <button type="button" class="primary" data-idea="${i}">이 주제로 대본 만들기</button></div>`).join("") || `<p class="hint">추천할 주제가 없습니다.</p>`)
+      + `<p class="hint">조회수를 보장하지 않습니다. 후보 id: ${esc(d.candidates_id)}</p>`;
+    $$("#bench-ideas [data-idea]").forEach(b => b.addEventListener("click", () => useIdea(d.candidates[Number(b.dataset.idea)])));
+  } catch (e) { $("#bench-ideas").innerHTML = `<p class="hint warn">오류: ${esc(e.message)}</p>`; }
+});
+
+function useIdea(c) {
+  $('.tab[data-mode="topic"]').click();
+  $("#input").value = c.topic;
+  $("#instructions").value = c.instructions;
+  $("#opt-seconds").value = c.seconds;
+  $("#opt-review").checked = true;   // 벤치마킹 제작은 대본을 먼저 확인한다
+  benchPlan = { topic: c.topic, benchmark: c.benchmark };
+  $("#bench-applied").textContent = `벤치마킹 패턴 적용: ${c.pattern} (구조 ${c.benchmark}, ${c.seconds}초). 지침은 ③ 스타일·지침에 들어 있습니다.`;
+  $("#bench-applied").classList.remove("hidden");
+  go("source");
+}

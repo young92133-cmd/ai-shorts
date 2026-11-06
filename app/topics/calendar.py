@@ -76,8 +76,8 @@ def make_calendar(store: Store, cfg: dict, *, weeks=1, count=None, start=None, a
             entry = CalendarEntry(entry_id='slot_' + uuid.uuid4().hex[:12], topic_id=selected.topic_id,
                 scheduled_date=day.isoformat(), category=selected.category, topic=selected.title,
                 recommended_title=selected.title, audience=selected.target_audience, topic_score=selected.score.total_score,
-                format=selected.score.recommended_format, purpose={'housing':'공감·저장', 'finance':'학습·공유', 'economy':'화제성·유입'}[selected.category],
-                character=selected.character_id, verification=selected.verification,
+                purpose={'housing':'공감·저장', 'finance':'학습·공유', 'economy':'화제성·유입'}[selected.category],
+                verification=selected.verification,
                 b2b=selected.opportunity.target_industries if selected.opportunity else [], production_status=selected.status,
                 publication_gate='reverify_on_publication_date' if needs_recheck else 'human_approval_required')
             entries.append(entry.model_dump())

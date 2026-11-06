@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 KST = dt.timezone(dt.timedelta(hours=9))
 CATEGORIES = ('housing', 'finance', 'economy')
@@ -31,8 +31,18 @@ def timestamp(value: str) -> dt.datetime | None:
     return result.replace(tzinfo=KST) if result.tzinfo is None else result.astimezone(KST)
 
 
+LEGACY_FIELDS = {'character_id', 'character_rights', 'recommended_format', 'character', 'format'}   # 2026-11 카드뉴스·인스타툰 제거 전 필드
+
+
 class Record(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+    @model_validator(mode='before')
+    @classmethod
+    def _drop_legacy(cls, data):
+        if isinstance(data, dict) and LEGACY_FIELDS & data.keys():
+            data = {k: v for k, v in data.items() if k not in LEGACY_FIELDS or k in cls.model_fields}
+        return data
 
 
 class Evidence(Record):
@@ -84,7 +94,6 @@ class Score(Record):
     total_score: float
     reasons: dict[str, str]
     audience: list[str]
-    recommended_format: str = 'hybrid'
     recommendation: str = 'hold'
     method: str = 'rules_estimate'
     model: str = 'none'
@@ -136,39 +145,8 @@ class Topic(Record):
     approved_at: str = ''
     approval_fingerprint: str = ''
     scheduled_date: str = ''
-    character_id: str = 'tory_01'
-    character_rights: str = 'owned'
     projects: list[dict] = Field(default_factory=list)
     current_projects: list[dict] = Field(default_factory=list)
-
-
-class StoryPage(Record):
-    role: str
-    page_type: str
-    headline: str = ''
-    body: str = ''
-    scene: str = ''
-    character_id: str = ''
-    emotion: str = 'neutral'
-    pose: str = 'standing'
-    dialogue: str = ''
-    visual_direction: str = ''
-    source_refs: list[str] = Field(default_factory=list)
-    fact_ids: list[str] = Field(default_factory=list)
-    layout: str = ''
-
-
-class StoryPlan(Record):
-    topic_id: str
-    format: str
-    style: str
-    title: str
-    character_id: str
-    pages: list[StoryPage]
-    master: dict
-    carousel_plan: dict
-    provenance: dict
-    dialogue_disclaimer: str = '캐릭터 상황과 대사는 이해를 돕기 위한 창작 예시이며 실제 관계자의 발언이 아닙니다.'
 
 
 class CalendarEntry(Record):
@@ -180,9 +158,7 @@ class CalendarEntry(Record):
     recommended_title: str
     audience: list[str]
     topic_score: float
-    format: str
     purpose: str
-    character: str
     verification: Verification
     b2b: list[str]
     production_status: str

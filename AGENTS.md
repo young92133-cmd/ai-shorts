@@ -1,16 +1,18 @@
-# AI 콘텐츠팩토리 — Codex / Claude Code 공통 작업 규칙
+# AI Shorts — Codex / Claude Code 공통 작업 규칙
 
 이 파일이 **두 AI 의 공통 규칙 원본**이다. CLAUDE.md 는 이 파일을 가져오고(`@AGENTS.md`) Claude 전용 내용만 둔다. 규칙은 여기만 고친다.
-이 프로젝트는 한국어 9:16 유튜브 쇼츠와 인스타그램 캐러셀(카드뉴스·인스타툰)을 만드는 **범용 AI 콘텐츠팩토리**다.
+이 프로젝트는 한국어 9:16 **유튜브 AI 쇼츠 전용** 개인 PC 프로그램이다: 주제 → 자료 조사·사실 확인 → 대본 → 훅·스토리 → 장면별 화면 → AI 음성 → 자막 → 편집 → MP4.
 **이 채팅이 메인 화면**이다. 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
-웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.
-카드뉴스·인스타툰 스튜디오(`카드뉴스 스튜디오 실행.cmd` → http://127.0.0.1:8765/studio)는 혼자 쓰는 PC 화면: 주제→만들기→카드별 문구 수정·장면 바꾸기→ZIP 저장. 엔진 `app/studio/project.py`(Factory make·carousel 재사용), 화면·경로 `app/studio/{api.py,studio.html}`.
-스튜디오는 V1.0 기능 기준선(2026-10-21, `docs/STUDIO_GUIDE_V1.md`)이다. 이후에는 새 기능보다 콘텐츠 품질·안정성 개선을 먼저 하고, 기능 추가는 사용자 요청이 있을 때만.
+웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·장면 수정·미리보기·저장용 PC 화면이다. 로그인 서버·다중 사용자·결제는 만들지 않는다.
+카드뉴스·인스타툰(캐러셀·스튜디오·toon·캐릭터)은 2026-11-05 제거했다. 코드는 브랜치 `feature/agent-content-factory`(96bc82a)와
+`../backups/shorts-only-before-20261105/` 에 있고, 옛 기록은 `docs/history/carousel_2026-10/`. 다시 만들지 않는다(사용자 요청 시만).
+`app/pipeline/cards.py` 는 쇼츠 장면 화면 카드를 그리는 공통 코드라 유지한다(카드뉴스 코드 아님). 인수인계 요약: `docs/CODEX_HANDOFF_2026-11-06.md`.
 새 대형 기능(Global Trend Radar·Localization·Vision Clip Analyzer·성과 학습·자동 게시)은 사용자의 별도 요청 전에는 시작하지 않는다.
 
 ```
-Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline (제작 엔진) ←─ Web UI (보조)
-                                            └─→ app/carousel (카드뉴스·인스타툰) · app/topics (주제 전략)
+Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline (제작 엔진) ←─ Web UI (app/main.py · static · templates)
+                                            ├─→ app/topics (주제 수집·검증·추천·승인 → make)
+                                            └─→ factory/channels → pipeline/channels (경쟁 채널 벤치마킹 → 추천 주제 → make/batch)
 ```
 
 ## 작업 시작 · 종료 (두 AI 공통, 자동 인수인계)
@@ -51,9 +53,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make --auto` | 요즘 화제 소재를 AI가 골라 제작 |
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
 | `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
-| `make ... --format card_news\|insta_toon\|hybrid\|all` | 카드뉴스·인스타툰·하이브리드 PNG(1080x1350) / all = 쇼츠+하이브리드 (아래 '카드뉴스 · 인스타툰' 절) |
 | `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
-| `characters [list\|show ID\|add --file\|import\|generate\|approve]` | 캐릭터 목록·등록·그림 가져오기·생성 견적·포즈 승인. generate는 `--confirm-cost` 없으면 API 미호출 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
 | `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
@@ -74,8 +74,13 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `batch --topic "첫 주제" --topic "둘째" [--review]` | 여러 주제 순차 제작 (검토 옵션이면 편마다 대본 저장 후 멈춤) |
 | `batch-status [ID]` / `batch-resume [ID]` | 순차 제작 조회 / 저장 대본을 한 편씩 이어서 완성 |
 | `export [id] [--pack] [--capcut]` | 완성 파일 목록 / 편집 재료 zip / CapCut 프로젝트 |
-| `toon --topic "…" --facts-from-topic <topic_id> [--writer rules\|claude]` | 자동 인스타툰 8장 (훅→상황→상대역→갈등→정보 발견→해결·반전→결론). 기본 rules 무료, claude 는 선택 |
-| `topics collect\|rank\|recommend\|calendar\|approve\|plan\|create …` | 주제 수집·검증·추천·캘린더 (상세 `docs/TOPIC_STRATEGY.md`) |
+| `channel analyze <URL\|@채널> [--refresh] [--no-ai]` | 경쟁 채널 쇼츠 분석: 공개 지표 + Claude 1회 패턴 추상화. 3일 안 캐시는 재사용 |
+| `channel list` / `channel show <채널>` | 분석한 채널 목록 / 지표·패턴·추천 주제 |
+| `channel topics <채널> [<채널2> …]` | 추천 주제 5개(1개 채널) 또는 공통 패턴 주제(여러 채널, AI 추가 호출 없음) → `candidates_id` |
+| `batch --select N --candidates <channel topics 의 id>` | 고른 추천 주제를 그 패턴(구조·길이·지침)으로 제작 |
+| `channel make <채널> --topic "…" [--pattern 0] [--review]` | 주제 직접 입력 + 채널 패턴 적용 |
+| `channel auto <채널> <채널2> [--review]` | 공통 패턴에서 주제 자동 선정 후 제작 |
+| `topics collect\|rank\|recommend\|calendar\|approve\|create [--review] [--dry-run] …` | 주제 수집·검증·추천·캘린더, 승인한 주제의 검증된 사실로 쇼츠 `make` (상세 `docs/TOPIC_STRATEGY.md`) |
 장면 번호는 사용자에게 보이는 대로 1부터 센다. 카드 종류: hook_card, statement_card, focus_card, quote_card, number_card, trend_card, compare_card, summary_card.
 
 ## 자연어 → 명령
@@ -103,6 +108,10 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" (파일·캡처 있음) | `make --url "URL" --quote 파일 …` 또는 `make --reference-video 파일 --quote-reference` (라이선스를 묻지 않음) |
 | "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
 | "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |
+| "이 채널 벤치마킹해줘: URL/@이름" | `channel analyze "…"` → 패턴·관찰/가설·추천 주제를 요약 (다시 수집은 `--refresh`) |
+| "그 채널 스타일로 ○○ 만들어줘" | `channel make <채널> --topic "○○" --review` |
+| "추천 주제 중 2번으로 만들어줘" | `channel topics <채널>` 의 `candidates_id` 로 `batch --select 2 --candidates <id>` |
+| "두 채널 공통점으로 알아서 하나 만들어줘" | `channel auto <채널1> <채널2> --review` |
 
 ## 작업 요청 규칙 (벤치마킹 · 반영 · 저장)
 
@@ -114,6 +123,16 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 
 - 새 benchmark 를 분석·반영하면 `docs/BENCHMARKS.md` 맨 위 현황판을 반드시 같이 갱신한다. "분석됨"을 "구현됨"으로 적지 않는다.
 - 실제 영상 검증 결과는 output 의 `project_state.json`·`verify_factory_v1.py --verify` 로 확인된 것만 기록한다.
+
+## 경쟁 채널 벤치마킹 규칙
+
+- 수집: `YOUTUBE_API_KEY` 가 있으면 YouTube Data API, 없으면 공개 페이지 메타데이터(yt-dlp)만. 로그인·접근 제한 우회·영상 다운로드 금지.
+  공개 자동 자막은 성과 상위 몇 편의 첫 3초·말 속도 분석용으로만 받고, 제작 프롬프트에는 넣지 않는다.
+- 지표는 코드가 계산한다(`pipeline/channels.metrics`): 경과일·일평균 조회수·나이 보정 배수(비슷한 시기 영상 중앙값 대비)·구독자 대비.
+  일평균·급상승은 '추정', 재분석 간 실제 증가량만 '실측'. 시청 지속률·클릭률·수익은 만들지 않는다. 컷 편집·자막 디자인은 '미수집'.
+- AI 는 패턴 추상화 1회만(관찰/가설 분리). 근거 영상 id·패턴별 수치·제작 구조는 코드가 검증(`channels.finish`).
+- 제작: 구성 기법만 지침으로 넘긴다. 원본 제목·문장 복사 금지, 성과 보장 표현 금지. 결과 폴더 `channel_benchmark.json` 의 자막 겹침 비율이 0.15 를 넘으면 대본을 고친다.
+- 캐시: `output/_factory/channels/<채널 id>/{scan,analysis}.json`. 새 데이터가 필요할 때만 `--refresh`.
 
 ## 기본 흐름과 멈추는 때
 
@@ -203,23 +222,22 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - 웹 UI와 factory는 같은 엔진을 쓴다. 엔진은 UI(`app/main.py`, `app/jobs.py`)를 import하지 않는다.
 - 개발 중에는 유료 API·실제 샘플 제작을 하지 않는다. 테스트는 가짜(mock)로 돈다. 실제 제작은 사용자가 요청할 때만 한다.
 - `make` 를 부르는 테스트는 `run.bench_auto.ask_structured` 와 `run.source_resolver.resolve` 도 반드시 가짜로 막는다(`tests/test_factory.py` FactoryTestCase 참고). 막지 않으면 기본 benchmark auto·visuals auto 가 실제 Claude·공개 API 를 호출한다.
-- 캐러셀 형식 `make` 테스트는 추가로 `app.carousel.master.ask_structured`·`app.carousel.planner.ask_structured` 를 막는다(`tests/test_carousel.py` CarouselMakeTests 참고).
 - 실제 제작(Claude 구독 호출)은 사용자가 요청했거나 렌더 경로가 바뀌어 최소 확인이 필요할 때만 한다. 유료 API 는 사용자 승인 없이 쓰지 않는다.
 - 테스트: `.venv\Scripts\python.exe -m unittest tests.test_blueprint tests.test_reference_workflow tests.test_script_split tests.test_sources tests.test_timeline_export tests.test_tts_timeline tests.test_visual_resolver tests.test_factory`
-- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (Codex 환경은 `scripts/factory.ps1` 과 같은 Python). 2026-10-21 기준 406개. ffmpeg 가 없는 환경에서는 실제 FFmpeg 테스트 3개가 skip 된다. 최신 결과는 `HANDOFF.md` 맨 위.
+- 전체 테스트: `.venv\Scripts\python.exe -m unittest discover -s tests -q` (Codex 환경은 `scripts/factory.ps1` 과 같은 Python). 2026-11-06 벤치마킹 추가 뒤 343개. ffmpeg 가 없는 환경에서는 실제 FFmpeg 테스트 3개가 skip 된다. 최신 결과는 `HANDOFF.md` 맨 위.
 - 인용 모드 테스트는 `quote.clip_analyzer.analyze` 도 가짜로 막는다(`tests/test_quote_mode.py` 참고).
 - Git 규칙:
   - force push 하지 않는다.
   - 기존 커밋·원격 브랜치를 수정하거나 삭제하지 않는다.
   - 비밀정보는 커밋하지 않는다.
   - push는 사용자가 요청할 때만 한다("저장해줘" 포함, 위 작업 요청 규칙).
-- 진행 기록: `HANDOFF.md`(현재 상태, 위 인수인계 규칙) · 진행 중 계획 `docs/OPTIMIZATION_PLAN_2026-10-14.md` · 지난 기록·옛 계획 `docs/history/`.
+- 진행 기록: `HANDOFF.md`(현재 상태, 위 인수인계 규칙) · 지난 기록·옛 계획 `docs/history/`.
 
 ## 주제 전략 (Topic Strategy V1)
 
 상세 CLI·검증 조건·원문/승인 보존은 `docs/TOPIC_STRATEGY.md`. 발행 API는 없고 `topics published`는 사람이 게시한 이력 기록이다.
 번호 선택은 결과의 `selection_id`를 유지한다. `topics rank --ai` 외에는 전략 평가에 LLM을 호출하지 않는다.
-개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/PNG 샘플은 사용자 요청 없이 반복하지 않는다.
+개발 검증은 `tests/test_topics.py`; 실제 뉴스/Claude/API/영상 샘플은 사용자 요청 없이 반복하지 않는다.
 
 ## Benchmark × V1 자동 통합 (기본값)
 
@@ -237,25 +255,3 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 | "왜 이 구성으로 만들었어?" | `inspect <id> --part benchmark` |
 
 벤치마킹 분석·오프라인 `benchmark plan/render` 경로 규칙은 `docs/AGENT_REFERENCE.md` 와 `docs/BENCHMARKS.md`(현황판 기준).
-
-## 카드뉴스 · 인스타툰 · 하이브리드
-
-`make --format shorts`(기본) | `card_news` | `insta_toon` | `hybrid` | `all`. 결과 `output/<id>/<format>/card_NN.png`(1080x1350) + `manifest.json`·`sources.json`·`caption.txt`.
-내부 흐름·템플릿·캐릭터 세부는 `docs/AGENT_REFERENCE.md`. 품질 기준 샘플은 `samples/`.
-
-| 사용자 말 | 실행 |
-|---|---|
-| "이 주제로 카드뉴스 만들어줘" | `make --topic "…" --format card_news` |
-| "이 기사로 인스타툰 만들어줘: URL" | `make --url "URL" --format insta_toon` |
-| "카드뉴스랑 인스타툰 섞어서 만들어줘", "카드뉴스랑 만화를 섞어서" | `make --topic "…" --format hybrid` |
-| "이 원고로 하이브리드 만들어줘" | `make --script "원고" --format hybrid` |
-| "쇼츠와 하이브리드 카드뉴스 둘 다", "전부 만들어줘" | `make --topic "…" --format all` |
-| "이 조사 자료로 카드뉴스" (JSON) | `make --research-file 파일.json --format card_news` |
-| 형식이 애매한 문장 | `make --topic "…" --request "사용자 문장 원문"` (형식 자동 인식, `app/factory/intent.py`) |
-| "캐릭터 있는 카드뉴스로" | `make … --format card_news --template character_info` |
-| "토리 말고 다른 캐릭터로" | `characters list` → `make … --character <id>` |
-
-- 기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`(최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 규칙 `characters/hamtorich_01/README.md`). 토리 `tory_01` 은 선택.
-- 무료가 기본: 등록 포즈 + 코드로 그린 장면 11종 + 효과. 사용자 그림은 `assets/inbox/`(자동 등록). `carousel.image_provider`·`characters generate --confirm-cost` 같은 유료 생성은 사용자 허락 없이 쓰지 않는다.
-- 자동 인스타툰 `toon`: 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). `--writer claude` 는 사용자가 고를 때만(구독 CLI).
-- 캐러셀은 `--review`·`--reference-video` 를 받지 않고 `resume`·`rerender` 대상이 아니다(다시 `make`). 결과를 알릴 때: 장수, 카드/만화 비율, 사진 출처, `fallback_pages`.

@@ -1,8 +1,8 @@
-# AI 콘텐츠팩토리
+# AI Shorts
 
-주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4(와 카드뉴스·인스타툰 PNG)를 자동으로 만드는 개인용 도구.
+주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 유튜브 쇼츠 MP4를 자동으로 만드는 개인 PC용 도구.
 현재 상태·한계는 [HANDOFF.md](HANDOFF.md) 맨 위, benchmark 현황은 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) 맨 위를 봅니다.
-카드뉴스·인스타툰 PC 스튜디오(V1.0) 사용법은 [docs/STUDIO_GUIDE_V1.md](docs/STUDIO_GUIDE_V1.md).
+카드뉴스·인스타툰 기능은 2026-11-05 제거했다(옛 기록 `docs/history/carousel_2026-10/`, 코드는 브랜치 `feature/agent-content-factory`).
 
 ## 가장 많이 쓰는 말 (Claude Code / Codex 채팅)
 
@@ -13,18 +13,16 @@
 | "이 유튜브 영상 참고해서 쇼츠 만들어줘: URL" | 제목·설명·자막을 분석해 볼 이유·질문·근거 구간을 뽑고 새 대본으로 제작. 원본은 자동으로 내려받지 않는다 |
 | "이 영상에서 가장 재미있는 포인트로 쇼츠 만들어줘: URL" (+ 영상/캡처 파일) | 같은 분석에 더해, 준 파일을 **인용(transformative_quote)** 으로 근거 장면에 짧게 넣고 우리 해설을 얹는다 |
 | "대본 먼저 보여줘" / "좋아, 계속해" | `--review` 로 멈춤 / `resume` |
-| "카드뉴스로도 만들어줘" | `--format card_news`·`insta_toon`·`hybrid`·`all` |
+| "이 주제로 3편 만들어줘" | `batch --topic "…" --count 3` (한 편씩 순차) |
 
 기본값은 `benchmark = auto`, `visuals = auto` 다. 구조를 직접 정하려면 `--benchmark <profile>`, 예전 방식은 `--benchmark off`, 자체 카드만 쓰려면 `--visuals cards`.
-명령 전체 목록과 자연어 대응표는 [CLAUDE.md](CLAUDE.md) 에 있다.
+명령 전체 목록과 자연어 대응표는 [AGENTS.md](AGENTS.md) 에 있다.
 
 ## Topic Strategy V1과 현재 Codex 실행 환경
 
-후보 탐색 → 주장별 원문/기한 검증 → 100점 평가 → 중복·발행 이력 → 사람 승인 → 8장 스토리·캐러셀 제작 → 주간 캘린더가 구현됐다.
-운영 순서와 제한은 [docs/TOPIC_STRATEGY.md](docs/TOPIC_STRATEGY.md), 선행 실운영 기록은 [docs/OPS_VALIDATION_2026-10-08.md](docs/OPS_VALIDATION_2026-10-08.md).
-앞선 자동 테스트 365개 통과(외부 서비스 mock, 실제 FFmpeg 회귀 3개 포함). 기존 실제 8장 결과도 재확인했다.
-현재 폴더는 별도 미커밋 햄토리치 작업까지 포함해368개, Codex 마무리9파일만 반영한 저장 후보는365개다.
-두 범위의 최신 전체 검증 결과·저장 범위·백업은 HANDOFF 맨 위를 확인한다.
+후보 탐색 → 주장별 원문/기한 검증 → 100점 평가 → 중복·발행 이력 → 사람 승인 → 검증된 사실로 쇼츠 `make` → 주간 캘린더가 구현됐다.
+운영 순서와 제한은 [docs/TOPIC_STRATEGY.md](docs/TOPIC_STRATEGY.md), 선행 실운영 기록은 [docs/history/carousel_2026-10/OPS_VALIDATION_2026-10-08.md](docs/history/carousel_2026-10/OPS_VALIDATION_2026-10-08.md).
+쇼츠 전용 전환 뒤 자동 테스트 327개(외부 서비스 mock, 실제 FFmpeg 회귀 포함). 최신 결과는 HANDOFF 맨 위.
 이 결과를 모든 AI 제작/인용 방식의 실제 검증으로 보지 않는다. 공식 근거 보완·제작 승인·게시 확인은 여전히 필요하다.
 
 현재 Codex에서는 기존 `.venv`가 실행되지 않아 원본을 보존하고 외부 `../.codex-envs/ai-shorts-py312` 환경으로 패키지를 재사용한다.

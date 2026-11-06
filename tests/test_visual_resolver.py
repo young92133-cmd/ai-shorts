@@ -61,6 +61,22 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(short_phrase("판매량이 40퍼센트 증가했습니다.", "trend", "40%"), "40% 증가")
         self.assertTrue(short_phrase("이 사람은 도대체 왜 그런 선택을 했을까요?").endswith("?"))
 
+    def test_short_phrase_does_not_cut_after_modifier(self):
+        # 2026-11-05 실제 영상: '셋째, 내복이나 얇은' / '고지서가 무서우신가?' 로 잘렸다
+        self.assertEqual(short_phrase("셋째, 내복이나 얇은 겉옷을 겹쳐 입으면 체감 온도가 올라갑니다."), "내복이나 얇은 겉옷")
+        self.assertEqual(short_phrase("첫째, 실내 온도는 너무 높이지 말고 적정하게 유지하세요."), "실내 온도")
+        self.assertEqual(short_phrase("겨울만 되면 난방비 고지서가 무서우신가요?"), "고지서가 무서우신가요?")
+        self.assertEqual(short_phrase("작은 습관 네 가지로 이번 겨울 난방비를 지켜 보세요."), "작은 습관 네 가지")
+        self.assertEqual(short_phrase("둘째, 창문 틈과 문 아래로 새는 바람부터 막아 주세요."), "창문 틈과 문 아래")
+        self.assertEqual(short_phrase("그래서 우리가 매일 아침 마시는 커피 한 잔에는 사연이 있습니다."), "우리가 매일 아침")
+
+    def test_card_text_shrinks_before_breaking_a_word(self):
+        from PIL import Image, ImageDraw
+        from app.pipeline.cards import fit_text
+        draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        _, lines, _ = fit_text(draw, "고지서가 무서우신가요?", 1080 * 0.84, 1000, int(1080 * 0.13))
+        self.assertEqual(" ".join(lines).split(), ["고지서가", "무서우신가요?"])   # '?' 만 따로 남지 않는다
+
     def test_title_wrap_keeps_inside_screen(self):
         lines = wrap_title("아주아주긴띄어쓰기없는문장이화면밖으로나가면안됩니다", 11)
         self.assertLessEqual(len(lines), 2)

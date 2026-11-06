@@ -12,7 +12,6 @@
 <!-- ================= 왼쪽 단계 메뉴 ================= -->
 <aside class="sidebar">
   <div class="brand">AI Shorts Studio</div>
-  <a class="step" href="/studio" style="text-decoration:none">🖼 카드뉴스·인스타툰 스튜디오</a>
   <button class="current" id="cur-box" type="button" title="프로젝트 목록 보기">
     <small>현재 프로젝트</small>
     <strong id="cur-title">새 프로젝트</strong>
@@ -21,6 +20,8 @@
   <nav id="steps">
     <div class="nav-group">프로젝트</div>
     <button class="step" data-step="projects"><span class="n">1</span>프로젝트 목록</button>
+    <div class="nav-group">벤치마킹</div>
+    <button class="step" data-step="bench"><span class="n">★</span>경쟁 채널 분석</button>
     <div class="nav-group">기획</div>
     <button class="step" data-step="source"><span class="n">2</span>소재</button>
     <button class="step" data-step="style"><span class="n">3</span>스타일·지침</button>
@@ -56,6 +57,28 @@
   <p class="hint" id="jobs-empty">아직 만든 영상이 없습니다. 「새로 만들기」로 시작하세요.</p>
 </section>
 
+<!-- ★ 경쟁 채널 벤치마킹 -->
+<section class="panel card hidden" data-panel="bench">
+  <h2>경쟁 채널 분석</h2>
+  <p class="hint">공개된 쇼츠 목록·조회수·게시일·공개 자막만 봅니다(로그인·영상 다운로드 없음). 시청 지속률·클릭률 같은 비공개 지표는 만들지 않으며, 성과를 보장하지 않습니다.</p>
+  <div class="field">
+    <label for="bench-url">채널 주소 또는 @채널명</label>
+    <input type="text" id="bench-url" placeholder="예: https://www.youtube.com/@채널 또는 @채널">
+    <div class="actions" style="margin-top:8px">
+      <button class="primary" id="bench-run" type="button">분석하기 (1~3분)</button>
+      <label><input type="checkbox" id="bench-refresh"> 새로 수집 (조회수 증가 실측)</label>
+      <span class="hint" id="bench-msg"></span>
+    </div>
+  </div>
+  <div class="field">
+    <label>분석한 채널 <span class="hint">여러 개를 고르면 공통 패턴을 비교합니다</span></label>
+    <div id="bench-list"></div>
+    <div class="actions" style="margin-top:8px"><button id="bench-topics" type="button">고른 채널로 추천 주제 보기</button></div>
+  </div>
+  <div id="bench-detail"></div>
+  <div id="bench-ideas"></div>
+</section>
+
 <!-- ② 소재 -->
 <section class="panel card hidden" data-panel="source">
   <h2>소재</h2>
@@ -71,6 +94,7 @@
     <label id="input-label">주제</label>
     <textarea id="input" rows="2" placeholder="예: 철근 콘크리트가 강한 이유"></textarea>
     <p class="hint" id="input-hint">한 줄이면 충분합니다. 리서치 → 대본 → 음성 → 이미지 → 영상까지 자동으로 만듭니다.</p>
+    <p class="hint warn hidden" id="bench-applied"></p>
   </div>
 
   <div class="field">

@@ -1,4 +1,4 @@
-"""Offline, synthetic end-to-end demo. No public sources, LLM, media APIs or PNG rendering."""
+"""Offline, synthetic end-to-end demo. No public sources, LLM, media APIs or video rendering."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ import json
 import uuid
 from pathlib import Path
 
-from app.topics.schema import Evidence, Fact, Citation, now, timestamp
+from app.topics.schema import Evidence, Fact, Citation, now
 from app.topics.store import Store, identifier, write
 from app.topics.discovery import ingest
 from app.topics.engine import Engine
@@ -70,32 +70,28 @@ async def run(out: Path) -> dict:
     selected = next(t for t in store.topics() if t.title == IDEAS[0][1])
     # Simulated user approval only in the isolated fixture store, never production.
     await engine.approve(selected.topic_id, at=at)
-    packet = await engine.create(selected.topic_id, fmt='hybrid', dry_run=True, at=at)
+    packet = await engine.create(selected.topic_id, dry_run=True, at=at)
     write(out / 'engine_delivery.json', {**packet, 'notice':NOTICE})
-    plan = packet['delivery'][0]['story_plan']
-    write(out / 'story_plan.json', {**plan, 'notice':NOTICE})
-    lines = ['# Topic Strategy V1 오프라인 검증 예시', '', NOTICE, '', '모델 호출 0회 · 유료 API 0원 · PNG 렌더링 없음.', '',
+    lines = ['# Topic Strategy V1 오프라인 검증 예시', '', NOTICE, '', '모델 호출 0회 · 유료 API 0원 · 영상 렌더링 없음.', '',
              '## 추천 후보 10개', '', '|번호|카테고리|주제|점수|검증|', '|---|---|---|---:|---|']
     labels = {'housing':'부동산·주거','finance':'재테크·투자 기초','economy':'경제 뉴스 해설'}
     for r in result['topics']:
         lines.append(f"|{r['number']}|{labels[r['category']]}|{r['title']}|{r['score']['total_score']}|가상 근거 {r['verification']}|")
     lines += ['', '## 상위 추천 3개', '', *[f"- {r['title']} — {r['score']['total_score']}점" for r in result['top3']]]
     for title, cal in (('1주 캘린더',weekly),('4주 캘린더',monthly)):
-        lines += ['', '## '+title, '', '|발행 예정일|분야|주제|포맷|', '|---|---|---|---|']
+        lines += ['', '## '+title, '', '|발행 예정일|분야|주제|목적|', '|---|---|---|---|']
         for r in cal['entries']:
-            lines.append(f"|{r['scheduled_date']}|{labels[r['category']]}|{r['topic']}|{r['format']}|")
+            lines.append(f"|{r['scheduled_date']}|{labels[r['category']]}|{r['topic']}|{r['purpose']}|")
         lines += ['', f"채울 수 없는 슬롯 {len(cal['unfilled_dates'])}개; 강제 선정하지 않음."]
-    lines += ['', '## 전세·월세 8장 스토리', '', '|장|역할|타입|문구|', '|---|---|---|---|']
-    for i,r in enumerate(plan['pages'],1):
-        lines.append(f"|{i}|{r['role']}|{r['page_type']}|{(r['dialogue'] or r['body'] or r['headline']).replace(chr(10),' / ')}|")
+    lines += ['', '## 전세·월세 쇼츠 제작 지시문 (make 로 전달)', '', '```', packet['brief']['instructions'], '```']
     opp = store.get(selected.topic_id).opportunity
-    lines += ['', '캐릭터: tory_01 토리. 상황과 대사는 이해를 위한 창작 예시.', '', '## B2B 활용', '',
+    lines += ['', '## B2B 활용', '',
               ', '.join(opp.target_industries), '', ', '.join(opp.client_use_cases), '', opp.recommended_package,
               '', '실제 광고 전환 시 사업자·서비스·자격·광고 표시·주장 검증 필요.', '',
               '실제 수집은 `topics collect`, 실제 승인·제작은 별도 운영 저장소의 `topics approve/create`로 실행한다.']
     (out / 'REPORT.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
     return {'status':'ok', 'dir':str(out.resolve()), 'candidates':len(result['topics']), 'top3':len(result['top3']),
-            'week_slots':len(weekly['entries']), 'four_week_slots':len(monthly['entries']), 'story_pages':len(plan['pages']),
+            'week_slots':len(weekly['entries']), 'four_week_slots':len(monthly['entries']), 'brief_facts':len(packet['brief']['fact_ids']),
             'cost':0, 'notice':NOTICE}
 
 

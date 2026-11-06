@@ -30,28 +30,6 @@
 | "왜 이 구성으로 만들었어?" | `inspect <id> --part benchmark` |
 
 
-## 카드뉴스 · 인스타툰 · 하이브리드 — 내부 흐름 (2026-10-07)
-
-`make` 에 출력 형식이 생겼다. `--format shorts`(기본) | `card_news` | `insta_toon` | `hybrid` | `all`.
-예전 톤 값(`--format information|story|issue`)도 그대로 받는다(새 이름은 `--tone`).
-결과는 `output/<id>/<format>/card_01.png …`(1080x1350 PNG), `manifest.json`(페이지별 타입·문구·이미지·캐릭터·출처·대체 여부),
-`sources.json`(이 형식에 쓴 자료), `plan.json`, `master.json`, `caption.txt`(인스타 본문·해시태그·출처).
-
-흐름: 입력 수집(쇼츠와 같은 research/article/youtube 모듈) → **Master Content(AI 1회)** → **Format Planner(AI 1회, 규칙으로 보정)**
-→ 카드 사진(쇼츠 Source Resolver 그대로: AI 2회, usable 만) → 만화 컷(업로드 `toon_NN_*` → Bible 참고 이미지 → AI(설정 시) → 앱 마스코트)
-→ Pillow 렌더러(글자·말풍선은 전부 앱이 합성). 페이지 하나가 실패해도 대체 레이아웃으로 계속한다.
-`hybrid` 비율은 Master 의 story_score 로 자동: 정보형 80/20, 일반 50/50, 스토리형 20/80(카드/만화).
-`all` = 쇼츠(기존 엔진 그대로) + 같은 대본으로 하이브리드. 쇼츠가 실패해도 카드는 만든다(`partial_failure`, 쇼츠는 `resume`).
-
-- 템플릿: `clean_info`(정보형 카드뉴스 기본), `character_info`(카드에 안내 캐릭터), `hamtorich_toon`(인스타툰·하이브리드 기본), `comic_hybrid`(기존 선택형). `app/carousel/templates/*.yaml` 추가만으로 새 템플릿.
-- 캐릭터: `characters/<id>/bible.json`(Character Bible, id 는 ASCII). `characters add --file bible.json`. **기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`** — 최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 제작용 투명 포즈 8장 `poses/`, 새 포즈 규칙 `characters/hamtorich_01/README.md`. 토리 `tory_01` 은 `--character tory_01` 로 계속 사용.
-- 자동 인스타툰: `toon --topic "…" --facts-from-topic <topic_id> [--writer rules|claude]` — 훅→상황→상대역→갈등→정보 발견→해결·반전→결론 8장. 기본 `rules` 무료(AI 0회), `claude` 는 사용자가 고를 때만(구독 CLI). 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). 품질 기준 샘플은 `samples/`. 사용자 그림은 `assets/inbox/`(자동 등록), 장면 배경은 코드로 그린 11종(`app/carousel/scenes.py`).
-- 캐릭터 그림은 Bible 의 등록 포즈(햄토리치)를 컷의 감정·자세에 맞춰 고른다(무료). 등록 그림이 없는 토리는 앱 마스코트로 그린다. 햄토리치는 마스코트로 대체하지 않는다(mascot_fallback=false). `config.yaml` `carousel.image_provider` 를 바꾸면 유료 AI 생성 — 사용자 허락 없이 바꾸지 않는다.
-  `approved=false` 포즈는 기본 포즈와 reference_images 경로로도 사용하지 않는다. 받은편지함 원본은 같은 이름이어도 별도 이름으로 보존한다. 출처 상자는 공식 자료 여부를 단정하지 않는 '근거 자료' 배지를 쓴다.
-  Flow 등에서 만든 그림을 `--asset toon_03_이름.png --note "Flow 생성" --confirm-rights --license ai_generated` 로 넣으면 그 페이지 첫 컷에 쓴다.
-- 캐러셀은 `--review`·`--reference-video` 를 받지 않는다. `resume`·`rerender` 대상이 아니다(다시 `make`). `inspect <id> --part carousel` 로 페이지 요약.
-- 결과를 알릴 때: 장수, 카드/만화 비율, 사진을 쓴 페이지와 출처, 대체 레이아웃이 된 페이지(`fallback_pages`)를 전한다.
-
 ## Benchmark 인벤토리와 오프라인 경로 (2026-10-05)
 
 benchmark 현황의 기준은 `docs/BENCHMARKS.md` 맨 위 현황판이다(source 6개·profile 8개·상태·실제 검증). 아래는 오프라인 `benchmark plan/render` 경로 규칙이다.

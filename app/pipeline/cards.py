@@ -69,7 +69,8 @@ def fit_text(draw: ImageDraw.ImageDraw, text: str, max_w: float, max_h: float, s
         font = _font(size)
         lines = wrap_to_width(draw, text, font, max_w)
         line_h = int(size * 1.22)
-        if (len(lines) <= max_lines and line_h * len(lines) <= max_h) or size <= min_size:
+        whole = " ".join(lines).split() == text.split()   # 단어 중간에서 끊지 않았나 ('무서우신가요' / '?' 방지)
+        if (len(lines) <= max_lines and line_h * len(lines) <= max_h and whole) or size <= min_size:
             if len(lines) > max_lines:   # 최소 크기에서도 넘치면 줄 수를 자르고 말줄임
                 lines = lines[:max_lines]
                 lines[-1] = lines[-1].rstrip()[:-1] + "…" if len(lines[-1]) > 1 else lines[-1]
@@ -154,11 +155,11 @@ def render_card(kind: str, out_path: Path, *, width: int = 1080, height: int = 1
     emphasis = " ".join(emphasis.split())
 
     if kind == "hook_card":
-        mark = _font(int(width * 0.55))
-        draw.text((cx, int(height * 0.10)), "?" if emphasis.endswith("?") else "!", font=mark,
-                  fill=tuple(min(255, c + 40) for c in top), anchor="ma")
-        font, lines, lh = fit_text(draw, emphasis, max_w, limit - height * 0.30, int(width * 0.12))
-        _center(draw, lines, font, lh, cx, int(height * 0.30))
+        # 첫 3초 화면: 물음표·느낌표는 글자 위에 따로 두어 겹치지 않게, 문구는 크게 + 외곽선
+        mark = _font(int(width * 0.24))
+        draw.text((cx, int(height * 0.12)), "?" if emphasis.endswith("?") else "!", font=mark, fill=accent, anchor="ma")
+        font, lines, lh = fit_text(draw, emphasis, max_w, limit - height * 0.30, int(width * 0.13))
+        _center(draw, lines, font, lh, cx, int(height * 0.30), stroke=6)
     elif kind in ("number_card", "trend_card"):
         y = _pill(draw, LABELS[kind], cx, y, accent, width)
         num = key_number or emphasis

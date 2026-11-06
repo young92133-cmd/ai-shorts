@@ -316,8 +316,6 @@ async def collect(store: Store, cfg: dict, *, category_filter='all', topics=None
     for key in ids:
         topic = store.get(key)
         topic.target_audience = strategy.get('audience', topic.target_audience)
-        topic.character_id = strategy.get('character', topic.character_id)
-        topic.character_rights = strategy.get('character_rights', topic.character_rights)
         store.save_topic(topic, 'channel_strategy')
     return {'status': 'ok', 'topic_ids': ids, 'count': len(ids), 'errors': errors,
             'provenance': {'model': 'none', 'created_at': now(), 'config_version': 'topic-strategy-v1'}}

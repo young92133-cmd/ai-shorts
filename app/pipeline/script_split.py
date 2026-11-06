@@ -142,14 +142,40 @@ def short_phrase(text: str, kind: str = "", number: str = "", max_chars: int = E
                 "내렸": "하락", "내린": "하락", "떨어": "하락"}.get(word, word)
         return f"{number} {base}".strip()[:max_chars]
     first = re.split(r"(?<=[.!?。？！])\s+", text)[0].strip()
-    if first.endswith("?") or first.endswith("요?"):
-        core = re.sub(r"(요)?\?$", "", first)
-        return (_clip_words(core.split(), max_chars - 1, from_end=True) + "?")[:max_chars]
+    if first.endswith("?"):
+        if len(first) <= max_chars:
+            return first
+        core = re.sub(r"\?$", "", first)
+        tail = _clip_words(core.split(), max_chars - 1, from_end=True)
+        if len(tail.split()) < 2 and core.endswith("요"):   # '무서우신가요?' 처럼 말끝을 살린다
+            tail = _clip_words(core[:-1].split(), max_chars - 1, from_end=True)
+        return (tail + "?")[:max_chars]
     words = first.rstrip(".!").split()
-    while words and words[0].strip(",") in _CONNECT:
+    while words and (words[0].strip(",") in _CONNECT or _ORDINAL.fullmatch(words[0])):
         words = words[1:]
-    phrase = _clip_words(words, max_chars)
-    parts = phrase.split()
+    return _noun_phrase(words, max_chars)
+
+
+_ORDINAL = re.compile(r"(첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열)째,?|\d+(번째|위)[,.]?")
+_DANGLING = re.compile(r"(지|고|면|며|서|게|도록|는데|은데|니까|려고|거나|든지)$")
+_MODIFIER = re.compile(r"(은|는|을|던|한|된|운|인|ㄴ|ㄹ)$")
+_ADVERB = ("너무", "매우", "아주", "정말", "진짜", "꼭", "더", "잘", "다", "많이", "조금", "바로", "다시", "항상", "가장", "왜", "어떻게")
+
+
+def _noun_phrase(words: list[str], max_chars: int) -> str:
+    """앞에서부터 max_chars 안의 가장 긴 구 중, 조사가 붙은 명사로 끝나는 것 (예: '내복이나 얇은 겉옷').
+    '얇은'·'높이지' 처럼 꾸밈말·연결 어미에서 잘리지 않게 한다. 마땅한 끝이 없으면 예전처럼 앞에서 자른다."""
+    for k in range(len(words), 0, -1):
+        phrase = " ".join(words[:k])
+        if len(phrase) > max_chars:
+            continue
+        last = words[k - 1].strip(",.")
+        stem = _strip_particle(last)
+        noun = stem != last and len(stem) >= 2               # '겉옷을' → '겉옷'
+        plain = stem == last and not _MODIFIER.search(last) and last not in _ADVERB   # '아침' 처럼 조사 없는 명사
+        if k == len(words) or ((noun or plain) and not _DANGLING.search(last) and len(phrase) >= 4):
+            return " ".join([*words[:k - 1], stem])[:max_chars]
+    parts = _clip_words(words, max_chars).split()
     if parts:
         parts[-1] = _strip_particle(parts[-1])
     return " ".join(parts)[:max_chars]

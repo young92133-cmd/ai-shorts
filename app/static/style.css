@@ -304,3 +304,7 @@ button.icon:hover:not(:disabled) { border-color: var(--accent); color: var(--tex
   .modal { padding: 8px; }
   .modal-box { padding: 16px; max-height: 94vh; }
 }
+
+/* 경쟁 채널 분석 표 */
+.bench-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bench-table th, .bench-table td { border-bottom: 1px solid var(--line); padding: 6px; text-align: left; vertical-align: top; }

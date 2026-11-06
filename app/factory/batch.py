@@ -16,10 +16,14 @@ def _write(path: Path, data: dict) -> None:
     tmp.replace(path)
 
 
-def save_candidates(root: Path, keywords: list[str]) -> dict:
+PLAN_KEYS = ("instructions", "benchmark", "seconds")   # 벤치마킹 추천 주제가 함께 넘기는 제작 옵션
+
+
+def save_candidates(root: Path, keywords: list[str | dict]) -> dict:
+    """후보 = 주제 문자열, 또는 {topic, 패턴 제작 옵션…} (channel topics)."""
     cid = "trends_" + core._new_id()
     data = {"candidates_id": cid, "created": st.now(),
-            "candidates": [{"number": i + 1, "topic": topic} for i, topic in enumerate(keywords)]}
+            "candidates": [{"number": i + 1, **(k if isinstance(k, dict) else {"topic": k})} for i, k in enumerate(keywords)]}
     base = root / "_factory"
     _write(base / (cid + ".json"), data)
     _write(base / "latest_trends.json", {"candidates_id": cid})
@@ -87,13 +91,17 @@ async def make(*, topics: list[str] | None = None, select: list[int] | None = No
         if len(set(select)) != len(select):
             raise core.FactoryError("invalid", "후보 번호가 중복됐습니다.")
         candidates = load_candidates(candidates_id)
-        lookup = {c["number"]: c["topic"] for c in candidates["candidates"]}
+        lookup = {c["number"]: c for c in candidates["candidates"]}
         if any(isinstance(n, bool) or not isinstance(n, int) or n not in lookup for n in select):
             raise core.FactoryError("invalid", "후보 목록에 있는 번호를 골라 주세요.")
-        topics = [lookup[n] for n in select]
+        topics = [lookup[n]["topic"] for n in select]
+        plans = {lookup[n]["topic"]: {k: lookup[n][k] for k in PLAN_KEYS if lookup[n].get(k)} for n in select}
+        bench = {lookup[n]["topic"]: (lookup[n]["channel_id"], lookup[n].get("pattern_index", 0))
+                 for n in select if lookup[n].get("channel_id")}   # channel topics 후보: 제작 뒤 원본 자막 겹침 검사
         candidates_id = candidates["candidates_id"]
     if not topics or any(not isinstance(t, str) or not t.strip() for t in topics) or len(topics) * count > 10:
         raise core.FactoryError("invalid", "빈 주제 없이 한 번에 최대 10편까지 지정해 주세요.")
+    plans, bench = (plans, bench) if select else ({}, {})
     entries = [topic.strip() for topic in topics for _ in range(count)]
     bid = "batch_" + core._new_id()
     path = core.output_root() / "_factory" / (bid + ".json")
@@ -105,12 +113,18 @@ async def make(*, topics: list[str] | None = None, select: list[int] | None = No
         item["result"] = {"status": "running"}
         _write(path, data)
         log(f"[{item['number']}/{len(entries)}] 순차 제작: {item['topic']}")
-        request = dict(options)
+        plan = plans.get(item["topic"]) or {}   # 추천 주제의 패턴(구조·길이·지침)이 CLI 기본값보다 우선
+        request = {**options, **plan}
+        if plan.get("instructions") and options.get("instructions"):
+            request["instructions"] = options["instructions"] + "\n" + plan["instructions"]
         if count > 1:
             request["instructions"] = (request.get("instructions", "") +
                 f"\n같은 주제의 {count}편 시리즈 중 {(item['number'] - 1) % count + 1}편입니다. 편마다 다른 질문과 관점으로 구성하세요.").strip()
         try:
             item["result"] = await core.make(topic=item["topic"], log=log, **request)
+            if item["topic"] in bench:
+                from . import channels
+                item["result"] = channels.record(item["result"], *bench[item["topic"]])
         except Exception as exc:
             item["result"] = {"status": "error", "message": safe_error(exc)}
         _write(path, _summarize(data))

@@ -1,0 +1,6 @@
+# rg / Claude Code Grep / Codex 검색에서 기본 제외 (토큰 절약). 필요하면 rg --no-ignore 로 찾는다.
+# 지난 기록과 예전 카드뉴스·인스타툰 자산 — 쇼츠 코드는 이것들을 읽지 않는다.
+docs/history/
+samples/
+characters/
+assets/cat-box-45s/

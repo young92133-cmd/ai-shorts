@@ -306,6 +306,7 @@ class JobManager:
                     visual_mode=str(job.options.get("visual_mode") or ""),
                     reference_name=str(job.options.get("reference_name") or ""),
                     upload_rights=job.options.get("upload_rights") or {},
+                    benchmark=str(job.options.get("benchmark") or "off"),
                 )
                 job.result = result
                 result["rendered_at"] = dt.datetime.now().isoformat(timespec="seconds")

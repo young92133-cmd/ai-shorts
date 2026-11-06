@@ -1,63 +1,74 @@
 # HANDOFF — 현재 상태 (한 장)
 
 > 규칙: AGENTS.md '작업 시작 · 종료'. 이 파일은 80줄 이하로 유지하고, 끝난 기록은 `docs/history/` 로 옮긴다.
-> 2026-10-08 이전 상세 기록: `docs/history/HANDOFF_2026-09_10.md`, 옛 계획: `docs/history/IMPLEMENTATION_PLAN_2026-09_10.md`.
+> 지난 기록: `docs/history/HANDOFF_2026-10-21_studio_v1.md`(카드 스튜디오 V1.0), `docs/history/HANDOFF_2026-09_10.md`.
 
-## 현재 상태 (2026-10-21, Claude)
+## 현재 상태 (2026-11-06, Claude → Codex) — 유튜브 AI 쇼츠 전용 + 경쟁 채널 벤치마킹
 
-- 저장소 `young92133-cmd/ai-shorts`, 브랜치 `feature/agent-content-factory`. 2026-10-19~21 일반 push(강제 push 없음):
-  `acc4ac2` 경량화 · `95d1f2e` 스튜디오 · `93b03d5` 인스타툰 품질 · `93307ff` 카드 순서·추가·삭제 · `ed75434` 실행 취소·이미지·화면
-  · 그 다음 커밋 = V1.0 기준선(카드 종류·다시 실행·단어 보존·사용 안내, 이 HANDOFF 포함). 모두 일반 push.
-  확인: `git fetch` 후 `git status -sb` 에 ahead/behind 가 없으면 GitHub 와 일치.
-- 계획 문서: `docs/OPTIMIZATION_PLAN_2026-10-14.md`(5·6단계 승인 대기), `docs/STUDIO_PLAN_2026-10-16.md`.
+> **Codex 는 먼저 `docs/CODEX_HANDOFF_2026-11-06.md` 를 읽는다.** 카드뉴스·인스타툰·캐릭터 기능은 제거됐고 다시 만들지 않는다.
+> 다음 작업: HyperFrames 1단계(Node 22 설치는 사용자 승인 후) → 장면 소스 적합성 개선.
 
-### 지난 기록 (커밋됨)
-- 스튜디오 S1~S4·인스타툰 품질 개선·백업 상세: `docs/history/HANDOFF_2026-10-16_18_studio.md`
-- 카드 순서·추가·삭제, 실행 취소·이미지 넣기·화면(커밋 93307ff·ed75434): `docs/history/HANDOFF_2026-10-19_20_studio_edit.md`
-- 경량화 1~4단계: `docs/history/HANDOFF_2026-10-16_optimization.md`
+- 작업 폴더 `../shorts-ai-shorts` (git worktree), 브랜치 `feature/shorts-only` ← `feature/agent-content-factory` 96bc82a.
+  2026-11-06 사용자 승인으로 commit·일반 push (이후 commit·push 는 다시 승인 필요).
+- 백업: `../backups/shorts-only-before-20261105/` (모든 브랜치 bundle, 세 작업 폴더의 미커밋 patch·tar, 소스 스냅샷, SHA256SUMS, `RESTORE.md`).
+- 손대지 않은 것: `../shorts-ai`(운영 문서 미커밋), `../shorts-ai-styles`(10-27 Codex 미커밋), `../shorts-ai-benchmark-v2`(Codex 소유),
+  output·reference.mp4·.venv·samples/·characters/(사용자 결정: 그대로 둠).
 
-### 완료 (2026-10-21, 사용자 승인 후 커밋·push) — 스튜디오 V1.0 기능 기준선
-- V1.0 = 이 커밋의 기능(만들기·문구/종류/장면 편집·순서/추가/삭제·이미지·실행 취소/다시 실행·ZIP). 사용법 `docs/STUDIO_GUIDE_V1.md`.
-  버전은 문서로만 표기(Git 태그·Release 없음, 만들려면 별도 승인). 이후는 새 기능보다 품질·안정성 우선(AGENTS.md).
-- 카드 종류 바꾸기: 편집 칸 '카드 종류'(카드 8종, 만화↔카드는 안 함). `studio._retype` 가 새 종류에 필요한 칸만 기존 문구로 채움
-  (체크리스트·요약=본문 문장→항목, 비교=항목 반씩), 비교 카드는 왼쪽·오른쪽 제목·항목 편집 칸. 8종×템플릿 2개 렌더 대체 없음 확인.
-- 다시 실행(redo): `history/redo/` 목록. 실행 취소 전 지금 상태를 redo 에, 다시 실행 전 지금 상태를 history 에 넣고(`_step`),
-  새 편집이면 redo 목록을 `history/undone/` 으로 옮김(삭제 없음). 거절된 편집은 기록을 남기지 않게 검사 순서 수정.
-- 렌더 버그: 줄 균등(`balanced`)이 폭을 좁혀 '자동이체부 / 터' 처럼 단어를 자르던 문제 → 가장 긴 단어보다 좁히지 않음 + `fit` 도 단어 보존.
-- 실제 제작 5편(스튜디오 API = '새로 만들기'와 같은 경로, Claude 구독 2~4회씩, 유료 API·이미지 생성 0, 각 65~150초, 대체 레이아웃 0):
-  카드뉴스 `20261019_232015_b625`(신용점수)·`20261019_232120_c27f`(연말정산), 인스타툰 `20261019_232350_20cb`(점심값)·
-  `20261019_232526_4972`(관리비), 혼합형 `20261019_232656_1ae7`(구독료). 각 `<형식>/overview.png`. 렌더 버그 수정 뒤 5편 다시 그림(AI 호출 없음).
-- 평가 요약: 혼합형·관리비 툰·카드뉴스 2편은 게시 가능 수준(사람이 수치 확인 후). 점심값 툰은 이야기 연결 약함.
-  공통 과제 ① 표정 그림 부족(만화 3편 모두 놀람·슬픔 등 대체) ② 공개 사진 0건 → 카드가 그래픽 위주로 단조
-  ③ AI 문구의 구체 수치(판매량·공제율 등)는 게시 전 확인 필요 ④ 출처 이름이 '자료 1' 처럼 불명확한 경우.
-- 수정 파일: app/studio/{project,api}.py, studio.html, app/carousel/render.py, tests/test_{studio,carousel}.py,
-  docs/STUDIO_GUIDE_V1.md(새), README·AGENTS(안내 한 줄)
+## 2026-11-05 밤 추가 (미커밋) — 경쟁 채널 벤치마킹 · 품질 수정
+- 새 파일: `app/pipeline/channels.py`(수집·지표·AI 패턴·비교·복사 감시), `app/factory/channels.py`(`channel analyze/list/show/topics/make/auto`, 캐시
+  `output/_factory/channels/`), `tests/test_channels.py`(14). 웹 '경쟁 채널 분석' 화면(index.html·app.js·main.py `/api/channels*`), 웹 잡에 `benchmark` 전달(jobs.py).
+  batch 후보가 패턴 옵션(instructions·benchmark·seconds)을 함께 넘김.
+- 품질: `script_split.short_phrase` 꾸밈말·연결어미에서 안 자름, `cards.fit_text` 단어 중간 줄바꿈 전 글자 축소, 훅 카드 물음표 겹침 제거. edge-tts 공용 .venv 7.3.1 로 올림.
+- 실제 확인: Claude 구독 재로그인(pro). 짤잉 @zzal_ing 목록 150·상세 45·자막 6, 패턴 분석 Claude 2회(수정 전·후). 검토→수정→승인→MP4 `output/20261105_231559_d127`(29.7초).
+- 2주제 순차 제작(C) 성공: `batch_20261105_232321_ab58` 2/2 완성(25.6초·25.5초, 1080x1920).
+- 벤치마킹 기반 쇼츠(D, 2026-11-06): 1차(`20261106_220410_91bf`)는 추천 제목 '작년 신인상 후보…'가 **야구로 조사**됨(분야 누락).
+  → `TopicIdea.search_query`(분야·대상 포함 조사 문장) 추가, 후보 `topic`=조사 문장·`title`=제목 후보, batch --select 도 `channel_benchmark.json` 기록.
+  2차 `output/20261106_221220_cad4/final.mp4` 성공: K팝 신인 걸그룹 근황, curiosity_update_story(패턴 강제), 22.2초·1080x1920·30fps·AAC, 7장면, 자막 15줄,
+  원본 자막 겹침 0.0, AI 5회(구독). 공개 자료 0건 → 전부 자체 카드. 출처가 블로그 2곳뿐 — 수상·차트 사실은 게시 전 확인 필요.
+- 전체 테스트 2026-11-06: **343개 통과** (예전 '344' 는 추정치였음).
+- 백업: `../backups/shorts-only-bench-20261106/` (이 폴더 미커밋 변경 patch·untracked tar, SHA256 OK, apply --check OK, RESTORE.md).
+- HyperFrames 렌더러: 0단계 보고만 함. 확정 구조 = timeline.json 재사용 · 기본 FFmpeg 유지 · `renderer: hyperframes` 선택형 ·
+  `presets/render/*.json` · Noto Sans KR · Node 22+ · 공식 CLI·플러그인. **Node 설치·플러그인 설치·브라우저 다운로드는 아직 하지 않음 (승인 대기).**
 
-### 완료 (2026-10-21, 사용자 승인 후 커밋·push) — 실제 5편 게시 전 품질 검수
-- 보고서 `docs/QA_REVIEW_2026-10-21.md`: 카드별 사실 확인(✅/⚠/❓, 금감원·NICE·국세청 해설·아시아경제·국토부·대한상의 근거)·
-  표지/본문 불일치·스토리 평가·수정 권장. 사용자 승인(권장 전부) 후 수정본 `output/<id>_qa/` 에만 반영, 바뀐 카드만 다시 그림.
-- 비교 `output/qa_2026-10-21_before_after.png`. 원본 5편은 변경 없음. 검증 필요(❓)로 남긴 것: 신용카드 '한도 절반' 기준(문구에서 제거),
-  OTT '연 15만 원'(같은 편 예시 요금으로 계산한 16만 원으로 대체), 조사의 '5만 원 이상 37%'(카드 미사용).
-- 렌더: 훅 표지 제목도 줄 균등(`render.r_cover_hook`), 회귀 테스트 1개. 새 UI·기능 없음.
-- 보고서에 '확인된 사실(공식/언론/해설) · 단순 계산 · 확인되지 않은 주장' 구분과 연말정산 연도 확인(근거=2025년 귀속, 게시 대상=2026년 귀속,
-  카드엔 연도 없음, 2027년 1월 국세청 안내로 재확인) 추가.
-- 원본·수정본 10편 백업(Git 밖): `../backups/qa-5-decks-20261021/decks_original_and_qa.zip`(175파일, 38MB, SHA256SUMS.json, 내용 대조 OK).
+## 구조
 
-### 테스트
+```
+채팅(Claude Code/Codex) → app/factory (make·resume·batch·inspect·edit-scene·set-visual·rerender·export·trends·benchmark·topics)
+                        → app/pipeline (조사·대본·장면·TTS·화면·자막·렌더)   ← Web UI app/main.py · static/app.js · templates/index.html
+                        → app/topics (수집·검증·추천·승인·캘린더 → brief.shorts_brief → core.make)
+```
 
-- 2026-10-21 전체 `unittest discover`: **406개 통과**(V1.0 405 + 훅 표지 줄 균등 1).
+## 완료
 
-## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)
+- 삭제(git rm): `app/carousel/`(22), `app/studio/`(4), `app/factory/{toon,intent}.py`, `tests/test_{carousel,studio}.py`,
+  `scripts/sample_free_instatoon.py`, `카드뉴스 스튜디오 실행.cmd`, `assets/inbox/README.md`, 미사용 `pipeline/assets.plan_sourced`.
+- 정리: `core.py`(캐러셀 분기·output_format 제거, 옛 카드 프로젝트는 `LEGACY_FORMATS` 로 알아보고 resume/pack 거절),
+  `__main__.py`(toon·characters·--format 출력값·--template/--character/--pages/--request/--research-file 제거, `--tone`=`--format` 톤값),
+  `main.py`·`launcher.py`·`index.html`(스튜디오 라우터·링크·인자 제거), `config.yaml`(carousel 절·topic 캐릭터 제거).
+- 주제 전략(사용자 결정 "쇼츠용으로 바꿔 유지"): `topics/story.py` → `brief.py`(검증된 사실·출처·방향 → make 지시문),
+  `engine.create(dry_run, review, seconds, preset)` → `core.make(topic, instructions)`. plan·캐릭터 필드 제거,
+  예전 저장 파일의 옛 필드는 `schema.LEGACY_FIELDS` 로 읽을 때 버림. 자연어 판별은 `factory/topics.detect_topic_request`.
+- 문서: AGENTS·CLAUDE·README·TOPIC_STRATEGY·AGENT_REFERENCE 쇼츠 전용으로. 옛 카드 문서는 `docs/history/carousel_2026-10/`.
+  `.ignore` 추가(docs/history·samples·characters·cat-box 데모를 검색에서 제외).
+- `requirements.txt`: `edge-tts>=7.3.1` (7.2.8 은 Microsoft 서버 403).
 
-- V1.0 전 권장: 햄토리치 감정 포즈(슬픔·놀람·무표정·생각) 그림 추가(목록 `characters/hamtorich_01/README.md`, 사용자 제작),
-  게시 전 수치 확인 습관(카드에 나온 숫자를 출처와 대조), 카드뉴스는 직접 찍은 사진·그림을 '이미지 넣기'로 보강.
-- [승인 대기] 최적화 5단계: 옛 MVP 데모·verify 스크립트 4개 `scripts/legacy/` 이동 또는 삭제.
-- [승인 대기] 최적화 6단계: Git 밖 대용량(reference.mp4 1GB, output 319MB) 정리 — 사용자 데이터.
-- [보류] Gemini 포즈·배경 54장 생성은 중단 상태. `--confirm-cost` 와 사용자 승인 없이는 호출하지 않는다.
-  사용자가 `.env` 에 `GEMINI_API_KEY` 를 직접 넣어야 한다(채팅으로 키를 받지 않음).
-- 인스타툰: 품질 기준은 `samples/` 의 B 버전. 무료 경로(코드 장면 + ChatGPT 등으로 만든 그림을 `assets/inbox/` 로)가 기본.
+## 테스트·실제 검증
+
+- 전체 `unittest discover`: **327개 통과** (2026-11-05). 모든 app 모듈 import OK. 웹 화면(8766) 콘솔 오류 0, `/studio` 404.
+- 실제 쇼츠 1편 `output/20261105_223157_b176/final.mp4` (이 worktree): 완성 대본 → Edge TTS → 카드 5장면 → ASS 자막 → H.264 1080×1920 30fps AAC 27.0초.
+  첫 실행은 TTS 403 으로 `blueprint_complete` 에서 실패 → edge-tts 7.3.1 로 `resume` 성공(실패 후 이어 만들기 실제 확인). 비용 0원.
+- 주제 → MP4(Claude 대본) 실제 제작은 **미검증**: Claude 구독 OAuth 만료(`claude auth status` 는 loggedIn 으로 보임).
+  `output/20261105_223111_2c5f` 는 대본 전 실패 기록.
+
+## 남은 작업 / 다음 작업
+
+1. 사용자: `claude-login.cmd` 로 다시 로그인, `..\shorts-ai\.venv` 의 edge-tts 를 7.3.1 로 올리기(`pip install -U edge-tts`).
+2. 그 뒤 `make --topic "…" --review` → `resume` 로 주제→MP4 실제 1편, `batch --topic … --count 2 --review` 순차 확인.
+3. 사용자 승인 후 commit·push (이 worktree 만. 다른 작업 폴더의 미커밋 변경은 섞지 않는다).
+4. 개선 후보: LLM 없는 완성 대본 분할은 화면 문구가 문장 중간에서 잘림("셋째, 내복이나 얇은") · 공개 자료 0건이면 카드만 나옴.
+5. [승인 대기] 옛 MVP 데모·verify 스크립트 정리, Git 밖 대용량(reference.mp4 1GB, output) 정리 — 사용자 데이터.
 
 ## 주의
 
-- 유료 API·commit·push·위험한 삭제·대규모 구조 변경은 사용자 승인 후.
-- 다른 세션의 미커밋 변경을 덮어쓰지 않는다. `.env`·키·output·캐시는 커밋하지 않는다.
+- 유료 API·commit·push·위험한 삭제·대규모 구조 변경은 사용자 승인 후. `.env`·키·output 은 커밋하지 않는다.
+- 카드뉴스·인스타툰을 되살리려면 `../backups/shorts-only-before-20261105/RESTORE.md`.

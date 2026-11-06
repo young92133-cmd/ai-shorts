@@ -6,15 +6,14 @@ import json
 import uuid
 from pathlib import Path
 
-from . import discovery, verification, scoring, dedup, story, calendar, business
-from .schema import Topic, StoryPlan, Publication, timestamp, now
+from . import discovery, verification, scoring, dedup, brief, business
+from .schema import Topic, Publication, timestamp, now
 from .store import Store, write
 
 
 def fingerprint(store: Store, t: Topic) -> str:
     data = {'title': t.title, 'angle': t.angle, 'facts': [f.model_dump(exclude={'verification', 'checks'}) for f in t.facts],
             'evidence': [e.model_dump(exclude={'retrieved_at'}) for e in store.evidence(t)],
-            'character': t.character_id, 'character_rights': t.character_rights,
             'followup': t.followup_requested, 'update_of': t.update_of, 'series_parent_id': t.series_parent_id}
     return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
@@ -29,8 +28,8 @@ def recommendation_row(t: Topic, at=None) -> dict:
 
 
 class Engine:
-    def __init__(self, store: Store, cfg: dict, *, character_root=None):
-        self.store, self.cfg, self.character_root = store, cfg, character_root
+    def __init__(self, store: Store, cfg: dict):
+        self.store, self.cfg = store, cfg
 
     async def rank(self, *, limit=10, category='all', use_llm=False, at=None) -> dict:
         dedup.deduplicate(self.store, at)
@@ -129,7 +128,7 @@ class Engine:
         topic.approval_fingerprint = fingerprint(self.store, topic)
         return self.store.save_topic(topic, 'human_approve')
 
-    def edit(self, topic_id: str, *, title=None, direction=None, character=None, facts=None, followup=None, series_parent_id=None, update_of=None) -> Topic:
+    def edit(self, topic_id: str, *, title=None, direction=None, facts=None, followup=None, series_parent_id=None, update_of=None) -> Topic:
         topic = self.store.get(topic_id)
         if topic.status == 'published':
             raise ValueError('발행 기록 수정 대신 새 후속/업데이트 주제를 등록해 주세요')
@@ -139,10 +138,6 @@ class Engine:
             topic.title = title.strip()
         if direction is not None:
             topic.angle = direction
-        if character is not None:
-            from ..carousel.characters import get_character
-            get_character(character, self.character_root)
-            topic.character_id = character
         if facts is not None:
             from .schema import Fact
             topic.facts = [Fact.model_validate(f) for f in facts]
@@ -173,60 +168,34 @@ class Engine:
             topic.approval_fingerprint = ''
         return self.store.save_topic(topic, 'human_' + action)
 
-    async def plan(self, topic_id: str, *, fmt='hybrid', pages=8, preview=False, at=None) -> StoryPlan:
+    async def create(self, topic_id: str, *, dry_run=False, review=False, seconds=None, preset='daily', at=None, log=print) -> dict:
+        """승인된 주제 → 검증된 사실을 지시문으로 넣은 쇼츠 make. dry_run 은 전달 내용만 돌려준다."""
         topic = await self.current(topic_id, at)
-        if not preview and (topic.status not in ('approved', 'planned', 'generated', 'reviewed') or
-                            topic.approval_fingerprint != fingerprint(self.store, topic)):
-            raise ValueError('사용자가 승인한 주제만 제작 계획을 확정할 수 있습니다')
-        plan = story.build_story(topic, self.store.evidence(topic), fmt=fmt, pages=pages,
-                                 character_root=self.character_root, direction=topic.angle, at=at)
-        key = topic_id + '_' + fmt
-        previous_plan = self.store.read(self.store.path('plans', key))
-        if previous_plan is not None:
-            write(self.store.root / 'plan_history' / key / (uuid.uuid4().hex + '.json'), previous_plan)
-        write(self.store.path('plans', key), plan.model_dump())
-        if not preview:
-            topic.status = 'planned'
-            self.store.save_topic(topic, 'story_plan')
-        return plan
-
-    async def create(self, topic_id: str, *, fmt='hybrid', pages=8, dry_run=False, also=None, at=None, log=print) -> dict:
-        if fmt not in ('shorts', 'card_news', 'insta_toon', 'hybrid', 'all'):
-            raise ValueError('지원하지 않는 제작 형식')
-        modes = list(dict.fromkeys((['hybrid', 'shorts'] if fmt == 'all' else [fmt]) + list(also or [])))
-        if any(m not in ('shorts', 'card_news', 'insta_toon', 'hybrid') for m in modes):
-            raise ValueError('추가 제작 형식은 shorts/card_news/insta_toon/hybrid입니다')
-        packets = []
-        for mode in modes:
-            plan = await self.plan(topic_id, fmt='hybrid' if mode == 'shorts' else mode, pages=pages, at=at)
-            packets.append({'format': mode, 'story_plan': plan.model_dump(), 'engine': 'app.pipeline.run' if mode == 'shorts' else 'app.carousel.pipeline'})
+        if topic.status not in ('approved', 'planned', 'generated', 'reviewed') or topic.approval_fingerprint != fingerprint(self.store, topic):
+            raise ValueError('사용자가 승인한 주제만 제작할 수 있습니다')
+        packet = brief.shorts_brief(topic, self.store.evidence(topic), at=at)
+        write(self.store.path('briefs', topic_id), packet)
         if dry_run:
-            return {'status': 'planned', 'topic_id': topic_id, 'delivery': packets, 'cost': 0, 'generated': False}
+            return {'status': 'planned', 'topic_id': topic_id, 'brief': packet, 'engine': 'app.factory.core.make',
+                    'cost': 0, 'generated': False}
         from ..factory import core
-        from ..carousel.schema import MasterContent
-        results = []
-        for packet in packets:
-            plan = StoryPlan.model_validate(packet['story_plan'])
-            try:
-                if packet['format'] == 'shorts':
-                    narration = '\n'.join(f.text for f in MasterContent.model_validate(plan.master).facts)
-                    result = await core.make(script_text=narration, output_format='shorts', benchmark='off', visuals='cards', log=log)
-                    if result.get('project_id'):
-                        write(Path(result['project_dir']) / 'topic_strategy.json', plan.model_dump())
-                else:
-                    result = await core.make_planned_carousel(plan, self.store.evidence(self.store.get(topic_id)),
-                                                              character_root=self.character_root, log=log)
-            except Exception as exc:
-                from ..pipeline.llm import safe_error
-                result = {'status': 'failed', 'message': safe_error(exc)}
-            results.append({'format': packet['format'], **result})
+        try:
+            result = await core.make(topic=packet['title'], instructions=packet['instructions'], review=review,
+                                     seconds=seconds, preset=preset, log=log)
+            if result.get('project_dir'):
+                write(Path(result['project_dir']) / 'topic_strategy.json', packet)
+        except Exception as exc:
+            from ..pipeline.llm import safe_error
+            result = {'status': 'failed', 'message': safe_error(exc)}
+        results = [{'format': 'shorts', **result}]
         topic = self.store.get(topic_id)
         topic.projects += results
         topic.current_projects = results
-        completed = all(r.get('status') == 'render_complete' for r in results)
+        completed = result.get('status') == 'render_complete'
         topic.status = 'generated' if completed else 'planned'
         self.store.save_topic(topic, 'production_result')
-        return {'status': 'generated' if completed else 'partial_failure', 'topic_id': topic_id, 'results': results}
+        status = 'generated' if completed else result.get('status') if result.get('status') == 'script_review' else 'partial_failure'
+        return {'status': status, 'topic_id': topic_id, 'results': results}
 
     async def record_published(self, topic_id: str, *, url='', at=None) -> Topic:
         topic = self.store.get(topic_id)

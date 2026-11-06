@@ -26,7 +26,8 @@ from .pipeline import blueprint as blueprintmod, capcut as capcutmod, timeline a
 from .pipeline.sources import SourceRegistry, guard_timeline
 from .pipeline.comment_layout import analyze_comment_layout, place as place_comment
 from .pipeline.styles import analyze_references, style_to_dict
-from .studio.api import router as studio_router
+from .pipeline import bench_auto
+from .factory import channels as channelsmod, core as factory_core
 
 BASE = Path(__file__).resolve().parent
 OVERLAY_DIR = "overlays"   # 댓글 캡처. uploads/ 와 분리해야 장면 배경으로 잘못 쓰이지 않는다
@@ -45,7 +46,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Shorts", lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
-app.include_router(studio_router)   # 카드뉴스·인스타툰 스튜디오 (/studio)
 
 
 class CreateJob(BaseModel):
@@ -300,6 +300,44 @@ async def clear_uploads(token: str, name: str = ""):
     return {"ok": True}
 
 
+class ChannelRequest(BaseModel):
+    channel: str = ""
+    channels: list[str] = []
+    refresh: bool = False
+    ai: bool = True
+
+
+def _channel_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except factory_core.FactoryError as e:
+        raise HTTPException(400, e.message)
+
+
+@app.get("/api/channels")
+async def list_channels():
+    return channelsmod.channels()
+
+
+@app.post("/api/channels/analyze")
+async def analyze_channel(body: ChannelRequest):
+    """경쟁 채널 벤치마킹 (1~3분). 캐시가 새것이면 다시 수집하지 않는다."""
+    try:
+        return await channelsmod.analyze(body.channel, refresh=body.refresh, ai=body.ai, log=lambda *_: None)
+    except factory_core.FactoryError as e:
+        raise HTTPException(400, e.message)
+
+
+@app.get("/api/channels/{channel_id}")
+async def show_channel(channel_id: str):
+    return _channel_call(channelsmod.show, channel_id)
+
+
+@app.post("/api/channels/topics")
+async def channel_topics(body: ChannelRequest):
+    return _channel_call(channelsmod.topics, body.channels)
+
+
 @app.get("/api/jobs")
 async def list_jobs():
     return manager.list()
@@ -323,6 +361,11 @@ async def create_job(body: CreateJob):
         if not (manager.output / "_uploads" / token / name).is_file():
             raise HTTPException(400, "선택한 영상 파일이 업로드 목록에 없습니다.")
         body.options["visual_mode"] = "broll"
+    if body.options.get("benchmark"):   # 벤치마킹 추천 주제에서 넘어온 제작 구조
+        try:
+            body.options["benchmark"] = bench_auto.validate_choice(str(body.options["benchmark"]))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     provider = body.options.get("llm_provider") or manager.cfg["llm"]["provider"]
     if body.mode != "script" and provider == "openai" and not env("OPENAI_API_KEY"):
         raise HTTPException(400, "OPENAI_API_KEY 가 .env 에 없습니다.")
