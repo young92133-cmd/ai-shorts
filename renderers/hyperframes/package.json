@@ -1,0 +1,11 @@
+{
+  "name": "ai-shorts-hyperframes-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated HyperFrames stage-one PoC; not connected to the Python pipeline.",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "hyperframes": "0.9.23",
+    "gsap": "3.14.2"
+  }
+}

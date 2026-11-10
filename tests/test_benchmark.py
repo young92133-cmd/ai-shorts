@@ -253,13 +253,17 @@ class RenderGraphTests(unittest.IsolatedAsyncioTestCase):
             registry.add(kind="video", origin="upload", path=str(clip),
                          rights=core._own_rights("my_channel", "직접 촬영", True))
             tl = benchmark.build_timeline(job, selected(), {"practice": {"path": str(clip), "has_audio": True}})
-            with patch.object(timeline, "render_broll", new=AsyncMock()) as broll:
+            async def fake_broll(clips, narration, out, **kwargs):
+                out.write_bytes(b"fake MP4")
+                return out
+            with patch.object(timeline, "render_broll", new=AsyncMock(side_effect=fake_broll)) as broll:
                 await timeline.render_timeline(tl, job, job / "final.mp4")
             self.assertIsNone(broll.await_args.args[1])
             self.assertEqual(broll.await_args.kwargs["frame_layout"], "observation")
             self.assertEqual(broll.await_args.kwargs["source_volume"], 1)
-            self.assertTrue((job / "subs.ass").is_file())
-            self.assertIn(selected().selection.ending_question, (job / "subs.ass").read_text(encoding="utf-8-sig").replace("\\N", ""))
+            ass = broll.await_args.kwargs["ass_path"]
+            self.assertTrue(ass.is_file())
+            self.assertIn(selected().selection.ending_question, ass.read_text(encoding="utf-8-sig").replace("\\N", ""))
 
     async def test_narration_free_broll_preserves_audio_and_reserves_hook_area(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(render, "run_ffmpeg", new=AsyncMock()) as ffmpeg:

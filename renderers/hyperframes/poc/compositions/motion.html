@@ -1,0 +1,73 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Noto Sans KR";
+      src: url("assets/fonts/NotoSansKR-VF.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 100 900;
+      font-display: block;
+    }
+    #root { position: absolute; inset: 0; color: #f4f2e9; font-family: "Noto Sans KR"; }
+    .safe-text { position: absolute; left: 96px; width: 780px; }
+    #motion-eyebrow { top: 295px; font-size: 28px; font-weight: 600; letter-spacing: 3px; color: #a7e8d3; }
+    #motion-title, #motion-outro { top: 357px; font-size: 68px; line-height: 1.25; font-weight: 800; letter-spacing: -3px; }
+    #motion-outro { font-size: 62px; }
+    #motion-rule { position: absolute; left: 96px; top: 570px; width: 780px; height: 2px; background: #4b626b; }
+    #motion-metric { position: absolute; left: 96px; top: 615px; width: 780px; height: 280px; }
+    #motion-count { display: inline-block; min-width: 380px; font-size: 186px; line-height: 1.2; font-weight: 800; letter-spacing: -8px; font-variant-numeric: tabular-nums; }
+    #motion-unit { display: inline-block; font-size: 40px; font-weight: 600; margin-left: 16px; color: #a7e8d3; }
+    #motion-count-label { position: absolute; top: 235px; left: 0; font-size: 29px; font-weight: 500; color: #c1d0d4; }
+    #motion-chart { position: absolute; left: 96px; top: 980px; width: 780px; height: 390px; }
+    #motion-chart-title { position: absolute; left: 0; top: 0; font-size: 28px; font-weight: 500; color: #c1d0d4; }
+    /* Adapted from the official animated-bar-chart catalog's deterministic bars. */
+    .column { position: absolute; top: 20px; width: 190px; height: 355px; }
+    .column-a { left: 10px; } .column-b { left: 270px; } .column-c { left: 530px; }
+    .bar { position: absolute; bottom: 50px; width: 190px; border-radius: 12px 12px 2px 2px; transform-origin: 50% 100%; }
+    #motion-bar-a { height: 96px; background: #8ba3af; }
+    #motion-bar-b { height: 168px; background: #a9c0ca; }
+    #motion-bar-c { height: 240px; background: #a7e8d3; }
+    .bar-value { position: absolute; left: 0; width: 190px; text-align: center; font-size: 30px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; }
+    #motion-value-a { bottom: 160px; } #motion-value-b { bottom: 232px; } #motion-value-c { bottom: 304px; }
+    .bar-label { position: absolute; left: 0; bottom: 0; width: 190px; text-align: center; font-size: 28px; font-weight: 500; color: #c1d0d4; }
+    #motion-footnote { top: 1440px; font-size: 28px; font-weight: 500; color: #c1d0d4; }
+    #motion-dot { display: inline-block; width: 9px; height: 9px; margin-right: 13px; border-radius: 50%; background: #a7e8d3; }
+  </style>
+  <section id="root" data-composition-id="motion" data-width="1080" data-height="1920">
+    <div id="motion-eyebrow" class="safe-text" data-key-text="true">AI SHORTS / MOTION STUDY 01</div>
+    <h1 id="motion-title" class="safe-text" data-key-text="true">움직임으로<br />전달하는 숫자</h1>
+    <h2 id="motion-outro" class="safe-text" data-key-text="true">한국어도, 움직임도<br />또렷하게.</h2>
+    <div id="motion-rule" data-layout-ignore="true"></div>
+    <div id="motion-metric">
+      <span id="motion-count" data-key-text="true">0</span><span id="motion-unit" data-key-text="true">까지</span>
+      <p id="motion-count-label" data-key-text="true">0에서 100으로, 한 프레임씩.</p>
+    </div>
+    <div id="motion-chart">
+      <p id="motion-chart-title" data-key-text="true">세 개의 막대, 차례로 완성되는 흐름</p>
+      <div class="column column-a"><div id="motion-bar-a" class="bar" data-layout-ignore="true"></div><span id="motion-value-a" class="bar-value" data-key-text="true">40</span><span class="bar-label" data-key-text="true">가</span></div>
+      <div class="column column-b"><div id="motion-bar-b" class="bar" data-layout-ignore="true"></div><span id="motion-value-b" class="bar-value" data-key-text="true">70</span><span class="bar-label" data-key-text="true">나</span></div>
+      <div class="column column-c"><div id="motion-bar-c" class="bar" data-layout-ignore="true"></div><span id="motion-value-c" class="bar-value" data-key-text="true">100</span><span class="bar-label" data-key-text="true">다</span></div>
+    </div>
+    <p id="motion-footnote" class="safe-text" data-key-text="true"><span id="motion-dot" data-layout-ignore="true"></span>테스트 데이터 · 한국어 모션그래픽 · 10초</p>
+  </section>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#motion-eyebrow", { opacity: 1, y: 16 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0);
+    tl.fromTo("#motion-title", { opacity: 0.35, y: 28 }, { opacity: 1, y: 0, duration: 0.65, ease: "power3.out" }, 0);
+    tl.fromTo("#motion-rule", { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.7, ease: "power2.out" }, 0.55);
+    tl.fromTo("#motion-metric", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.9);
+    tl.fromTo("#motion-count", { textContent: 0 }, { textContent: 100, snap: { textContent: 1 }, duration: 2.6, ease: "none" }, 1.4);
+    tl.fromTo("#motion-chart-title, .bar-label", { opacity: 0 }, { opacity: 1, duration: 0.45 }, 3.6);
+    tl.fromTo("#motion-bar-a", { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: "power2.out" }, 4.15);
+    tl.fromTo("#motion-value-a", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45 }, 4.65);
+    tl.fromTo("#motion-bar-b", { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: "power2.out" }, 4.95);
+    tl.fromTo("#motion-value-b", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45 }, 5.45);
+    tl.fromTo("#motion-bar-c", { scaleY: 0 }, { scaleY: 1, duration: 0.9, ease: "power2.out" }, 5.75);
+    tl.fromTo("#motion-value-c", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45 }, 6.25);
+    tl.fromTo("#motion-footnote", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.9);
+    tl.to("#motion-title", { opacity: 0, y: -16, duration: 0.35, ease: "power2.in" }, 7.3);
+    tl.fromTo("#motion-outro", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 7.7);
+    tl.to({}, { duration: 0.01 }, 9.98);
+    window.__timelines = window.__timelines || {};
+    window.__timelines.motion = tl;
+  </script>
+</template>

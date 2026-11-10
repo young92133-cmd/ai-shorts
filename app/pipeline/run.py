@@ -831,15 +831,18 @@ async def run_pipeline(
         comments=tl_comments, comment_slots=comment_slots)
     # 타인 댓글 후보는 대본 검토에만 남기고 영상에는 싣지 않는다.
     tl["comments"] = []
+    if cfg.get("rendering"):
+        tl["render"] = timelinemod.render_options(tl, cfg["rendering"])
     blueprintmod.check_timeline(blueprint, tl)   # 설계도와 어긋난 타임라인으로는 렌더하지 않는다
     guard_timeline(job_dir, tl)
     timelinemod.save(job_dir, tl)
     result["timeline"] = timelinemod.FILE
 
-    progress("render", 15, "ffmpeg 렌더링 중 (1~3분)")
+    progress("render", 15, f"{timelinemod.render_options(tl)['renderer']} 렌더링 중")
     final = await timelinemod.render_timeline(tl, job_dir, job_dir / "final.mp4", fonts_dir)
     await make_thumbnail(final, job_dir / "thumb.jpg", at=0.5)
     result.update(video=str(final), thumb=str(job_dir / "thumb.jpg"), meta=str(job_dir / "meta.txt"))
+    result["rendering"] = timelinemod.render_record(final)
     progress("done", 100, "완료")
     return result
 
@@ -847,21 +850,25 @@ async def run_pipeline(
 async def rerender(job_dir: Path, cfg: dict[str, Any], progress: ProgressFn = _noop_progress) -> dict[str, Any]:
     """timeline.json 으로 영상만 다시 만든다 (⑦ 자막·댓글 수정 후). LLM·TTS 는 부르지 않는다.
 
-    새 파일로 렌더한 뒤 성공했을 때만 final.mp4 를 바꾼다. 실패해도 기존 영상은 남는다.
+    재렌더는 항상 별도 파일로 저장한다. 기존 final.mp4·썸네일·timeline은 유지한다.
     """
     require_ffmpeg()
     tl = timelinemod.load(job_dir)
+    if cfg.get("rendering"):
+        tl["render"] = timelinemod.render_options(tl, cfg["rendering"])
     guard_timeline(job_dir, tl)
     progress("render", 10, "자막·댓글을 적용해서 다시 렌더링 중 (1~3분)")
-    tmp = job_dir / "final_new.mp4"
-    tmp.unlink(missing_ok=True)
-    await timelinemod.render_timeline(tl, job_dir, tmp, Path(cfg["paths"]["assets"]) / "fonts")
-    final = job_dir / "final.mp4"
-    tmp.replace(final)
+    import uuid
+    destination = job_dir / "renders" / ("rerender_" + uuid.uuid4().hex)
+    destination.mkdir(parents=True, exist_ok=False)
+    final = destination / f"final.{timelinemod.render_options(tl)['renderer']}.mp4"
+    await timelinemod.render_timeline(tl, job_dir, final, Path(cfg["paths"]["assets"]) / "fonts")
     progress("render", 90, "썸네일 만드는 중")
-    await make_thumbnail(final, job_dir / "thumb.jpg", at=0.5)
+    thumb = destination / "thumb.jpg"
+    await make_thumbnail(final, thumb, at=0.5)
     progress("done", 100, "다시 만들기 완료")
-    return {"video": str(final), "thumb": str(job_dir / "thumb.jpg"), "duration": timelinemod.total_duration(tl)}
+    return {"video": str(final), "thumb": str(thumb), "duration": timelinemod.total_duration(tl),
+            "rendering": timelinemod.render_record(final)}
 
 
 # ---------- CLI ----------

@@ -132,7 +132,10 @@ class FactoryChannelTests(unittest.IsolatedAsyncioTestCase):
         async def fake_transcripts(data, workdir, k=6, log=print):
             data["videos"][0]["transcript"] = "작년 복귀 선언을 했던 멤버들이 결국 다시 무대에 섰다는 소식입니다"
             data["coverage"]["transcripts"] = 1
-        with patch.object(ch, "scan", new=AsyncMock(return_value=scan_data())) as scan, \
+        data = scan_data()
+        # This cache-reuse test must stay fresh after the original fixture date.
+        data["scanned_at"] = dt.datetime.now(ch.KST).isoformat(timespec="seconds")
+        with patch.object(ch, "scan", new=AsyncMock(return_value=data)) as scan, \
              patch.object(ch, "add_transcripts", new=fake_transcripts), \
              patch.object(fc.comments, "fetch_candidates", new=AsyncMock(return_value=[])), \
              patch.object(ch, "ask_structured", new=AsyncMock(return_value=ch.ChannelAnalysis.model_validate(ai_result()))) as ask:

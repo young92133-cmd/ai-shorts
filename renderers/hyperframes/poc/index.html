@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko" data-resolution="portrait">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1080, height=1920" />
+  <title>AI Shorts · HyperFrames 10초 PoC</title>
+  <script src="assets/vendor/gsap.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1080px; height: 1920px; overflow: hidden; background: #101e25; }
+    #root { position: relative; width: 1080px; height: 1920px; }
+    #ground { position: absolute; inset: 0; background: #101e25; }
+  </style>
+</head>
+<body>
+  <main id="root" data-composition-id="main" data-start="0" data-duration="10"
+    data-width="1080" data-height="1920" data-fps="30">
+    <div id="ground" data-layout-ignore="true"></div>
+    <div id="motion" class="clip" data-composition-id="motion"
+      data-composition-src="compositions/motion.html" data-start="0" data-duration="10"
+      data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1920"></div>
+    <audio id="test-audio" class="clip" src="assets/test-tone.wav" data-start="0"
+      data-duration="10" data-track-index="2" data-volume="1"></audio>
+  </main>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.to({}, { duration: 10 });
+    window.__timelines = window.__timelines || {};
+    window.__timelines.main = tl;
+  </script>
+</body>
+</html>

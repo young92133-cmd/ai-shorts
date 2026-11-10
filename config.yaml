@@ -2,6 +2,14 @@
 source_policy: strict
 my_channels: []  # 채널 일치만으로 권리 허용되지 않음. 개별 파일 증빙 필요.
 
+rendering:
+  renderer: ffmpeg            # ffmpeg (기본) | hyperframes (로컬 선택형)
+  fallback: none              # none | ffmpeg — 자동 대체는 명시적으로 켠 경우만
+  hyperframes:
+    timeout_seconds: 600
+    duck_bgm: false           # HyperFrames 전용 사전 믹스. 기존 FFmpeg 믹스는 변경하지 않음
+    asset_roots: []           # 잡 폴더·assets 외에 신뢰할 로컬 미디어 폴더만 명시
+
 llm:
   # claude  : Claude Code 로그인(구독) 사용, API 키 불필요. 모델: claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5
   # openai  : OPENAI_API_KEY 필요. 모델: gpt-5 | gpt-5-mini | gpt-4.1 | gpt-4.1-mini

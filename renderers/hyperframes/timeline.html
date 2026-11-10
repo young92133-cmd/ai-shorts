@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1080, height=1920" />
+<title>AI Shorts · Local timeline render</title>
+<script src="assets/gsap.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html,body,#root { width: 1080px; height: 1920px; overflow: hidden; background: #101e25; }
+#root { position: relative; }
+</style>
+</head>
+<body>
+<main id="root" data-composition-id="main" data-start="0" data-duration="{{DURATION}}" data-width="1080" data-height="1920" data-fps="30">
+<div id="shorts" class="clip" data-composition-id="shorts" data-composition-src="compositions/shorts.html" data-start="0" data-duration="{{DURATION}}" data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1920"></div>
+<audio id="mixed-audio" class="clip" src="assets/mix.wav" data-start="0" data-duration="{{DURATION}}" data-track-index="2" data-volume="1"></audio>
+</main>
+<script>
+const tl = gsap.timeline({paused:true});
+tl.to({}, {duration:{{DURATION}}});
+window.__timelines = window.__timelines || {};
+window.__timelines.main = tl;
+</script>
+</body>
+</html>

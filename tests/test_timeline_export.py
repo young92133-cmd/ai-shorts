@@ -131,10 +131,13 @@ class RenderTests(unittest.IsolatedAsyncioTestCase):
             (job_dir / "overlays").mkdir()
             Image.new("RGB", (400, 200)).save(job_dir / "overlays" / "cap.png")
             tl["comments"].append(timeline.image_comment("overlays/cap.png", 1, 3))
-            fake = AsyncMock(return_value=job_dir / "final.mp4")
+            async def fake_encode(images, durations, narration, out_path, **kwargs):
+                out_path.write_bytes(b"fake MP4")
+                return out_path
+            fake = AsyncMock(side_effect=fake_encode)
             with patch.object(timeline, "render_slideshow", new=fake):
                 await timeline.render_timeline(tl, job_dir, job_dir / "final.mp4")
-            ass = (job_dir / "subs.ass").read_text(encoding="utf-8-sig")
+            ass = fake.await_args.kwargs["ass_path"].read_text(encoding="utf-8-sig")
         kwargs = fake.await_args.kwargs
         self.assertEqual(len(kwargs["overlays"]), 1)
         self.assertEqual(kwargs["overlays"][0]["path"], job_dir / "overlays" / "cap.png")

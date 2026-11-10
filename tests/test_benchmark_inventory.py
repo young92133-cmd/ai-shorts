@@ -285,7 +285,9 @@ class ProductionTests(unittest.IsolatedAsyncioTestCase):
             out = await self.ready(name); job = Path(out['project_dir'])
             plan = benchmark.load_plan(job)
             tl = benchmark.build_timeline(job, plan, {'owned': {'path': str(job/'uploads'/'owned.mp4'), 'has_audio': True}})
-            with patch.object(render, 'run_ffmpeg', new=AsyncMock()) as ffmpeg:
+            async def fake_ffmpeg(args, cwd=None):
+                Path(args[-1]).write_bytes(b'fake MP4')
+            with patch.object(render, 'run_ffmpeg', new=AsyncMock(side_effect=fake_ffmpeg)) as ffmpeg:
                 await timeline.render_timeline(tl, job, job/'test.mp4')
             args = ffmpeg.await_args.args[0]; graph = args[args.index('-filter_complex')+1]
             self.assertIn('anullsrc', graph)
@@ -294,7 +296,7 @@ class ProductionTests(unittest.IsolatedAsyncioTestCase):
             if name == 'ranked_moments':
                 self.assertIn('trim=0.000:2.000,', graph)
                 self.assertNotIn('trim=0.000:3.000,', graph)
-            self.assertTrue((job/'subs.ass').is_file())
+            self.assertTrue(list((job/'renders').glob('*/subs.ass')))
 
     async def test_failed_card_rerender_preserves_completed_video(self):
         out = await self.ready('curiosity_update_story'); job = Path(out['project_dir'])

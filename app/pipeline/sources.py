@@ -150,6 +150,7 @@ class SourceRegistry:
         paths = [tl.get("narration", ""), tl.get("bgm", "")]
         paths += [s.get("visual", {}).get("path", "") for s in tl.get("scenes", [])]
         paths += [c.get("path", "") for c in tl.get("comments", []) if c.get("kind") == "image"]
+        paths += [s.get("path", "") for s in tl.get("sfx", [])]
         for value in filter(None, paths):
             path = Path(value)
             if not path.is_absolute():

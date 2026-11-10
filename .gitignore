@@ -11,6 +11,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .cache/
+.tools/
+renderers/hyperframes/node_modules/
+renderers/hyperframes/poc/.hyperframes/
+renderers/hyperframes/poc/.cache/
 .hypothesis/
 tmp/
 temp/

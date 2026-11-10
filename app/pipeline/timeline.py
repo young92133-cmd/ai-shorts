@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+import time
 from pathlib import Path
 from typing import Any
 
@@ -226,14 +227,14 @@ def ass_inputs(tl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
-                          fonts_dir: Path | None = None) -> Path:
+async def _render_ffmpeg(tl: dict[str, Any], job_dir: Path, out_path: Path,
+                         fonts_dir: Path | None = None) -> Path:
     """timeline.json 하나로 subs.ass 를 만들고 최종 영상을 렌더한다. 첫 렌더와 다시 만들기가 같은 코드를 쓴다."""
     if (job_dir / "sources.json").exists():
         guard_timeline(job_dir, tl)
     w, h, fps = int(tl["width"]), int(tl["height"]), int(tl["fps"])
     st = tl["subtitles"]["style"]
-    ass = build_ass([], job_dir / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),
+    ass = build_ass([], out_path.parent / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),
                     size=int(st.get("size", 64)), highlight=st.get("highlight", "#FFD400"),
                     outline=st.get("outline", "#000000"),
                     **({"margin_v": int(h * 0.18), "line_wrap_chars": 16}
@@ -267,3 +268,83 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
     durations = [float(s["duration"]) for s in tl["scenes"]]
     return await render_slideshow(images, durations, narration, out_path,
                                   transition=float(tl["transition"]), **common)
+
+
+RENDERERS = ("ffmpeg", "hyperframes")
+
+
+def render_record(out_path: Path) -> dict[str, Any]:
+    path = out_path.with_suffix(".render.json")
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def render_options(tl: dict[str, Any], options: dict[str, Any] | None = None) -> dict[str, Any]:
+    """V1 timelines without render settings keep the original FFmpeg path."""
+    result = {**(tl.get("render") or {}), **(options or {})}
+    renderer = result.get("renderer", "ffmpeg")
+    fallback = result.get("fallback", "none")
+    if renderer not in RENDERERS or fallback not in ("none", "ffmpeg"):
+        raise ValueError("renderer must be ffmpeg/hyperframes; fallback must be none/ffmpeg")
+    return {**result, "renderer": renderer, "fallback": fallback}
+
+
+async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
+                          fonts_dir: Path | None = None, *,
+                          options: dict[str, Any] | None = None) -> Path:
+    """Choose a renderer; preserve the original FFmpeg graph and never overwrite media."""
+    settings = render_options(tl, options)
+    job_dir, out_path = Path(job_dir), Path(out_path)
+    if out_path.exists() or out_path.with_suffix(".render.json").exists():
+        raise FileExistsError(f"Render output already exists: {out_path}")
+    if (job_dir / "sources.json").exists():
+        guard_timeline(job_dir, tl)
+    attempt = job_dir / "renders" / uuid.uuid4().hex
+    attempt.mkdir(parents=True, exist_ok=False)
+    record = {"requested_renderer": settings["renderer"], "actual_renderer": None,
+              "fallback": settings["fallback"], "fallback_used": False,
+              "status": "rendering", "output": str(out_path.resolve()), "errors": []}
+    started = time.perf_counter()
+    # A renderer writes only inside its attempt. Publishing is exclusive (no replace).
+    candidate = attempt / "candidate.mp4"
+    try:
+        if settings["renderer"] == "hyperframes":
+            from .hyperframes import render_hyperframes, HyperframesError
+            try:
+                await render_hyperframes(tl, job_dir, candidate, attempt / "hyperframes",
+                                        settings.get("hyperframes") or {})
+                record["actual_renderer"] = "hyperframes"
+            except HyperframesError as exc:
+                record["errors"].append({"renderer": "hyperframes", "message": str(exc)})
+                if settings["fallback"] != "ffmpeg":
+                    raise
+                candidate = attempt / "fallback.mp4"
+                await _render_ffmpeg(tl, job_dir, candidate, fonts_dir)
+                record.update(actual_renderer="ffmpeg", fallback_used=True)
+        else:
+            await _render_ffmpeg(tl, job_dir, candidate, fonts_dir)
+            record["actual_renderer"] = "ffmpeg"
+        if not candidate.is_file() or candidate.stat().st_size == 0:
+            raise RuntimeError("Renderer did not produce a non-empty MP4")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # x mode is atomic with respect to another writer. A race cannot replace old output.
+        import shutil
+        with out_path.open("xb") as target, candidate.open("rb") as source:
+            try:
+                shutil.copyfileobj(source, target)
+            except BaseException:
+                target.close()
+                out_path.unlink(missing_ok=True)
+                raise
+        record["status"] = "complete"
+        return out_path
+    except BaseException as exc:
+        record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        record["elapsed_seconds"] = round(time.perf_counter() - started, 3)
+        (attempt / "render-result.json").write_text(
+            json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Sidecar belongs to this new output; old outputs and their records are untouched.
+        if record["status"] == "complete":
+            with out_path.with_suffix(".render.json").open("x", encoding="utf-8") as f:
+                json.dump(record, f, ensure_ascii=False, indent=2)

@@ -58,6 +58,8 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--tts", help="edge | openai | elevenlabs | typecast")
     mk.add_argument("--voice")
     mk.add_argument("--no-subtitles", action="store_true")
+    mk.add_argument("--renderer", choices=("ffmpeg", "hyperframes"), help="렌더러 선택 (기본 ffmpeg)")
+    mk.add_argument("--renderer-fallback", choices=("none", "ffmpeg"), help="HyperFrames 실패 시 명시적 대체 설정")
     mk.add_argument("--asset", action="append", default=[], help="장면 화면 후보 파일 (여러 번 가능)")
     mk.add_argument("--license", default="my_channel", help="첨부 파일 권리: my_channel | ai_generated | pexels | pixabay | kogl_type0 | kogl_type1")
     mk.add_argument("--note", default="", help="권리 근거 (예: 내가 직접 찍은 사진)")
@@ -73,6 +75,9 @@ def _parser() -> argparse.ArgumentParser:
                         ("rerender", "저장된 재료로 영상만 다시 렌더")):
         p = sub.add_parser(name, help=help_)
         p.add_argument("project_id", nargs="?", help="생략하면 가장 최근 프로젝트")
+        if name == "rerender":
+            p.add_argument("--renderer", choices=("ffmpeg", "hyperframes"))
+            p.add_argument("--renderer-fallback", choices=("none", "ffmpeg"))
 
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
@@ -173,7 +178,8 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
             quotes=a.quotes, quote_source=a.quote_source, quote_reference=a.quote_reference,
             hint=a.hint, content_format=tone, allow_openai=a.allow_openai,
-            benchmark=a.benchmark, visuals=a.visuals, log=_log)
+            benchmark=a.benchmark, visuals=a.visuals, renderer=a.renderer,
+            renderer_fallback=a.renderer_fallback, log=_log)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
@@ -196,7 +202,8 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await core.set_visual(a.project_id, a.scene, card=a.card, file=a.file, license_=a.license,
                                      note=a.note, confirm_rights=a.confirm_rights, log=_log)
     if a.cmd == "rerender":
-        return await core.rerender(a.project_id, log=_log)
+        return await core.rerender(a.project_id, renderer=a.renderer,
+                                   renderer_fallback=a.renderer_fallback, log=_log)
     if a.cmd == "styles":
         return core.styles()
     if a.cmd == "trends":

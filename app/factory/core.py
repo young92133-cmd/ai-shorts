@@ -135,6 +135,14 @@ def _run_cfg(request: dict[str, Any]) -> dict[str, Any]:
         out["tts"]["voice"] = request.get("voice") or (presets[preset].get("voice") or {}).get("edge") or out["tts"]["voices"]["edge"]
     if out["tts"]["provider"] == "openai" and not llmmod.paid_allowed("openai", out["llm"]):
         raise FactoryError("paid_not_allowed", "OpenAI 음성 API도 --allow-openai 또는 설정상 명시적 허용이 필요합니다.")
+    settings = dict(out.get("rendering") or {})
+    for key, field in (("renderer", "renderer"), ("renderer_fallback", "fallback")):
+        if request.get(key) is not None:
+            settings[field] = request[key]
+    try:
+        out["rendering"] = tlmod.render_options({}, settings)
+    except ValueError as exc:
+        raise FactoryError("invalid", str(exc)) from exc
     return out
 
 
@@ -176,6 +184,8 @@ def _summary(job_dir: Path, state: dict[str, Any], **extra: Any) -> dict[str, An
         out["failed_at"] = state.get("failed_at", "")
     if state.get("benchmark"):
         out["benchmark"] = _bench_brief(state["benchmark"])
+    if state.get("rendering"):
+        out["rendering"] = state["rendering"]
     out.update(extra)
     return out
 
@@ -217,6 +227,11 @@ async def _finish(job_dir: Path, state: dict[str, Any], result: dict[str, Any]) 
         ("final_video", "final.mp4"), ("thumbnail", "thumb.jpg"), ("meta", "meta.txt"), ("script", "script.json"),
         ("blueprint", bpmod.FILE), ("timeline", tlmod.FILE), ("visuals", visualsmod.MANIFEST),
         ("sources", "sources.json")) if (job_dir / f).exists()}
+    outputs["final_video"] = str(final)
+    if result.get("thumb"):
+        outputs["thumbnail"] = str(result["thumb"])
+    if result.get("rendering"):
+        state["rendering"] = result["rendering"]
     state = st.advance(job_dir, state, "render_complete", error="", failed_at="", outputs=outputs,
                        video={"duration": duration, "resolution": f"{stream.get('width')}x{stream.get('height')}"})
     _write_web_job(job_dir, state, result)
@@ -232,7 +247,7 @@ def _write_web_job(job_dir: Path, state: dict[str, Any], result: dict[str, Any])
     req = state["request"]
     script = json.loads((job_dir / "script.json").read_text(encoding="utf-8")) if (job_dir / "script.json").exists() else None
     keep = ("video", "thumb", "meta", "duration", "topic", "timeline", "blueprint", "visual_plan", "visuals",
-            "final_sources", "plan_method", "split_method", "benchmark")
+            "final_sources", "plan_method", "split_method", "benchmark", "rendering")
     path = job_dir / "job.json"
     before = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     job = {"id": state["project_id"], "mode": req.get("mode", "topic"), "input": req.get("input", ""),
@@ -305,7 +320,9 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
                benchmark: str | None = "auto", visuals: str | None = "auto", quotes: list[str] | None = None,
-               quote_source: str | None = None, quote_reference: bool = False, log: Log = print) -> dict[str, Any]:
+               quote_source: str | None = None, quote_reference: bool = False,
+               renderer: str | None = None, renderer_fallback: str | None = None,
+               log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
@@ -344,7 +361,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
                "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark,
                "visuals": visuals, "quotes": [Path(p).name for p in quotes or []],
-               "quote_source": quote_source or "", "quote_reference": bool(quote_reference and ref)}
+               "quote_source": quote_source or "", "quote_reference": bool(quote_reference and ref),
+               "renderer": renderer, "renderer_fallback": renderer_fallback}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
@@ -565,19 +583,27 @@ async def set_visual(project_id: str | None, scene: int, *, card: str | None = N
     return await rerender(state["project_id"], log=log, changed_scene=scene)
 
 
-async def rerender(project_id: str | None = None, log: Log = print, **extra: Any) -> dict[str, Any]:
+async def rerender(project_id: str | None = None, log: Log = print, *,
+                   renderer: str | None = None, renderer_fallback: str | None = None,
+                   **extra: Any) -> dict[str, Any]:
     """저장된 렌더 재료(timeline.json)로 영상만 다시 만든다. 조사·대본·음성은 다시 하지 않는다."""
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     if not (job_dir / tlmod.FILE).is_file():
         raise FactoryError("not_ready", "다시 렌더할 재료가 없습니다. 먼저 영상을 완성해 주세요.", status=state.get("status"))
-    cfg = _run_cfg(state["request"])
+    request = {**state["request"]}
+    if renderer is not None:
+        request["renderer"] = renderer
+    if renderer_fallback is not None:
+        request["renderer_fallback"] = renderer_fallback
+    cfg = _run_cfg(request)
     try:
         res = await runmod.rerender(job_dir, cfg, progress=lambda stage, pct, msg: log(f"[{stage} {pct:3d}%] {msg}"))
     except Exception as e:  # noqa: BLE001 - 실패해도 기존 final.mp4 는 남는다
         return _summary(job_dir, state, rerender="failed", error=f"{type(e).__name__}: {llmmod.safe_error(e)}",
                         message="다시 렌더에 실패했습니다. 기존 영상은 그대로 있습니다.")
-    result = {"video": res["video"], "topic": state.get("topic", ""), "timeline": tlmod.FILE}
+    state["request"] = request
+    result = {**res, "topic": state.get("topic", ""), "timeline": tlmod.FILE}
     return {**await _finish(job_dir, state, result), "rerendered": True, **extra}
 
 

@@ -489,7 +489,12 @@ class TopicCliTests(unittest.IsolatedAsyncioTestCase):
     async def test_cli_rank_approve_create_dry_run(self):
         from app.factory import topics
         t = topic_fixture(self.store)
-        with patch.object(topics, 'engine', return_value=self.engine):
+        # Hold the clock at the fixture date; do not refresh an expired test URL.
+        with patch.object(topics, 'engine', return_value=self.engine), \
+             patch('app.topics.engine.now', return_value=TODAY), \
+             patch('app.topics.verification.now', return_value=TODAY), \
+             patch('app.topics.dedup.now', return_value=TODAY), \
+             patch('app.topics.brief.now', return_value=TODAY):
             out = await self.cli._dispatch(self.cli._parser().parse_args(['topics','rank']))
             self.assertEqual(out['topics'][0]['topic_id'], t.topic_id)
             await self.cli._dispatch(self.cli._parser().parse_args(['topics','approve','--id',t.topic_id]))
