@@ -58,6 +58,7 @@ evidence_roles:
 source_ids:
 - zzal_ing
 - factory_reference
+- backsoo
 selection_rules:
 - 볼 이유/질문/claim을 먼저 기록하고 확인한 근거를 연결한다.
 - 주석 근거의 의미와 진위는 자동 검증하지 않는다.

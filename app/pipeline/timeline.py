@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from . import fantube
 from .render import render_broll, render_slideshow
 from .subtitles import build_ass
 from .sources import guard_timeline
@@ -233,11 +234,26 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
         guard_timeline(job_dir, tl)
     w, h, fps = int(tl["width"]), int(tl["height"]), int(tl["fps"])
     st = tl["subtitles"]["style"]
+    fan = tl.get("skin") == "fantube"
+    inputs = ass_inputs(tl)
+    skin_args: dict[str, Any] = {}
+    effects: dict[str, Any] = {}
+    if fan:
+        total = total_duration(tl)
+        skin_args = {"skin": "fantube", "total": total,
+                     "headline": fantube.default_headline(tl) if tl["subtitles"].get("titles_enabled", True) else None}
+        effects["frame_layout"] = "open_bottom"
+        if tl.get("sfx", True):
+            effects["sfx_events"] = fantube.sfx_events([s["start"] for s in tl["scenes"]], inputs["lines"])
+        effects["blur_spans"] = [(ln["start"], ln["end"]) for ln in inputs["lines"]
+                                 if fantube.parse_marks(str(ln.get("text", "")))["blur"]]
+    elif tl["mode"] == "observation":
+        effects["frame_layout"] = "observation"
     ass = build_ass([], job_dir / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),
                     size=int(st.get("size", 64)), highlight=st.get("highlight", "#FFD400"),
                     outline=st.get("outline", "#000000"),
                     **({"margin_v": int(h * 0.18), "line_wrap_chars": 16}
-                       if tl["mode"] == "observation" else {}), **ass_inputs(tl))
+                       if tl["mode"] == "observation" and not fan else {}), **inputs, **skin_args)
 
     overlays = []
     for c in tl.get("comments", []):
@@ -249,7 +265,8 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
     narration = resolve(tl["narration"], job_dir) if tl.get("narration") else None
     bgm = resolve(tl["bgm"], job_dir) if tl.get("bgm") else None
     common = dict(ass_path=ass, bgm=bgm, width=w, height=h, fps=fps,
-                  bgm_volume=float(tl["bgm_volume"]), fonts_dir=fonts_dir, overlays=overlays)
+                  bgm_volume=float(tl["bgm_volume"]), fonts_dir=fonts_dir, overlays=overlays,
+                  **effects)
     if tl["mode"] in ("broll", "observation"):
         clips = []
         for s in tl["scenes"]:
@@ -261,8 +278,7 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
                     clip["play"] = v["play"]   # 인용: 이만큼만 재생하고 나머지는 정지 화면
             clips.append(clip)
         return await render_broll(clips, narration, out_path,
-                                  source_volume=float(tl["source_volume"]),
-                                  **({"frame_layout": "observation"} if tl["mode"] == "observation" else {}), **common)
+                                  source_volume=float(tl["source_volume"]), **common)
     images = [resolve(s["visual"]["path"], job_dir) for s in tl["scenes"]]
     durations = [float(s["duration"]) for s in tl["scenes"]]
     return await render_slideshow(images, durations, narration, out_path,

@@ -58,6 +58,7 @@ selection_rules:
 - 프로필에는 구조적 분석만 저장한다. 타 채널 디자인과 미디어는 저장하지 않는다.
 source_ids:
 - doltori
+- lovelittt
 strategy:
   narration_mode:
   - TTS 없음; 원본 소리 선택

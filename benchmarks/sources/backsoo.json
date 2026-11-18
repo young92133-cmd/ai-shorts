@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "backsoo",
+  "name": "@lv999_backsoo",
+  "analyzed_at": "2026-11-18",
+  "genre": "사진 편집형 시사·사회 이슈 쇼츠",
+  "references": [
+    "https://www.youtube.com/@lv999_backsoo/shorts",
+    "https://www.youtube.com/shorts/5MUYpQgh2_M",
+    "https://www.youtube.com/shorts/SVNF6YtBZtY",
+    "https://www.youtube.com/shorts/U3WwxW616Vo",
+    "https://www.youtube.com/shorts/Cj57aZLCJYs"
+  ],
+  "analysis_records": [
+    "docs/BENCHMARK_BACKSOO_2026-11-18.md"
+  ],
+  "observed_structure": [
+    "제목 질문형 읽기 → 배경(최근 ~ 논란인데) → 발단(한 ~가 글을 올림) → 전개 → 반전/결과 → 사람들 반응 → 화자 리액션 한 줄"
+  ],
+  "observed_patterns": [
+    "영상 소스 없이 사진 + 빠른 나레이션 + 자막, 29~43초",
+    "위 검정 2줄 제목(흰+노랑) + 가운데 사진 띠 + 아래 빈 검정",
+    "줄별 색(흰/노랑/빨강/초록) 검정 박스 자막, 사진 위 반응 태그 (!!!)(???)",
+    "문장 = 자막 한 줄 = 사진 한 장(2~3초), AI 실사 재연 사진·커뮤니티 캡처·기사 캡처·일러스트",
+    "한 이슈를 여러 각도로 하루 6~7편 연속 제작, 제목 '~라는/~근황 ㄷㄷ'"
+  ],
+  "adopted_elements": [
+    "가운데 사진 띠 프레임과 흰+노랑 2줄 고정 제목",
+    "줄별 색 박스 자막 + 반응 태그 + 문장 단위 사진 교체",
+    "썰체 7단 대본, 리액션 한 줄 마무리"
+  ],
+  "do_not_copy": [
+    "채널명/정확한 색상값/폰트 파일/원문 대본",
+    "채널이 만든 AI 이미지·일러스트, 커뮤니티 닉네임 원문 노출, 실존 기관 로고 합성"
+  ],
+  "derived_profiles": [
+    "curiosity_update_story"
+  ],
+  "findings": []
+}

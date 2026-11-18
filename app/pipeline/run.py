@@ -829,6 +829,9 @@ async def run_pipeline(
                         "outline": sub_cfg.get("outline", "#000000")},
         subtitles_enabled=bool(vcfg.get("subtitles", True)), titles_enabled=bool(vcfg.get("titles", True)),
         comments=tl_comments, comment_slots=comment_slots)
+    if vcfg.get("skin") == "fantube":   # 팬튜브 편집 스킨: 고정 2줄 제목 + 대사 박스 자막 + 효과음
+        tl["skin"] = "fantube"
+        tl["headline"] = {"accent": "", "main": (script.titles or [topic])[0]}
     # 타인 댓글 후보는 대본 검토에만 남기고 영상에는 싣지 않는다.
     tl["comments"] = []
     blueprintmod.check_timeline(blueprint, tl)   # 설계도와 어긋난 타임라인으로는 렌더하지 않는다

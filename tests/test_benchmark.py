@@ -385,6 +385,20 @@ class FactoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(error.exception.code, "invalid")
         self.probe.assert_not_awaited()
 
+    async def test_fantube_skin_replaces_brand_overlay_with_headline(self):
+        ready = await factory.plan(str(self.input), confirm_rights=True, note="내가 직접 촬영한 영상",
+                                   skin="fantube", log=lambda _: None)
+        self.assertEqual(ready["skin"], "fantube")
+        out, renderer = await self.successful_render(ready["project_id"])
+        self.assertEqual(out["status"], "render_complete")
+        tl = renderer.await_args.args[0]
+        self.assertEqual(tl["skin"], "fantube")
+        self.assertEqual(tl["headline"]["main"], example()["observations"][0]["hook"])
+        self.assertEqual(tl["comments"], [])                         # 브랜드 그림 없음
+        self.assertFalse((Path(out["project_dir"]) / "brand_overlay.png").exists())
+        with self.assertRaises(core.FactoryError):
+            await factory.plan(str(self.input), confirm_rights=True, note="x", skin="neon", log=lambda _: None)
+
     async def test_render_uses_existing_timeline_and_preserves_output_records(self):
         ready = await self.make_plan()
         out, renderer = await self.successful_render(ready["project_id"])

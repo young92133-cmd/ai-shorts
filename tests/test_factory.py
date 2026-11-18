@@ -221,6 +221,22 @@ class InspectTests(FactoryTestCase):
         self.assertEqual(timeline.load(job)["scenes"], tl_before["scenes"])
         self.research.assert_awaited_once()                                  # 다시 조사하지 않음
 
+    async def test_make_with_fantube_skin_and_rerender_switch(self):
+        out = await core.make(topic="고양이", skin="fantube", log=_quiet)
+        job = Path(out["project_dir"])
+        tl = timeline.load(job)
+        self.assertEqual(tl["skin"], "fantube")
+        self.assertTrue(tl["headline"]["main"])
+        again = await core.rerender(out["project_id"], skin="default", headline="새 제목",
+                                    headline_accent="윗줄", sfx=False, log=_quiet)
+        self.assertEqual(again["skin"], "default")
+        tl = timeline.load(job)
+        self.assertEqual((tl["skin"], tl["headline"], tl["sfx"]),
+                         ("default", {"accent": "윗줄", "main": "새 제목"}, False))
+        with self.assertRaises(core.FactoryError):
+            await core.rerender(out["project_id"], skin="neon", log=_quiet)
+        self.research.assert_awaited_once()
+
     async def test_set_visual_card_after_render(self):
         out = await core.make(topic="고양이", log=_quiet)
         again = await core.set_visual(out["project_id"], 3, card="number_card", log=_quiet)

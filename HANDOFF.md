@@ -3,6 +3,49 @@
 > 규칙: AGENTS.md '작업 시작 · 종료'. 이 파일은 80줄 이하로 유지하고, 끝난 기록은 `docs/history/` 로 옮긴다.
 > 지난 기록: `docs/history/HANDOFF_2026-10-21_studio_v1.md`(카드 스튜디오 V1.0), `docs/history/HANDOFF_2026-09_10.md`.
 
+## 2026-11-18 (미커밋, Claude) — 사진 편집형 이슈 쇼츠 `issue` (benchmark @lv999_backsoo)
+- 분석: `docs/BENCHMARK_BACKSOO_2026-11-18.md`, `benchmarks/sources/backsoo.json`(→ curiosity_update_story source_ids), BENCHMARKS.md 행, inventory 테스트 7→8.
+- 사용자 결정: 사진은 AI+실제 섞기. **AI 사진 = Google Flow Nano Banana 실사 생성(크레딧 0), 실제 사진 = 유튜브 프레임·뉴스 사진·화면 캡처.**
+- 구현(flow 와 같은 채팅 기획서 방식): 새 `app/pipeline/issueshorts.py`(IssuePlan 검수·Flow 문장·사진 받기·사진 띠 렌더·ASS·meta),
+  `app/factory/issue.py`(`issue new/update/status/prompts/note/photo/assemble`), `__main__.py` 등록 4줄, `presets/issue_photo.md`(대본·사진 지침),
+  `.claude/skills/issue-shorts/SKILL.md`(Flow·캡처 런북), AGENTS.md 명령표 3행. 재사용: flowshorts.pad_join_audio, run._synthesize_one, fantube 효과음.
+- 유튜브 프레임은 yt-dlp 스트림 주소 + ffmpeg 1장(사용자 요청). 실제 사진은 rights transformative_quote 로 `photo_sources.json`, 화면 '출처: ○○'.
+- 테스트: 새 `tests/test_issueshorts.py` 14(합성 사진·무음 가짜 TTS 로 실제 ffmpeg 렌더 포함) OK. 프레임 눈 확인(제목·띠·색 자막·X·출처).
+  전체 378 중 376 통과 — 실패 2개는 기존 날짜 의존(test_topics dry_run, test_channels 캐시), 이번 변경과 무관.
+- 다음: 사용자 신호 후 실제 1편(조사 → issue new → Flow AI 사진 → 캡처 → assemble). commit·push 는 승인 후.
+
+## 2026-11-18 (미커밋, Claude) — Google Flow 공학 쇼츠
+- 새 파일: `presets/flow_engineering.md`, `app/pipeline/flowshorts.py`, `app/factory/flow.py`(`flow new/update/status/prompts/note/import/assemble`),
+  `.claude/skills/flow-shorts/SKILL.md`(브라우저 런북), `tests/test_flowshorts.py`(9). `__main__.py` 에 flow 등록 3줄, AGENTS.md 명령표 2행.
+- 장면 길이 = max(내레이션+0.35초, 6초), 넘치면 클립 마지막 프레임 유지. 클립 소리 12%. 편집은 기존 `render_broll` 재사용.
+- Flow UI(2026-11-18 확인): 에이전트 채팅형, 동영상 모델 Omni 1.2 Flash, 미디어 ⋮ → 다운로드. 공개 API 없음 → 크롬 조작.
+- 테스트: 전체 364개 중 362 통과. 실패 2개는 날짜 고정 테스트 노후화(test_channels 캐시 3일, test_topics 유효기간) — 이번 변경과 무관, 미수정.
+- 2026-11-18 실제 1장면 시험: 프로젝트 `output/20261118_214451_f741_flow`(해저터널, 12장면 기획), Flow 프로젝트 주소는 flow_state.json.
+  CLEAN 3·INFO 1(Nano Banana 2.1, 각 30~40초) → Omni 1.2 Flash 8초(24크레딧, 약 1분) → 720p 다운로드 → import → 1장면 편집 시험
+  `output/20261118_215434_d197_flow/final.mp4`(1080x1920, 9.7초) 성공. Flow 에이전트는 이미지엔 확인 없이, 영상엔 크레딧 확인을 묻는다.
+- 시험에서 찾은 문제: ① Omni 가 라벨에 근거 없는 '12.4 bar' 추가(실제 48m ≈ 4.8bar) → 라벨 문구 '정확히 이 글자만' 규칙 추가
+  ② 내레이션 9.4초 > 클립 8초 → `MAX_SYLLABLES=40` 경고 추가(대본 지침 220~260어절과 충돌, 클립 길이 10초 등 사용자 결정 대기)
+  ③ 영상 오른쪽 아래 Flow ✦ 표시가 있음(제거하지 않음).
+- 사용자 결정: **클립 10초**. `FlowPlan.clip_seconds`(기본 8, 4~15) 추가, 글자 한도 = (클립-0.35)×5.3 (10초 → 51글자), 끝 컷 2초 이상 안 자름.
+  해저터널 기획서 10초·라벨 규칙으로 재작성(경고: 198어절 < 220). 옛 1장면 클립은 `clips/scene_01_old_8s_wrong_label.mp4` 로 비켜 둠.
+  다음: 1장면 다시 생성(10초) → 사용자 확인 → 2~12장면.
+- 크레딧 실측(2026-11-18): Omni 1.2 Flash 8초 24 · 10초 30크레딧, Nano Banana 이미지·편집은 차감 없음(26 그대로).
+  잔액 26, "매일 오후 9:51 갱신"(하루 약 50으로 추정). 10초 영상 요청은 잔액 부족으로 거부함. S01_B_INFO2(숫자 없는 라벨) 생성 완료.
+  12장면 전부 영상이면 360크레딧 → 사용자 결정: **하루 한 장면씩**(10초·30크레딧).
+- 2026-11-18 밤: Flow 프로젝트에 1~12장면 CLEAN 36장 + INFO 15장(S01 은 S01_B_INFO2 사용, S01_B_INFO 는 틀린 숫자) 생성 완료, 크레딧 26 그대로.
+  Flow 에이전트는 6~9장 묶음 요청이 첫 시도에 "문제가 발생했습니다"로 실패 → '다시 시도' 한 번에 성공. 붙여넣기(ctrl+v)는 안 됨 → type 으로 입력.
+  남은 일: 매일 9:51 갱신 뒤 장면 영상 1개(S0N_VIDEO, 30크레딧) → 720p 다운로드 → `flow import --scene N --file` → 12개 모이면 `flow assemble`.
+
+## 2026-11-18 (미커밋, Claude) — 팬튜브 편집 스킨 `fantube` (benchmark 러블릿 @lovelittt)
+- 11-17 분석(`docs/BENCHMARK_LOVELITT_2026-11-17.md`, `benchmarks/sources/lovelittt.json` → kpop_observation_clip 에 연결) 후 사용자 요청으로 구현.
+- 새 `app/pipeline/fantube.py`(표시 문법·ASS 스타일·효과음 합성). 수정: `subtitles.build_ass(skin, headline, total)`, `render.py`(open_bottom 프레임·강조 블러·[sfx] 믹스),
+  `timeline.render_timeline`(tl `skin`/`headline`/`sfx`), `run.py`(cfg video.skin → tl), `factory/core.py`(make skin, rerender skin/headline/sfx, `_check_skin`),
+  `factory/benchmark.py`(plan skin → state, render 시 브랜드 그림 대신 제목), `__main__.py` 옵션, `capcut.py`(표시 문법 제거). AGENTS.md 명령표 2줄.
+- 테스트: 새 `tests/test_fantube.py` 11 + test_factory·test_benchmark 각 1, inventory 카운트 6→7. 전체 355 중 353 통과.
+  실패 2개(test_topics CLI dry_run 유효기간, test_channels 3일 캐시)는 **깨끗한 HEAD 에서도 같은 실패** — 날짜 의존, 이번 변경과 무관.
+- 실제 확인: 합성 테스트 클립(lavfi)으로 ffmpeg 실렌더 8초 1080x1920 OK, 프레임 눈으로 확인. 실제 쇼츠 제작·Claude 호출은 안 함.
+- 다음: 사용자 신호 후 실제 1편(`make --topic … --skin fantube` 또는 `rerender <기존id> --skin fantube`) 확인. commit·push 는 승인 후.
+
 ## 현재 상태 (2026-11-06, Claude → Codex) — 유튜브 AI 쇼츠 전용 + 경쟁 채널 벤치마킹
 
 > **Codex 는 먼저 `docs/CODEX_HANDOFF_2026-11-06.md` 를 읽는다.** 카드뉴스·인스타툰·캐릭터 기능은 제거됐고 다시 만들지 않는다.

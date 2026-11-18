@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import fantube
 from .models import Word
 
 
@@ -86,12 +87,17 @@ def build_ass(
     comments: list[tuple[float, float, str]] | None = None,
     lines: list[dict] | None = None,
     line_wrap_chars: int | None = None,
+    skin: str = "default",
+    headline: dict | None = None,
+    total: float = 0.0,
 ) -> Path:
     """words 로 카라오케 자막을, titles=[(start,end,text)] 로 상단 키워드 카드를 만든다.
 
     words 를 장면별 리스트의 리스트로 주면 자막 줄이 장면 경계를 넘지 않는다.
     lines 를 주면 words 대신 이미 묶어 둔(사용자가 고친) 자막 줄을 그대로 쓴다. 빈 목록이면 하단 자막 없음.
+    skin="fantube" 면 장면별 상단 키워드 대신 고정 2줄 제목(headline, total 초)과 팬튜브 대사 자막을 쓴다.
     """
+    fan = skin == "fantube"
     margin_v = margin_v or int(height * 0.30)
     title_size = int(size * 1.15)
     header = f"""[Script Info]
@@ -107,6 +113,7 @@ Style: Sub,{font},{size},{_ass_color(highlight)},{_ass_color('#FFFFFF')},{_ass_c
 Style: Title,{font},{title_size},{_ass_color('#FFFFFF')},{_ass_color('#FFFFFF')},{_ass_color(outline)},{_ass_color('#000000', 96)},-1,0,0,0,100,100,0,0,1,6,3,8,60,60,{int(height * 0.14)},1
 Style: Credit,{font},{int(size * 0.42)},{_ass_color('#DDDDDD', 40)},{_ass_color('#FFFFFF')},{_ass_color(outline, 60)},{_ass_color('#000000', 160)},0,0,0,0,100,100,0,0,1,2,1,2,40,40,{int(height * 0.035)},1
 Style: Comment,{font},{int(size * 0.55)},{_ass_color('#FFFFFF')},{_ass_color('#FFFFFF')},{_ass_color('#12151D')},{_ass_color('#202634')},0,0,0,0,100,100,0,0,3,16,0,8,90,90,{int(height * 0.38)},1
+{chr(10).join(fantube.ass_styles(font, width, height, _ass_color)) if fan else ''}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -115,7 +122,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     # 상단 키워드는 자동 줄바꿈이 꺼져 있어(WrapStyle 2) 직접 나눈다. 화면 폭에 들어가는 글자 수로 최대 2줄.
     per_line = max(4, int((width - 120) / (title_size * 1.0)))
-    for t_start, t_end, text in titles or []:
+    if fan:
+        events += fantube.headline_events(headline, total, width, height, _ts, _esc)
+    for t_start, t_end, text in ([] if fan else titles or []):
         if text.strip():
             events.append(
                 f"Dialogue: 0,{_ts(t_start)},{_ts(t_end)},Title,,0,0,0,,{{\\fad(200,200)}}"
@@ -144,10 +153,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if lines is None:
         lines = words_to_lines(words)
     for line in lines:
-        if line_wrap_chars and not line.get("words"):
+        if fan:
+            ev = fantube.line_event(line, width, height, _ts, _esc, _ass_color)
+            if ev:
+                events.append(ev)
+        elif line_wrap_chars and not line.get("words"):
             # Static observation captions have no narrated word timing. Reuse
             # the existing wrapping/escaping without changing V1 karaoke.
-            wrapped = "\\N".join(_esc(row) for row in wrap_title(line["text"], line_wrap_chars, max_lines=3))
+            wrapped = "\\N".join(_esc(row) for row in wrap_title(fantube.strip_marks(line["text"]), line_wrap_chars, max_lines=3))
             events.append(f"Dialogue: 1,{_ts(line['start'])},{_ts(line['end'])},Sub,,0,0,0,,{wrapped}")
         else:
             events.append(_karaoke_event(line))
@@ -183,11 +196,14 @@ def _karaoke_event(line: dict) -> str:
     parts: list[str] = []
     t = start
     for w in words:
+        text = fantube.strip_marks(str(w["text"]))
+        if not text:
+            continue
         gap_cs = max(0, round((float(w["start"]) - t) * 100))
         if gap_cs:
             parts.append(f"{{\\k{gap_cs}}}")
         dur_cs = max(1, round((float(w["end"]) - float(w["start"])) * 100))
-        parts.append(f"{{\\k{dur_cs}}}{_esc(w['text'])} ")
+        parts.append(f"{{\\k{dur_cs}}}{_esc(text)} ")
         t = float(w["end"])
     return f"Dialogue: 1,{_ts(start)},{_ts(end)},Sub,,0,0,0,,{''.join(parts).rstrip()}"
 
@@ -199,7 +215,7 @@ def _srt_ts(sec: float) -> str:
 
 def write_srt(lines: list[dict], out_path: Path) -> Path:
     """자막 줄을 SRT 로. CapCut·프리미어 등에서 '자막 가져오기'로 쓸 수 있다."""
-    blocks = [f"{i}\n{_srt_ts(float(ln['start']))} --> {_srt_ts(float(ln['end']))}\n{ln['text'].strip()}\n"
-              for i, ln in enumerate((ln for ln in lines if ln.get("text", "").strip()), 1)]
+    blocks = [f"{i}\n{_srt_ts(float(ln['start']))} --> {_srt_ts(float(ln['end']))}\n{fantube.strip_marks(ln['text'])}\n"
+              for i, ln in enumerate((ln for ln in lines if fantube.strip_marks(ln.get("text", ""))), 1)]
     out_path.write_text("\n".join(blocks), encoding="utf-8")
     return out_path

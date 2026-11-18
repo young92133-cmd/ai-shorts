@@ -21,7 +21,7 @@ import json
 import sys
 from typing import Any
 
-from . import core, batch, benchmark, topics, channels
+from . import core, batch, benchmark, topics, channels, flow, issue
 
 TONES = tuple(core.FORMATS)
 
@@ -35,6 +35,8 @@ def _parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
     topics.add_parser(sub)
     channels.add_parser(sub)
+    flow.add_parser(sub)
+    issue.add_parser(sub)
 
     mk = sub.add_parser("make", help="쇼츠 한 편 만들기 (기본: MP4 까지 자동)")
     src = mk.add_mutually_exclusive_group(required=True)
@@ -67,12 +69,20 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--quote-source", default="", help='인용 원본 출처 "제목 | 채널 | URL" (비우면 --url 을 출처로)')
     mk.add_argument("--quote-reference", action="store_true", help="--reference-video 파일도 인용 자료로 쓴다")
     mk.add_argument("--visuals", default="auto", choices=("auto", "cards"), help="화면 자료: auto(기본, 권리 확인 가능한 공개 영상·사진 자동 탐색) | cards(자체 카드만)")
+    mk.add_argument("--skin", default="default", choices=("default", "fantube"),
+                    help="편집 스킨: default | fantube(위만 막힌 프레임·작은 2줄 제목·대사 박스 자막·효과음)")
     mk.add_argument("--benchmark", default="auto", help="콘텐츠 구조: auto(기본, 8개 중 자동 선택) | off(기존 구성) | profile id 강제 지정")
 
     for name, help_ in (("resume", "멈춘 대본으로 이어서 MP4 까지"), ("status", "진행 상태"),
                         ("rerender", "저장된 재료로 영상만 다시 렌더")):
         p = sub.add_parser(name, help=help_)
         p.add_argument("project_id", nargs="?", help="생략하면 가장 최근 프로젝트")
+        if name == "rerender":
+            p.add_argument("--skin", choices=("default", "fantube"), help="편집 스킨을 바꿔 다시 렌더")
+            p.add_argument("--headline", help="팬튜브 제목바 아랫줄(흰색 큰 글씨)")
+            p.add_argument("--headline-accent", help="팬튜브 제목바 윗줄(작은 강조색)")
+            p.add_argument("--no-sfx", dest="sfx", action="store_false", default=None, help="팬튜브 효과음 끄기")
+            p.add_argument("--sfx", dest="sfx", action="store_true", help="팬튜브 효과음 켜기")
 
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
@@ -136,6 +146,7 @@ def _parser() -> argparse.ArgumentParser:
     bp.add_argument("--note", default="", help="입력 영상 모두에 대한 사용 권한 근거")
     bp.add_argument("--license", dest="license_", default="my_channel", choices=("my_channel", "licensed_upload", "ai_generated"))
     bp.add_argument("--mute-source", action="store_true", help="원본 소리를 제거 (TTS 없음)")
+    bp.add_argument("--skin", default="default", choices=("default", "fantube"), help="편집 스킨")
     for command in ("inspect", "render"):
         bc = bm_sub.add_parser(command, help="저장 계획 조회" if command == "inspect" else "기존 렌더로 제작/재렌더")
         bc.add_argument("project_id", help="benchmark plan이 반환한 작업 id")
@@ -147,6 +158,10 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await topics.dispatch(a, log=_log)
     if a.cmd == "channel":
         return await channels.dispatch(a, log=_log)
+    if a.cmd == "issue":
+        return await issue.dispatch(a, log=_log)
+    if a.cmd == "flow":
+        return await flow.dispatch(a, log=_log)
     if a.cmd == "benchmark":
         if a.benchmark_cmd == "profiles":
             return benchmark.profiles()
@@ -156,7 +171,8 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         if a.benchmark_cmd == "plan":
             return await benchmark.plan(a.input_file, profile_id=a.profile_id, seconds=a.seconds,
                                         observation_type=a.observation_type, confirm_rights=a.confirm_rights,
-                                        note=a.note, license_=a.license_, preserve_audio=not a.mute_source, log=_log)
+                                        note=a.note, license_=a.license_, preserve_audio=not a.mute_source,
+                                        skin=a.skin, log=_log)
         if a.benchmark_cmd == "inspect":
             return benchmark.inspect(a.project_id)
         return await benchmark.render(a.project_id, log=_log)
@@ -173,7 +189,7 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
             quotes=a.quotes, quote_source=a.quote_source, quote_reference=a.quote_reference,
             hint=a.hint, content_format=tone, allow_openai=a.allow_openai,
-            benchmark=a.benchmark, visuals=a.visuals, log=_log)
+            benchmark=a.benchmark, visuals=a.visuals, skin=a.skin, log=_log)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
@@ -196,7 +212,8 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await core.set_visual(a.project_id, a.scene, card=a.card, file=a.file, license_=a.license,
                                      note=a.note, confirm_rights=a.confirm_rights, log=_log)
     if a.cmd == "rerender":
-        return await core.rerender(a.project_id, log=_log)
+        return await core.rerender(a.project_id, skin=a.skin, headline=a.headline,
+                                   headline_accent=a.headline_accent, sfx=a.sfx, log=_log)
     if a.cmd == "styles":
         return core.styles()
     if a.cmd == "trends":

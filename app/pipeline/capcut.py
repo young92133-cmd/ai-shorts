@@ -27,6 +27,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from .fantube import strip_marks
 from .media import probe_duration, probe_video, run_ffmpeg
 from .subtitles import write_srt
 from .timeline import resolve, total_duration
@@ -391,7 +392,7 @@ async def build_draft(tl: dict[str, Any], job_dir: Path, draft_dir: Path, name: 
     if tl["subtitles"].get("enabled", True):
         segs = []
         for ln in tl["subtitles"]["lines"]:
-            mid = d.text(ln["text"], size=13, color=style.get("highlight", "#FFD400"),
+            mid = d.text(strip_marks(ln["text"]), size=13, color=style.get("highlight", "#FFD400"),
                          stroke=style.get("outline", "#000000"), font_path=font_path, kind="subtitle")
             segs.append(d.segment(mid, ln["start"], ln["end"] - ln["start"], y=-0.42, text=True))
         d.track("text", segs)

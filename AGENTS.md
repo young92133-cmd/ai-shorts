@@ -56,6 +56,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
+| `make ... --skin fantube` | 팬튜브 편집 스킨: 위만 막힌 프레임·작은 2줄 제목·대사 박스 자막·감정 자막·효과음 (기본 `default`) |
+| `rerender [id] --skin fantube\|default [--headline "제목"] [--headline-accent "윗줄"] [--no-sfx]` | 대본·음성 그대로 편집 스킨만 바꿔 다시 렌더. 자막 앞 `[화남]`·`[억울]`·`[강조]`·`[스토리]`, 단어 `*강조*` |
 | `make ... --benchmark auto\|off\|<profile id>` | 콘텐츠 구조 선택. 기본 auto(8개 중 자동 선택), off는 기존 V1 구성 |
 | `make ... --visuals auto\|cards` | 화면 자료. 기본 auto(권리 확인 가능한 공개 영상·사진 자동 탐색), cards는 자체 카드만 |
 | `make ... --style "이름"` / `--preset daily` | 스타일·분야 기본값 지정 (`styles`로 목록 확인) |
@@ -80,6 +82,9 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `batch --select N --candidates <channel topics 의 id>` | 고른 추천 주제를 그 패턴(구조·길이·지침)으로 제작 |
 | `channel make <채널> --topic "…" [--pattern 0] [--review]` | 주제 직접 입력 + 채널 패턴 적용 |
 | `channel auto <채널> <채널2> [--review]` | 공통 패턴에서 주제 자동 선정 후 제작 |
+| `flow new --plan-file 기획서.json` / `flow status\|prompts --scene N\|note --flow-url\|import\|assemble [id]` | Google Flow 공학 쇼츠: 기획서 검증 → (브라우저로 Flow 생성·다운로드) → 클립 받기 → 내레이션·자막 편집. 절차는 `.claude/skills/flow-shorts/SKILL.md` |
+| `issue new --plan-file 기획서.json` / `issue status\|prompts\|note\|assemble [id]` | 사진 편집형 이슈 쇼츠(가운데 사진 띠·흰+노랑 2줄 제목·줄별 색 자막·반응 태그). 지침 `presets/issue_photo.md`, 절차 `.claude/skills/issue-shorts/SKILL.md` |
+| `issue photo [id] --photo P03 --file 이미지 \| --youtube [URL] --at 초 \| --image-url URL` / `issue photo [id] --from 다운로드폴더` | 사진 넣기: AI 사진 = Flow 에서 받은 파일, 실제 사진 = 유튜브 프레임·기사 사진·화면 캡처 (출처는 `photo_sources.json` 과 화면 '출처: ○○') |
 | `topics collect\|rank\|recommend\|calendar\|approve\|create [--review] [--dry-run] …` | 주제 수집·검증·추천·캘린더, 승인한 주제의 검증된 사실로 쇼츠 `make` (상세 `docs/TOPIC_STRATEGY.md`) |
 장면 번호는 사용자에게 보이는 대로 1부터 센다. 카드 종류: hook_card, statement_card, focus_card, quote_card, number_card, trend_card, compare_card, summary_card.
 
@@ -112,6 +117,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "그 채널 스타일로 ○○ 만들어줘" | `channel make <채널> --topic "○○" --review` |
 | "추천 주제 중 2번으로 만들어줘" | `channel topics <채널>` 의 `candidates_id` 로 `batch --select 2 --candidates <id>` |
 | "두 채널 공통점으로 알아서 하나 만들어줘" | `channel auto <채널1> <채널2> --review` |
+| "이슈 쇼츠 사진으로 만들어줘", "backsoo 스타일로 만들어줘" | issue-shorts 런북: 조사·기획서 → `issue new` → 대본·사진 목록 승인 → Flow AI 사진 + 실제 사진 캡처 → `issue photo` → `issue assemble` |
+| "공학 쇼츠 Flow로 만들어줘", "Omni 영상으로 만들어" | flow-shorts 런북: 조사·기획서 → `flow new` → 대본 승인 → 크롬 Flow 생성(크레딧 사용) → `flow import` → `flow assemble` |
 
 ## 작업 요청 규칙 (벤치마킹 · 반영 · 저장)
 

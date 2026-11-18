@@ -61,7 +61,8 @@ def inspect(project_id: str) -> dict:
 async def plan(input_file: str, *, profile_id: str = "kpop_observation_clip",
                seconds: int | None = None, observation_type: str | None = None,
                confirm_rights: bool = False, note: str = "", license_: str = "my_channel",
-               preserve_audio: bool = True, log=print) -> dict:
+               preserve_audio: bool = True, skin: str = "default", log=print) -> dict:
+    skin = core._check_skin(skin)
     if not confirm_rights or not note.strip():
         raise core.FactoryError("rights", "사용 권한을 확인하고 --confirm-rights와 --note 근거를 지정하세요.")
     # Stage 1 supports local originals or AI assets. External stock licences
@@ -123,7 +124,7 @@ async def plan(input_file: str, *, profile_id: str = "kpop_observation_clip",
     engine.save_plan(job, selected)
     state = {"schema_version": 1, "engine": "benchmark", "project_id": project_id,
              "status": "benchmark_ready", "sources": sources, "ai_provider_used": "none",
-             "ai_calls": [], "tts": "none", "outputs": {}}
+             "ai_calls": [], "tts": "none", "outputs": {}, "skin": skin}
     _write(job / STATE_FILE, state)
     log("claim/evidence 쌍을 검증하고 저장했습니다. AI·TTS 호출 없음.")
     return inspect(project_id)
@@ -170,10 +171,15 @@ async def render(project_id: str, log=print) -> dict:
                            seconds=plan_.target_seconds, preserve_audio=plan_.preserve_audio)
         tl = engine.build_timeline(job, plan_, sources)
         registry = SourceRegistry(job)  # adapters may register newly generated cards
-        overlay = engine.make_brand_overlay(job, plan_.selection.hook)
-        registry.add(kind="image", origin="generated", path=str(overlay), used_for="benchmark_brand")
-        tl["comments"] = [{**timeline.image_comment(str(overlay), 0, plan_.target_seconds),
-                            "x": 0.5, "y": 0.5, "width": 1.0}]
+        if state.get("skin") == "fantube":
+            # 팬튜브 스킨: 브랜드 그림 대신 고정 2줄 제목(윗줄 주제 · 아랫줄 훅), 효과음, 대사 박스 자막
+            tl.update(skin="fantube", headline={"accent": plan_.topic, "main": plan_.selection.hook})
+            tl["subtitles"]["titles_enabled"] = True
+        else:
+            overlay = engine.make_brand_overlay(job, plan_.selection.hook)
+            registry.add(kind="image", origin="generated", path=str(overlay), used_for="benchmark_brand")
+            tl["comments"] = [{**timeline.image_comment(str(overlay), 0, plan_.target_seconds),
+                                "x": 0.5, "y": 0.5, "width": 1.0}]
         registry.guard_timeline(tl)
         timeline.save(job, tl)
         failed_at = "render"

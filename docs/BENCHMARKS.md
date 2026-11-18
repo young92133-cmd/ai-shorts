@@ -1,6 +1,6 @@
 # Benchmark 현황판 (단일 기준 문서)
 
-**최종 갱신: 2026-10-08.** 새 benchmark 를 분석·반영할 때 이 표를 같이 갱신한다(CLAUDE.md/AGENTS.md 규칙).
+**최종 갱신: 2026-11-18.** 새 benchmark 를 분석·반영할 때 이 표를 같이 갱신한다(CLAUDE.md/AGENTS.md 규칙).
 상태는 문서·과거 대화가 아니라 **현재 코드·테스트·output 기록**으로 판정했다. "분석됨"과 "구현됨"을 구분한다.
 
 상태 열 의미
@@ -11,7 +11,7 @@
 - tested: 자동 테스트(mock)가 있다
 - real_video_verified: 실제 Claude 구독 + Edge TTS + ffmpeg 로 MP4 를 만들고 `verify_factory_v1.py --verify` 를 통과했다
 
-## 1. Benchmark source (6개 등록 + 미등록 분석·언급 5건)
+## 1. Benchmark source (8개 등록 + 미등록 분석·언급 5건)
 
 채널 이름은 source 로만 쓰고 production profile 이름으로 쓰지 않는다. 한 source 가 여러 profile 로, 여러 source 가 한 profile 로 갈 수 있다.
 
@@ -22,6 +22,8 @@
 | bks_simulation | BKS Simulation | 2026-10-03 | 단일 변수 물리 비교 | 질문/장치 → 변수 하나 → 반복 → 결과 비교 | physics_comparison_simulation | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |
 | lesgi | 레스기 | 2026-10-03 | 순위 사례 | 쉬운 주제 → 5위부터 1위 → 마지막 보상 | ranked_moments | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |
 | architecture_mania | 건축매니아 (콘크리트/DDP 2편) | 2026-09-21 | 원리/문제 해결 | 통념 → 반전 → 질문 → 원리 → 대안 한계 → 해결 → 답 | mechanism_explainer (+ 기존 스타일 `style-f8b83e20`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (B·D·E) |
+| lovelittt | 러블릿 @lovelittt (팬튜브 편집 튜토리얼 + 쇼츠 40) | 2026-11-17 | 아이돌 팬튜브 리액션 강조 | 상단 제목(멤버+상황+ㅋㅋ) → 원본 장면 + 대사 박스 자막 → 효과 자막·사진·효과음 → 웃음 포인트 종료 (나레이션 없음) | kpop_observation_clip (+ 편집 스킨 `fantube`, `docs/BENCHMARK_LOVELITT_2026-11-17.md`) | ✅ | ✅ | ✅ 새 profile 없이 스킨 | ✅ `make --skin fantube` · `rerender --skin fantube` · `benchmark plan --skin fantube` | ✅ `tests/test_fantube.py` 외 | ❌ (합성 테스트 클립 ffmpeg 렌더만 확인) |
+| backsoo | @lv999_backsoo (쇼츠 60 지표 + 상위 4편 화면·전사) | 2026-11-18 | 사진 편집형 시사 이슈 | 제목 질문 → 배경 → 발단(커뮤니티 글) → 전개 → 반전 → 반응 → 리액션 한 줄 (사진+나레이션만) | curiosity_update_story 구조 + 별도 제작 경로 `issue` (`docs/BENCHMARK_BACKSOO_2026-11-18.md`) | ✅ | ✅ | ✅ 새 profile 없음 | △ `issue new/photo/assemble` (채팅 기획서 + Flow AI 사진 + 실제 사진 캡처, V1 `make` 자동 경로 아님) | ✅ `tests/test_issueshorts.py` 14 | ❌ (합성 사진 ffmpeg 렌더만 확인) |
 | factory_reference | reference.mp4 — 제작 시스템 + 12종 스타일 | 2026-09-29 | 시스템/복수 예시 | 채팅 → 구조 선택 → 근거 → 제작 계획 → 화면/자막 → 검토 | curiosity_update_story, ranked_moments, mechanism_explainer, quote_context_story, illustrated_fact_explainer, event_timeline_story | ✅ | ✅ | ✅ | ✅ (단 ranked 는 △) | ✅ | 부분 (curiosity·mechanism·event_timeline) |
 
 `factory_reference` 안의 세부 스타일(findings, 13건): 건축사전st(catalog_only → mechanism), 더다큐롱폼st(partial → event_timeline),

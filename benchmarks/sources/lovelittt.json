@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "lovelittt",
+  "name": "러블릿 @lovelittt",
+  "analyzed_at": "2026-11-17",
+  "genre": "아이돌 팬튜브 (예능 리액션 강조)",
+  "references": [
+    "https://www.youtube.com/@lovelittt/shorts",
+    "https://www.youtube.com/watch?v=slw_G_gOQpU",
+    "https://www.youtube.com/watch?v=u2U8oJn5ATc",
+    "https://www.youtube.com/shorts/ONiFyVSKT2s"
+  ],
+  "analysis_records": [
+    "docs/BENCHMARK_LOVELITT_2026-11-17.md"
+  ],
+  "observed_structure": [
+    "상단 고정 제목(멤버 + 상황 + ㅋㅋ) → 원본 장면 + 대사 박스 자막 → 리액션 지점 효과 자막·사진·효과음 → 웃음 포인트에서 종료"
+  ],
+  "observed_patterns": [
+    "나레이션 없음, 원본 대화가 서사",
+    "아래가 뚫린 프레임 + 작은 2줄 제목바(강조색 윗줄 + 흰 아랫줄)",
+    "각진 폰트, 자간 축소, 타이트한 검정 박스 대사 자막",
+    "감정별 자막 템플릿, ease-out/슬라이드 등장, 강조 자막 뒤 블러",
+    "화면·자막이 바뀔 때마다 효과음"
+  ],
+  "adopted_elements": [
+    "열린 하단 프레임과 작은 2줄 제목바",
+    "대사 박스 자막 + 감정별 효과 자막 + 변화 시점 효과음"
+  ],
+  "do_not_copy": [
+    "채널명/로고/정확한 색상값/자막 템플릿 파일",
+    "원본 예능·위버스 영상과 대사 문장, 권리 미확인 일러스트"
+  ],
+  "derived_profiles": [
+    "kpop_observation_clip"
+  ],
+  "findings": []
+}

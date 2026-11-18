@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import fantube
 from .media import ff_path, run_ffmpeg
 
 
@@ -43,6 +44,41 @@ def _apply_overlays(overlays: list[dict], first_index: int, last: str, total: fl
     return args, filters, last
 
 
+def _effects(filters: list[str], last: str, total: float, width: int, height: int,
+             sfx_events: list | None, blur_spans: list | None) -> str:
+    """팬튜브 스킨: 강조 자막 동안 화면 블러, 효과음 트랙 [sfx] 를 [aout] 에 섞는다. 반환: 마지막 비디오 라벨."""
+    if blur_spans:
+        on = "+".join(f"between(t,{float(a):.3f},{float(b):.3f})" for a, b in blur_spans)
+        top = fantube.bar_height(height)   # 제목바는 그대로, 아래 영상만 흐리게
+        filters.append(f"{last}split[bl_a][bl_b];[bl_b]crop={width}:{height - top}:0:{top},boxblur=24:2[bl_c];"
+                       f"[bl_a][bl_c]overlay=0:{top}:enable='{on}'[blurred]")
+        last = "[blurred]"
+    sfx = fantube.sfx_filters(sfx_events or [], total)
+    if sfx:
+        # 마지막 오디오 필터의 출력 [aout] 을 [amain] 으로 돌리고 효과음을 섞는다
+        k = max(i for i, f in enumerate(filters) if f.endswith("[aout]"))
+        filters[k] = filters[k][: -len("[aout]")] + "[amain]"
+        filters += sfx
+        filters.append("[amain][sfx]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]")
+    return last
+
+
+def _open_bottom_contain(src: str, out: str, width: int, height: int, fps: int) -> str:
+    """이미지·카드: 잘리지 않게 제목바 아래 영역에 넣는다 (양옆은 검정)."""
+    top = fantube.bar_height(height)
+    body = height - top
+    return (f"{src}scale={width}:{body}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:{top}+({body}-ih)/2:black,setsar=1,fps={fps},format=yuv420p[{out}]")
+
+
+def _open_bottom_cover(src: str, out: str, width: int, height: int, fps: int) -> str:
+    """원본 영상: 위에만 제목바, 영상은 화면 아래 끝까지 채운다 (아래가 뚫린 프레임)."""
+    top = fantube.bar_height(height)
+    body = height - top
+    return (f"{src}scale={width}:{body}:force_original_aspect_ratio=increase,crop={width}:{body},"
+            f"pad={width}:{height}:0:{top}:black,setsar=1,fps={fps},format=yuv420p[{out}]")
+
+
 def _audio_mix(narr_idx: int, bgm_idx: int | None, bgm_volume: float) -> str:
     if bgm_idx is None:
         return f"[{narr_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo[aout]"
@@ -67,6 +103,9 @@ async def render_slideshow(
     bgm_volume: float = 0.1,
     fonts_dir: Path | None = None,
     overlays: list[dict] | None = None,
+    frame_layout: str = "full",
+    sfx_events: list | None = None,
+    blur_spans: list | None = None,
 ) -> Path:
     """장면 이미지에 켄번즈 효과를 주고 xfade 로 이어붙인 뒤 오디오·자막을 얹는다.
 
@@ -113,12 +152,16 @@ async def render_slideshow(
         bgm_idx = n + 1
         args += ["-i", str(bgm)]
     filters.append(_audio_mix(narr_idx, bgm_idx, bgm_volume))
+    if frame_layout == "open_bottom":
+        filters.append(_open_bottom_contain(last, "framed", width, height, fps))
+        last = "[framed]"
 
     if overlays:
         ov_args, ov_filters, last = _apply_overlays(overlays, n + 1 + (bgm_idx is not None), last,
                                                      sum(durations), width, fps)
         args += ov_args
         filters += ov_filters
+    last = _effects(filters, last, sum(durations), width, height, sfx_events, blur_spans)
 
     if ass_path:
         filters.append(f"{last}{_subtitle_filter(ass_path, fonts_dir)}[vout]")
@@ -165,6 +208,8 @@ async def render_broll(
     fonts_dir: Path | None = None,
     overlays: list[dict] | None = None,
     frame_layout: str = "full",
+    sfx_events: list | None = None,
+    blur_spans: list | None = None,
 ) -> Path:
     """여러 소스 영상·이미지를 장면 순서대로 이어 붙이고 나레이션을 얹는다.
 
@@ -208,8 +253,10 @@ async def render_broll(
                 f"[{idx}:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
                 f"crop={width * 2}:{height * 2},"
                 f"zoompan=z='{zoom}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},"
-                f"trim=duration={dur:.3f},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[{vl}]"
+                f"trim=duration={dur:.3f},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[{vl if frame_layout != 'open_bottom' else f'z{k}'}]"
             )
+            if frame_layout == "open_bottom":
+                filters.append(_open_bottom_contain(f"[z{k}]", vl, width, height, fps))
             filters.append(f"anullsrc=r=44100:cl=stereo,atrim=duration={dur:.3f},asetpts=PTS-STARTPTS[{al}]")
         else:
             idx = input_index(Path(c["path"]), False, dur)
@@ -235,6 +282,8 @@ async def render_broll(
                     f"pad={width}:{body}:(ow-iw)/2:(oh-ih)/2:color=0x172034,"
                     f"pad={width}:{height}:0:{top}:color=0x172034,"
                     f"setsar=1,fps={fps},format=yuv420p[{vl}]")
+            elif frame_layout == "open_bottom":
+                filters.append(_open_bottom_cover(f"[raw{k}]", vl, width, height, fps))
             else:
                 filters.append(_ninefix(f"[raw{k}]", vl, width, height, fps, blur_background))
 
@@ -287,6 +336,7 @@ async def render_broll(
                                                      total_duration, width, fps)
         inputs += ov_args
         filters += ov_filters
+    last = _effects(filters, last, total_duration, width, height, sfx_events, blur_spans)
     if ass_path:
         filters.append(f"{last}{_subtitle_filter(ass_path, fonts_dir)}[vout]")
         last = "[vout]"

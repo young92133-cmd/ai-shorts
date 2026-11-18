@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..config import load_config, load_presets, merge_options
-from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
+from ..pipeline import blueprint as bpmod, capcut, cards, fantube, research, timeline as tlmod, visuals as visualsmod
 from ..pipeline import run as runmod, llm as llmmod, bench_auto, quote as quotemod
 from ..pipeline.assets import kind_of
 from ..pipeline.media import probe_video, require_ffmpeg
@@ -135,7 +135,15 @@ def _run_cfg(request: dict[str, Any]) -> dict[str, Any]:
         out["tts"]["voice"] = request.get("voice") or (presets[preset].get("voice") or {}).get("edge") or out["tts"]["voices"]["edge"]
     if out["tts"]["provider"] == "openai" and not llmmod.paid_allowed("openai", out["llm"]):
         raise FactoryError("paid_not_allowed", "OpenAI 음성 API도 --allow-openai 또는 설정상 명시적 허용이 필요합니다.")
+    out["video"]["skin"] = request.get("skin") or "default"
     return out
+
+
+def _check_skin(skin: str | None) -> str:
+    skin = skin or "default"
+    if skin not in fantube.SKINS:
+        raise FactoryError("invalid", f"편집 스킨은 {' / '.join(fantube.SKINS)} 중 하나여야 합니다.")
+    return skin
 
 
 def _ai_session(job_dir: Path, state: dict, cfg: dict):
@@ -305,7 +313,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
                benchmark: str | None = "auto", visuals: str | None = "auto", quotes: list[str] | None = None,
-               quote_source: str | None = None, quote_reference: bool = False, log: Log = print) -> dict[str, Any]:
+               quote_source: str | None = None, quote_reference: bool = False, skin: str | None = None,
+               log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
@@ -313,7 +322,9 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     quotes: 분석·비평·비교·해설에 인용할 외부 영상·캡처 파일 (transformative_quote). 재사용 라이선스를 묻지 않는다.
             근거 역할 장면에 필요한 최소 구간만, 해설과 출처 표기와 함께 쓴다. quote_source 로 제목·채널·주소를 남긴다.
     quote_reference: reference_video 파일 자체를 인용 자료로도 쓴다 (기본은 분석 전용).
+    skin: default | fantube (위만 막힌 프레임·작은 2줄 제목·대사 박스 자막·효과음).
     """
+    skin = _check_skin(skin)
     visuals = visuals or "auto"
     if visuals not in ("auto", "cards"):
         raise FactoryError("invalid", "visuals 는 auto / cards 중 하나여야 합니다.")
@@ -344,7 +355,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,
                "format": content_format, "reference_name": ref.name if ref else "", "benchmark": benchmark,
                "visuals": visuals, "quotes": [Path(p).name for p in quotes or []],
-               "quote_source": quote_source or "", "quote_reference": bool(quote_reference and ref)}
+               "quote_source": quote_source or "", "quote_reference": bool(quote_reference and ref), "skin": skin}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
     project_id = _new_id()
@@ -565,12 +576,32 @@ async def set_visual(project_id: str | None, scene: int, *, card: str | None = N
     return await rerender(state["project_id"], log=log, changed_scene=scene)
 
 
-async def rerender(project_id: str | None = None, log: Log = print, **extra: Any) -> dict[str, Any]:
-    """저장된 렌더 재료(timeline.json)로 영상만 다시 만든다. 조사·대본·음성은 다시 하지 않는다."""
+async def rerender(project_id: str | None = None, log: Log = print, *, skin: str | None = None,
+                   headline: str | None = None, headline_accent: str | None = None, sfx: bool | None = None,
+                   **extra: Any) -> dict[str, Any]:
+    """저장된 렌더 재료(timeline.json)로 영상만 다시 만든다. 조사·대본·음성은 다시 하지 않는다.
+
+    skin/headline/headline_accent/sfx 를 주면 timeline.json 에 저장한 뒤 렌더한다 (편집 스킨만 바꿔 다시 뽑기).
+    """
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     if not (job_dir / tlmod.FILE).is_file():
         raise FactoryError("not_ready", "다시 렌더할 재료가 없습니다. 먼저 영상을 완성해 주세요.", status=state.get("status"))
+    if skin is not None or headline is not None or headline_accent is not None or sfx is not None:
+        tl = tlmod.load(job_dir)
+        if skin is not None:
+            tl["skin"] = _check_skin(skin)
+        h = dict(tl.get("headline") or {})
+        if headline is not None:
+            h["main"] = " ".join(headline.split())[:40]
+        if headline_accent is not None:
+            h["accent"] = " ".join(headline_accent.split())[:30]
+        if h:
+            tl["headline"] = h
+        if sfx is not None:
+            tl["sfx"] = bool(sfx)
+        tlmod.save(job_dir, tl)
+        extra.setdefault("skin", tl.get("skin", "default"))
     cfg = _run_cfg(state["request"])
     try:
         res = await runmod.rerender(job_dir, cfg, progress=lambda stage, pct, msg: log(f"[{stage} {pct:3d}%] {msg}"))
