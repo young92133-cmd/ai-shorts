@@ -78,6 +78,15 @@
   ㅋㅋ 2번 제한, 긴 자막 두 줄, 기본 20초. 실제 `output/20261118_220036_cfb0/final.mp4` 20.3초. 테스트 test_fanclip 5개 통과. 전체 415개 중 414 통과(기존 topics 1개 실패, 무관).
 - 테스트: 전체 414개 중 413 통과, `test_topics...test_cli_rank_approve_create_dry_run` 1개 실패 — 이 변경과 무관(변경을 빼도 실패, 날짜 의존 추정, 별도 작업 제안).
 
+### 완료 (2026-11-18, Claude, 커밋) — 영상 연출 도구 13종 설치 (렌더 연결은 아직 없음)
+- PC: Node.js 26 LTS·uv·Blender 5.3 (winget). `motion/` = Remotion 4.0.545(+lottie·three)·anime.js·motion·three·three-gpu-pathtracer·jolt-physics·postprocessing·three.quarks·tweakpane·react 19
+  (`npm install`, node_modules·out 은 `motion/.gitignore`), Remotion 2초 테스트 렌더 OK. Remotion Skills 13개 `.claude/skills/remotion-*`. Manim 0.22.1 → `.venv`(기존 패키지 변경 없음).
+- Blender MCP: 애드온 `motion/blender/blender_mcp_addon.py` 설치·활성(localhost:9876, 외부 자산 서비스 기본 꺼짐), Claude Code local MCP `blender`(uvx blender-mcp) 연결 확인.
+- Remotion 라이선스: 개인·3인 이하 회사 무료. 다음: fanclip 렌더를 Remotion 으로(자막 팝업·원·화살표) — 사용자 요청 시.
+
+- 베스티 팬 클립 최신본(벤치마크 대본 규칙): `output/20261118_223447_bc27/final.mp4` 22초. 3번 장면 댄서 구간만 58~62초로 수동 조정 후 재렌더.
+  설치 방법 요약 `motion/README.md`. 전체 테스트 415개 중 414 통과(기존 topics 1개 실패, 무관).
+
 ## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)
 
 - [별도 브랜치] 캐릭터·그림체 확장 시제품: 작업 폴더 `../shorts-ai-styles`(브랜치 `feature/character-styles`, 미커밋). 상세 그 폴더의 `docs/CHARACTER_STYLES_2026-10-21.md`.
