@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "idol_tamjeong",
+  "name": "아이돌탐정 @IDOL탐정",
+  "analyzed_at": "2026-11-18",
+  "genre": "K팝·연예 이슈 팬 클립(원본 영상 + 자막)",
+  "references": [
+    "https://www.youtube.com/shorts/eDnz_zxhh1w",
+    "https://www.youtube.com/shorts/4rGdcY-yiAU",
+    "https://www.youtube.com/shorts/_fhiqv376zI"
+  ],
+  "analysis_records": [
+    "선정 근거: 구독자 5.16만 대비 쇼츠 조회수 중앙값 49만·최고 1438만 (YouTube 검색·채널 쇼츠 목록, 2026-11-18)",
+    "Claude 2026-11-18: 대표 쇼츠 프레임 8장씩 표본 추출해 화면 자막 판독"
+  ],
+  "observed_structure": [
+    "'무대 도중 ~한 순간' 질문형 제목 → 상황을 짧은 어절로 끊어 따라감 → 행동의 이유 공개 → 괄호 한줄평('괜히 ~가 아님')"
+  ],
+  "observed_patterns": [
+    "큰 흰 글씨(외곽선) 어절 단위 자막, 1.5~3초마다 교체",
+    "빨간 원·화살표·!? 같은 시선 유도 그래픽",
+    "괄호 속 짧은 대사·속마음 '(저쪽!)'",
+    "마지막은 이유 공개 + 괄호 평가로 마무리(질문 카드 없음)",
+    "제목: '[상황]에서 [인물]이 한 행동' 형식"
+  ],
+  "adopted_elements": [
+    "이어지는 이야기형 자막(라벨형 자막 금지)",
+    "반전 연결어(근데/알고 보니/그런데)로 이유 공개",
+    "괄호 속마음·짧은 한줄평으로 마무리",
+    "2줄 제목(상황 + 결과)"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장·자막 문구를 그대로 쓰지 않는다(구조와 말투 패턴만)",
+    "외부 영상 파일 저장"
+  ],
+  "derived_profiles": [
+    "kpop_observation_clip"
+  ],
+  "findings": []
+}

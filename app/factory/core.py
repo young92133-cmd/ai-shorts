@@ -412,7 +412,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
         return _fail(job_dir, state, e)
 
 
-async def fanclip(*, url: str, seconds: int = 30, instructions: str = "", title: str = "", llm: str | None = None,
+async def fanclip(*, url: str, seconds: int = 20, instructions: str = "", title: str = "", llm: str | None = None,
                   model: str | None = None, log: Log = print) -> dict[str, Any]:
     """팬 클립(팬튜브): 원본 영상 링크 → 구간 선택(AI 1회) → 원본 영상·소리만으로 9:16 렌더.
     위 2줄 제목, 영상 위 담백한 자막, 아래 '출처 - 채널 · 제목'. 카드·정지 화면·나레이션·정리 화면 없음."""

@@ -73,6 +73,9 @@
 - 팬 클립(2026-11-18, 사용자 요청 + 돌토리 화면 재확인): 새 명령 `fanclip --url L` (`app/pipeline/fanclip.py`, `core.fanclip`). 원본 영상·소리만,
   위 2줄 제목·영상 위 검정 박스 자막·아래 `출처 - 채널 · 제목`(없으면 거부), Pretendard(`assets/fonts`, OFL). AI 1회로 구간·제목·자막 선택. 실제 `output/20261118_213341_dcc8/final.mp4` 29.2초.
   AGENTS.md: 팬튜브 기본 = fanclip. 테스트 `tests/test_fanclip.py` 4개.
+- 팬 클립 대본 학습(2026-11-18): 구독 대비 조회수 높은 연예 쇼츠 4곳(연예소식뉴스 1.4만/중앙값 28만, 아이돌탐정 5.2만/49만, 디테일 9.5천/9.7만,
+  잠깐만아이돌 1.1만/8.8만) 프레임 판독 → `benchmarks/sources/*.json` 4개·BENCHMARKS 현황판. `fanclip.SYSTEM` 이야기형 자막·반전·한줄평·괄호 속마음(voice),
+  ㅋㅋ 2번 제한, 긴 자막 두 줄, 기본 20초. 실제 `output/20261118_220036_cfb0/final.mp4` 20.3초. 테스트 test_fanclip 5개 통과. 전체 415개 중 414 통과(기존 topics 1개 실패, 무관).
 - 테스트: 전체 414개 중 413 통과, `test_topics...test_cli_rank_approve_create_dry_run` 1개 실패 — 이 변경과 무관(변경을 빼도 실패, 날짜 의존 추정, 별도 작업 제안).
 
 ## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)

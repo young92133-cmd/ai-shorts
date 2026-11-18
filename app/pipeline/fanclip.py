@@ -23,16 +23,20 @@ VIDEO_H = 1250            # 영상 영역 높이 (TOP ~ TOP+VIDEO_H)
 BG = (14, 14, 16)
 ACCENT = (255, 111, 181)  # 우리 강조색(분홍)
 CAPTION_Y = TOP + int(VIDEO_H * 0.80)
+VOICE_Y = TOP + int(VIDEO_H * 0.30)      # 괄호 속마음 대사 위치(영상 위쪽)
 FONT_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 MIN_SEG, MAX_SEG = 1.5, 10.0
+MAX_LAUGH = 2                            # 영상 전체 'ㅋㅋ' 횟수 (벤치마크: 가볍게 1~2번)
 _TIMECODE = re.compile(r"\d{1,2}:\d{2}(?:\s*~\s*\d{1,2}:\d{2})?\s*")
-_SLANG = re.compile(r"(ㅋ{2,}|ㄷ{2,}|ㅠ{2,}|ㅜ{2,}|!{2,}|\?{2,})")
+_TONE = ((re.compile(r"ㅋ{2,}"), "ㅋㅋ"), (re.compile(r"ㄷ{2,}"), ""), (re.compile(r"[ㅠㅜ]{2,}"), "ㅠㅠ"),
+         (re.compile(r"!{2,}"), "!"), (re.compile(r"\?{2,}"), "?"), (re.compile(r"\.{3,}"), ".."))
 
 
 class FanSegment(BaseModel):
     start: float = Field(description="원본 영상에서 시작 시각(초)")
     end: float = Field(description="원본 영상에서 끝 시각(초)")
-    caption: str = Field(default="", description="이 구간에 띄울 짧은 자막(20자 안팎). 없으면 빈 문자열")
+    caption: str = Field(default="", description="이 구간에 띄울 이야기 자막(8~20자, 반말·음슴체)")
+    voice: str = Field(default="", description="선택: 인물 속마음 괄호 대사 예 '(이거 맞나?)'. 대부분 빈 문자열")
     why: str = Field(default="", description="이 구간을 고른 이유(관찰 근거, 화면에는 안 나옴)")
 
 
@@ -45,16 +49,32 @@ class FanClipPlan(BaseModel):
     hashtags: list[str] = Field(default_factory=list, description="해시태그 5~8개(# 포함)")
 
 
-SYSTEM = """너는 K팝 팬 클립(팬튜브) 쇼츠 편집자다. 원본 영상 한 편에서 구간을 골라 이어 붙이고, 위 제목과 짧은 자막만 단다.
-구조(벤치마크): 볼 이유가 첫 장면부터 보이게 → 그 이유를 보여 주는 장면 근거 → 짧은 해설 → (선택) 가벼운 질문.
-규칙:
-- 첫 구간부터 바로 핵심 장면. 인트로·정리 화면 없음. 나레이션 없음(원본 소리 사용).
-- 제목은 2줄: 첫 줄은 맥락(예: '인기가요 엔딩에서 보인'), 둘째 줄은 핵심(예: '베스티 회색 의상 디테일'). 낚시·과장 금지.
-- 자막은 담백하고 자연스럽게. 해요체나 짧은 관찰 문장. 감탄사·'ㄷㄷ'·'ㅋㅋ'·이모지·느낌표 남발 금지. 모든 구간에 자막을 달 필요는 없다. 자막에 '0:20' 같은 시각을 넣지 않는다.
-- 확인된 정보(영상 정보·사용자 관찰)만 쓴다. 얼굴만 보고 멤버 이름을 추측하지 않는다(확인 안 되면 '멤버').
+SYSTEM = """너는 구독자 대비 조회수가 높은 K팝·연예 이슈 팬 클립 쇼츠의 자막 작가 겸 편집자다.
+원본 영상 한 편에서 구간을 골라 이어 붙이고, 위 2줄 제목과 영상 위 자막만 단다(나레이션 없음, 원본 소리).
+벤치마크(2026-11-18 분석: 연예소식뉴스·아이돌탐정·디테일·잠깐만아이돌)의 공통 대본 구조를 따른다. 문장은 새로 쓴다.
+
+[이야기 구조] 자막은 라벨이 아니라 한 편의 짧은 이야기다.
+1) 상황: 누가 어디서 무엇을 하고 있는지 (첫 구간부터 바로 핵심 장면)
+2) 궁금증: 눈에 띄는 행동·차이 ("~하는데", "그런데 ~만 다름")
+3) 반전·이유: "알고 보니 ~", "근데 이게 ~때문이었음", "자세히 보면 ~"
+4) 마무리 한줄평: 가벼운 해석이나 감탄 ("괜히 ~가 아님", "~인가 봄", "이 정도면 ~") — 질문 카드·정리 화면 없음
+
+[자막 쓰는 법]
+- 모든 구간에 자막을 단다. 한 자막 8~20자(최대 30자), 2~4초마다 바뀐다. 긴 말은 다음 구간 자막으로 넘긴다.
+- 마지막 구간 자막은 반드시 4) 한줄평으로 완결된 문장으로 끝낸다(말이 끊긴 채 끝나지 않게).
+- 한 문장을 두세 자막으로 나눠 이어 말해도 좋다 (앞 자막 "~하는데" → 다음 자막 "근데 ~").
+- 말투: 친구에게 말하듯 자연스러운 반말·음슴체(~임, ~였음, ~하는데, ~인가 봄). 'ㅋㅋ'는 영상 전체에서 1~2번까지, 'ㄷㄷ'·이모지·느낌표 남발 금지.
+- 금지: '보라 배경', '회색 대열'처럼 명사만 나열한 라벨 자막, 설명서 같은 딱딱한 문장, 시각 표기('0:20'), 과장·낚시.
+- voice(선택): 화면 속 인물의 속마음·한마디를 괄호로 짧게 ("(이거 맞나?)", "(나만 다르게 입음)"). 영상 전체에서 0~2번만.
+
+[제목] 2줄. 첫 줄 = 상황(흰 글씨), 둘째 줄 = 결과·포인트(강조색). 각 14자 안팎.
+예시 형식: '[무대/상황]에서 [인물]이' / '[한 행동·드러난 디테일]', '[A]인데' / '[B]인 이유'.
+
+[사실]
+- 확인된 정보(영상 정보·사용자 관찰)만 쓴다. 얼굴만 보고 멤버 이름을 추측하지 않는다(사용자가 준 이름만, 없으면 '멤버'·'한 명').
 - 다른 방송의 조회수·순위 같은 수치는 쓰지 않는다.
-- 구간은 원본 길이 안에서, 한 구간 2~8초, 가능하면 샷 경계에서 시작. 겹치지 않게. 같은 장면 반복 금지.
-- 전체 길이는 목표 길이에 맞춘다."""
+
+[구간] 원본 길이 안에서 한 구간 2~5초, 가능하면 샷 경계에서 시작. 겹치지 않게, 같은 장면 반복 금지. 전체 길이는 목표 길이에 맞춘다."""
 
 
 def build_prompt(info: dict[str, Any], seconds: int, shots: list[float], transcript: list[str], instructions: str) -> str:
@@ -70,8 +90,23 @@ def build_prompt(info: dict[str, Any], seconds: int, shots: list[float], transcr
 
 
 def _clean(text: str, limit: int) -> str:
-    text = _SLANG.sub("", _TIMECODE.sub("", " ".join((text or "").split()))).strip()
-    return text[:limit]
+    """시각 표기를 빼고 과한 말투를 줄인다(ㅋㅋㅋㅋ→ㅋㅋ, ㄷㄷ 제거, !!→!)."""
+    text = _TIMECODE.sub("", " ".join((text or "").split()))
+    for pat, rep in _TONE:
+        text = pat.sub(rep, text)
+    return " ".join(text.split())[:limit]
+
+
+def _limit_laughs(segs: list[FanSegment]) -> None:
+    """영상 전체에서 'ㅋㅋ'는 MAX_LAUGH 번까지만 남긴다."""
+    seen = 0
+    for s in segs:
+        for field in ("caption", "voice"):
+            text = getattr(s, field)
+            if "ㅋㅋ" in text:
+                seen += 1
+                if seen > MAX_LAUGH:
+                    setattr(s, field, " ".join(text.replace("ㅋㅋ", "").split()))
 
 
 def normalize(plan: FanClipPlan, duration: float, seconds: int) -> FanClipPlan:
@@ -88,13 +123,17 @@ def normalize(plan: FanClipPlan, duration: float, seconds: int) -> FanClipPlan:
         b = min(b, a + (limit - total))
         if b - a < MIN_SEG:
             continue
-        segs.append(FanSegment(start=round(a, 2), end=round(b, 2), caption=_clean(s.caption, 28), why=s.why))
+        voice = _clean(s.voice, 16)
+        if voice and not voice.startswith("("):
+            voice = f"({voice})"
+        segs.append(FanSegment(start=round(a, 2), end=round(b, 2), caption=_clean(s.caption, 44), voice=voice, why=s.why))
         taken.append((a, b))
         total += b - a
         if total >= limit - MIN_SEG:
             break
     if total < 6.0:
         raise ValueError("팬 클립으로 쓸 구간이 너무 짧습니다(6초 미만).")
+    _limit_laughs(segs)
     return plan.model_copy(update={"segments": segs, "title_top": _clean(plan.title_top, 20),
                                    "title_accent": _clean(plan.title_accent, 20)})
 
@@ -135,14 +174,27 @@ def frame_overlay(title_top: str, title_accent: str, credit: str, out: Path) -> 
     return out
 
 
-def caption_overlay(text: str, out: Path) -> Path:
-    """영상 위 작은 검정 박스 자막 (전체 화면 크기 투명 PNG)."""
+def caption_overlay(text: str, out: Path, voice: str = "") -> Path:
+    """영상 위 작은 검정 박스 자막 + (선택) 괄호 속마음 대사 (전체 화면 크기 투명 PNG)."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    f = _fit(d, text, "SemiBold", 50, W - 160)
-    l, t, r, b = d.textbbox((W / 2, CAPTION_Y), text, font=f, anchor="mm")
-    d.rounded_rectangle([l - 26, t - 16, r + 26, b + 16], radius=12, fill=(0, 0, 0, 190))
-    d.text((W / 2, CAPTION_Y), text, font=f, fill=(255, 255, 255), anchor="mm")
+    if text:
+        f = _font("SemiBold", 50)
+        lines = [text]
+        if d.textlength(text, font=f) > W - 160:   # 길면 단어 경계에서 길이가 비슷한 두 줄로 (자르지 않는다)
+            words = text.split()
+            if len(words) > 1:
+                k = min(range(1, len(words)), key=lambda i: abs(len(" ".join(words[:i])) - len(" ".join(words[i:]))))
+                lines = [" ".join(words[:k]), " ".join(words[k:])]
+            longest = max(lines, key=lambda x: d.textlength(x, font=f))
+            f = _fit(d, longest, "SemiBold", 50, W - 160)
+        body = "\n".join(lines)
+        l, t, r, b = d.multiline_textbbox((W / 2, CAPTION_Y), body, font=f, anchor="mm", align="center", spacing=10)
+        d.rounded_rectangle([l - 26, t - 16, r + 26, b + 16], radius=12, fill=(0, 0, 0, 190))
+        d.multiline_text((W / 2, CAPTION_Y), body, font=f, fill=(255, 255, 255), anchor="mm", align="center", spacing=10)
+    if voice:
+        fv = _fit(d, voice, "Bold", 56, W - 200)
+        d.text((W / 2, VOICE_Y), voice, font=fv, fill=(255, 255, 255), anchor="mm", stroke_width=6, stroke_fill=(0, 0, 0))
     img.save(out)
     return out
 
@@ -198,8 +250,8 @@ def render(src: Path, plan: FanClipPlan, credit: str, work: Path, out: Path) -> 
     t = 0.0
     for i, s in enumerate(plan.segments):
         dur = s.end - s.start
-        if s.caption:
-            caps.append((caption_overlay(s.caption, work / f"caption_{i:02d}.png"), t + 0.15, t + dur - 0.1))
+        if s.caption or s.voice:
+            caps.append((caption_overlay(s.caption, work / f"caption_{i:02d}.png", voice=s.voice), t + 0.1, t + dur - 0.05))
         t += dur
     audio = has_audio(src)
     cmd = build_command(src, plan, frame, caps, out, audio=audio)

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "yeonye_sosik_news",
+  "name": "연예소식뉴스 @연예소식뉴스",
+  "analyzed_at": "2026-11-18",
+  "genre": "K팝·연예 이슈 팬 클립(원본 영상 + 자막)",
+  "references": [
+    "https://www.youtube.com/shorts/4UqbOZiv5EU",
+    "https://www.youtube.com/shorts/uY5Cjk5y2VI",
+    "https://www.youtube.com/shorts/PcZR9D7lzAE"
+  ],
+  "analysis_records": [
+    "선정 근거: 구독자 1.37만 대비 쇼츠 조회수 중앙값 28만·최고 550만 (YouTube 검색·채널 쇼츠 목록, 2026-11-18)",
+    "Claude 2026-11-18: 대표 쇼츠 프레임 8장씩 표본 추출해 화면 자막 판독"
+  ],
+  "observed_structure": [
+    "상황 소개 → 보통은 이렇다(기대) → 근데 이걸 본 사람이 한 일(반전) → 팬 반응 말풍선 → 이슈·한줄 정리"
+  ],
+  "observed_patterns": [
+    "자막이 2~3초마다 바뀌는 이어지는 이야기(문장이 다음 자막으로 이어짐: '~하는데' → '근데 ~')",
+    "검정 박스 = 나레이션 자막, 흰 박스 = 팬 반응(댓글체)",
+    "구어체 끝맺음: ~는데 / ~다고.. / ~주심..",
+    "제목 2줄: 위 흰 줄 상황, 아래 강조색 줄 결과·감정",
+    "20초 안팎, 원본 소리"
+  ],
+  "adopted_elements": [
+    "이어지는 이야기형 자막(라벨형 자막 금지)",
+    "반전 연결어(근데/알고 보니/그런데)로 이유 공개",
+    "괄호 속마음·짧은 한줄평으로 마무리",
+    "2줄 제목(상황 + 결과)"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/정확한 폰트/색상/그래픽",
+    "원본 대본 문장·자막 문구를 그대로 쓰지 않는다(구조와 말투 패턴만)",
+    "외부 영상 파일 저장"
+  ],
+  "derived_profiles": [
+    "kpop_observation_clip"
+  ],
+  "findings": []
+}

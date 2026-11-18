@@ -21,7 +21,14 @@ class NormalizeTests(unittest.TestCase):
     def test_clamps_overlaps_and_length(self):
         p = fc.normalize(plan([(0, 5, "첫 장면ㄷㄷ!!"), (3, 8, "겹침"), (10, 30, "길다"), (199, 205, "끝")]), 200, 15)
         self.assertEqual([(s.start, s.end) for s in p.segments], [(0, 5), (10, 20)])
-        self.assertEqual(p.segments[0].caption, "첫 장면")          # 과한 말투 제거
+        self.assertEqual(p.segments[0].caption, "첫 장면!")         # 과한 말투 줄임(ㄷㄷ 제거, !! → !)
+
+    def test_tone_laughs_and_voice(self):
+        p = fc.normalize(plan([(0, 3, "신난 멤버ㅋㅋㅋㅋ"), (5, 8, "알고 보니 다른 안무였음ㅋㅋ"), (10, 13, "친한가 봄ㅋㅋ")]), 60, 30)
+        self.assertEqual([s.caption for s in p.segments], ["신난 멤버ㅋㅋ", "알고 보니 다른 안무였음ㅋㅋ", "친한가 봄"])
+        q = fc.normalize(fc.FanClipPlan(title_top="a", title_accent="b", upload_title="t", description="d",
+                                        segments=[fc.FanSegment(start=0, end=8, caption="상황", voice="나만 다름")]), 60, 30)
+        self.assertEqual(q.segments[0].voice, "(나만 다름)")
 
     def test_too_short_is_rejected(self):
         with self.assertRaises(ValueError):

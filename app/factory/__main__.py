@@ -97,7 +97,7 @@ def _parser() -> argparse.ArgumentParser:
 
     fcp = sub.add_parser("fanclip", help="팬 클립(팬튜브): 원본 영상 링크 → 원본 영상·소리만으로 쇼츠 (제목·자막·출처)")
     fcp.add_argument("--url", required=True, help="원본 영상 링크")
-    fcp.add_argument("--seconds", type=int, default=30, help="목표 길이(10~60초, 기본 30)")
+    fcp.add_argument("--seconds", type=int, default=20, help="목표 길이(10~60초, 기본 20 — 벤치마크 채널 대표 길이)")
     fcp.add_argument("--instructions", default="", help="관찰 포인트·시각 등 지시")
     fcp.add_argument("--title", default="", help='제목 직접 지정 "첫 줄 | 강조 줄"')
     fcp.add_argument("--llm", default=None)
