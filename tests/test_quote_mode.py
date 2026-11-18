@@ -158,6 +158,26 @@ class GuardTests(unittest.TestCase):
 
 
 class PlacementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_captures_follow_scene_narration_not_file_order(self):
+        """2026-11-17 실제 제작 회귀: 파일 순서대로 넣어 '댄서 대비' 장면에 배경색 캡처가 들어갔다."""
+        with tempfile.TemporaryDirectory() as d:
+            job = Path(d)
+            reg = SourceRegistry(job)
+            names = ["a_엔딩_의상.jpg", "b_배경_보라.jpg", "c_배경_금색.jpg", "d_댄서_검정.jpg", "e_댄서_대열.jpg"]
+            for n in names:
+                Image.new("RGB", (640, 360), (90, 90, 90)).save(job / n)
+                add_quote(reg, job / n, kind="image")
+            script = planned(["reason_to_watch", "first_evidence", "comparison_or_interpretation",
+                              "comparison_or_interpretation", "payoff_or_question"])
+            script.scenes[1].narration = "엔딩 한 컷의 의상을 보세요."
+            script.scenes[2].narration = "댄서는 전원 검정이라 멤버가 돋보여요."
+            script.scenes[3].narration = "배경색도 보라에서 금색으로 바뀌어요."
+            out = await quotemod.plan_quotes(job_dir=job, registry=reg, script=script, durations=[4.0] * 5,
+                                             spec=kpop_spec(), decision={"viewer_question": "q"})
+            self.assertTrue(out[1]["path"].endswith("a_엔딩_의상.jpg"))
+            self.assertEqual([Path(p).name for p in out[2]["parents"]], ["d_댄서_검정.jpg", "e_댄서_대열.jpg"])
+            self.assertEqual([Path(p).name for p in out[3]["parents"]], ["b_배경_보라.jpg", "c_배경_금색.jpg"])
+
     async def test_screenshots_compose_before_after_on_comparison_scene(self):
         with tempfile.TemporaryDirectory() as d:
             job = Path(d)
@@ -197,6 +217,25 @@ class PlacementTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[0]["prefer"], [(31.0, 36.0)])                # 같은 원본이면 근거 시각 우선
             self.assertEqual(calls[1]["avoid"], [(out[1]["start"], out[1]["end"])])   # 이미 쓴 구간 피함
             self.assertTrue(all(e["play"] <= 4.0 * quotemod.SCENE_MOTION_SHARE + 1e-6 for e in out.values()))
+
+
+class ScenePreferTests(unittest.TestCase):
+    MOMENTS = [{"start_sec": 194, "end_sec": 200, "what": "엔딩에서 네 멤버 의상 디자인이 다름"},
+               {"start_sec": 176, "end_sec": 182, "what": "회색 의상으로 대열을 이루는 구간"},
+               {"start_sec": 56, "end_sec": 62, "what": "댄서 전원이 검정 의상을 입은 구간"}]
+
+    def scene(self, narration, text=""):
+        return type("S", (), {"narration": narration, "on_screen_text": text})()
+
+    def test_spoken_time_picks_that_moment(self):
+        self.assertEqual(quotemod.scene_times("삼 분 십사 초 엔딩, 2분 56초, 0:56"), [56.0, 194.0, 176.0])
+        self.assertEqual(quotemod._scene_prefer(self.scene("삼 분 십사 초 엔딩을 멈춰 보면"), self.MOMENTS), [(194.0, 200.0)])
+        self.assertEqual(quotemod._scene_prefer(self.scene("직전 대열만 보면", "2분 56초 회색 대열"), self.MOMENTS),
+                         [(176.0, 182.0)])
+
+    def test_words_pick_moment_when_no_time(self):
+        self.assertEqual(quotemod._scene_prefer(self.scene("댄서는 전원 검정이라 멤버만 떠 보여요"), self.MOMENTS),
+                         [(56.0, 62.0)])
 
 
 class KpopRouterTests(unittest.TestCase):
@@ -245,6 +284,26 @@ class PipelineQuoteTests(FactoryTestCase):
         report = json.loads((job / quotemod.PLAN_FILE).read_text(encoding="utf-8"))
         self.assertTrue(report["commentary_present"] and report["attribution_present"])
         self.assertLessEqual(report["quote_motion_share"], quotemod.VIDEO_MOTION_SHARE + 1e-6)
+
+    async def test_quote_link_downloads_original_and_fills_credit(self):
+        from app.pipeline import youtube
+
+        async def fake_download(link, dest):
+            dest.mkdir(parents=True, exist_ok=True)
+            f = dest / "quote_stagecam01.mp4"
+            f.write_bytes(b"0" * 4096)
+            return f, {"title": "연애의 조건 무대", "channel": "방송 채널", "webpage_url": URL}
+        dl = AsyncMock(side_effect=fake_download)
+        with patch.object(youtube, "download_quote", new=dl):
+            out = await core.make(topic="같은 안무 다른 느낌", quotes=[URL], log=lambda m: None)
+        self.assertEqual(out["status"], "render_complete")
+        dl.assert_awaited_once()
+        items = json.loads((Path(out["project_dir"]) / "sources.json").read_text(encoding="utf-8"))
+        cam = [i for i in items if i["path"].endswith("quote_stagecam01.mp4")][0]
+        self.assertEqual(cam["rights_status"], "transformative_quote")
+        self.assertEqual(cam["media_status"], "downloaded")
+        self.assertEqual(cam["attribution"], {"title": "연애의 조건 무대", "channel": "방송 채널", "url": URL})
+        self.assertTrue(cam["clip_ranges"])
 
     async def test_resume_and_rerender_preserve_quote_status(self):
         pending = await core.make(topic="같은 안무 다른 느낌", quotes=[str(self.cam)], review=True,

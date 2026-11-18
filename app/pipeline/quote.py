@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -137,6 +138,72 @@ def _overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
     return a[0] < b[1] and b[0] < a[1]
 
 
+def _name_tokens(path: str) -> set[str]:
+    """캡처 파일명의 내용 단어 (예: c_0m44s_배경_금색.jpg → {배경, 금색}). 시각·번호는 뺀다."""
+    stem = Path(path).stem
+    return {t for t in re.findall(r"[가-힣]{2,}|[A-Za-z]{3,}", stem)} - {"scene", "jpg", "png", "quote", "capture"}
+
+
+def _take_images(images: list[Any], scene: Any, k: int) -> list[Any]:
+    """장면 나레이션·강조문구와 파일명 단어가 가장 많이 겹치는 캡처 k장을 꺼낸다. 겹치는 게 없으면 파일 순서."""
+    text = f"{scene.narration} {getattr(scene, 'on_screen_text', '')}".lower()
+    scored = [(sum(1 for t in _name_tokens(it.path) if t.lower() in text), -n, it) for n, it in enumerate(images)]
+    picked = [it for _, _, it in sorted(scored, key=lambda x: (x[0], x[1]), reverse=True)[:k]]
+    if not any(s for s, _, _ in scored):
+        picked = images[:k]
+    for it in picked:
+        images.remove(it)
+    return picked
+
+
+_KNUM = {"일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9}
+
+
+def _kor_num(text: str) -> int | None:
+    """'오십육' → 56, '십사' → 14, '삼' → 3 (99 이하 한자어 수). 숫자면 그대로."""
+    text = text.replace(" ", "")
+    if text.isdigit():
+        return int(text)
+    if not text or any(ch not in _KNUM and ch != "십" for ch in text):
+        return None
+    if "십" in text:
+        tens, _, ones = text.partition("십")
+        return (_KNUM.get(tens, 1) if tens else 1) * 10 + (_KNUM.get(ones, 0) if ones else 0)
+    return _KNUM.get(text) if len(text) == 1 else None
+
+
+_TIME_PATTERNS = (re.compile(r"(\d{1,2}):(\d{2})"),
+                  re.compile(r"([0-9일이삼사오육칠팔구십]{1,4})\s*분\s*([0-9일이삼사오육칠팔구십]{1,4})\s*초"))
+
+
+def scene_times(text: str) -> list[float]:
+    """장면 문구에 적힌 원본 시각(초). 예: '3:14', '2분 56초', '삼 분 십사 초'."""
+    out: list[float] = []
+    for pat in _TIME_PATTERNS:
+        for m, s_ in pat.findall(text or ""):
+            mm, ss = _kor_num(m), _kor_num(s_)
+            if mm is not None and ss is not None and ss < 60:
+                out.append(mm * 60.0 + ss)
+    return out
+
+
+def _scene_prefer(scene: Any, moments: list[dict[str, Any]]) -> list[tuple[float, float]]:
+    """그 장면이 말하는 근거 구간만 고른다: ① 문구에 적힌 시각 ② 근거 설명과 겹치는 단어 ③ 없으면 전체."""
+    spans = [(float(m.get("start_sec", 0)), float(m.get("end_sec", 0)), str(m.get("what", ""))) for m in moments
+             if float(m.get("end_sec", 0)) > float(m.get("start_sec", 0))]
+    text = f"{getattr(scene, 'on_screen_text', '')} {scene.narration}"
+    times = scene_times(text)
+    if times:
+        hit = [(a, b) for a, b, _ in spans if any(a - 2 <= t <= b for t in times)]
+        return hit or [(t, t + 6.0) for t in times]
+    words = set(re.findall(r"[가-힣]{2,}", text))
+    scored = [(sum(1 for w in words if w in what or (len(w) > 2 and w[:2] in what)), (a, b)) for a, b, what in spans]
+    best = max((sc for sc, _ in scored), default=0)
+    if best > 0:
+        return [ab for sc, ab in scored if sc == best]
+    return [(a, b) for a, b, _ in spans]
+
+
 async def plan_quotes(*, job_dir: Path, registry: SourceRegistry, script: Any, durations: list[float],
                       spec: dict[str, Any] | None, decision: dict[str, Any] | None,
                       transcript: list[Word] | None = None, transcript_url: str = "", transcript_path: str = "",
@@ -169,7 +236,7 @@ async def plan_quotes(*, job_dir: Path, registry: SourceRegistry, script: Any, d
         if it is None:
             compare = any(r in role for r in COMPARE_ROLES)
             if compare and len(images) >= 2:
-                a, b = images.pop(0), images.pop(0)
+                a, b = _take_images(images, script.scenes[i], 2)
                 path = compose_compare(Path(a.path), Path(b.path), job_dir / "scenes" / f"quote_compare_{i:02d}.jpg",
                                        labels=("앞", "뒤") if "change" in role else ("A", "B"))
                 registry.add(kind="image", origin="derived", path=str(path), title=f"장면 {i + 1} 비교",
@@ -184,7 +251,7 @@ async def plan_quotes(*, job_dir: Path, registry: SourceRegistry, script: Any, d
                 it = videos[vid_cycle % len(videos)]
                 vid_cycle += 1
             elif images:
-                it = images.pop(0)
+                it = _take_images(images, script.scenes[i], 1)[0]
             else:
                 continue
         if it.kind == "image":
@@ -197,8 +264,8 @@ async def plan_quotes(*, job_dir: Path, registry: SourceRegistry, script: Any, d
         play = max(0.5, need * SCENE_MOTION_SHARE)
         same_source = ((bool(transcript_url) and it.attribution.get("url") == transcript_url)
                        or (bool(transcript_path) and Path(it.path) == Path(transcript_path)))
-        prefer = [(float(m.get("start_sec", 0)), float(m.get("end_sec", 0))) for m in moments
-                  if float(m.get("end_sec", 0)) > float(m.get("start_sec", 0))] if same_source else []
+        # 장면이 말하는 시각·내용의 근거 구간만 우선한다 (전체를 주면 장면과 다른 구간이 고를 수 있다)
+        prefer = _scene_prefer(script.scenes[i], moments) if same_source else []
         keywords = [getattr(script.scenes[i], "on_screen_text", ""), script.scenes[i].narration]
         try:
             analysis = await clip_analyzer.analyze(Path(it.path), play, keywords=keywords,

@@ -46,8 +46,10 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | 명령 | 하는 일 |
 |---|---|
 | `make --topic "주제" [--seconds 45]` | 주제로 조사 → 대본 → 장면 → 음성 → 화면 → 자막 → MP4 |
-| `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 분석해 새 대본으로 제작 (원본은 자동 다운로드하지 않음. 화면 인용은 `--quote` 로 준 파일) |
+| `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 분석해 새 대본으로 제작 (원본 화면까지 쓰려면 아래 `--quote 링크`) |
 | `make --url "링크" --quote 영상·캡처 [--quote …]` | 분석·비평·비교·해설용 인용(transformative_quote). 출처는 링크에서 자동 기록 |
+| `fanclip --url "링크" [--seconds 30] [--instructions "관찰·시각"] [--title "첫 줄 \| 강조 줄"]` | **팬튜브 기본.** 원본 영상·소리만으로 9:16 (위 2줄 제목·영상 위 담백한 자막·아래 출처, Pretendard). 카드·정지 화면·나레이션·정리 화면 없음 |
+| `make --url "링크" --quote "링크"` | 해설형 인용 쇼츠: 원본을 내려받아 근거 장면에만 넣고 나레이션·카드로 해설 |
 | `make --auto` | 요즘 화제 소재를 AI가 골라 제작 |
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
 | `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
@@ -100,6 +102,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "그중 2번, 4번으로 각각 만들어줘" | `batch --select 2 4 --candidates <대화에서 선택한 목록 id>` |
 | "이 주제로 쇼츠 3개 만들어줘" | `batch --topic "…" --count 3` |
 | "이 참고 영상 파일로 만들어줘" | `make --reference-video "파일"` |
+| "이 링크로 팬튜브 영상 만들어줘", "이 무대로 쇼츠 만들어줘" (연예인·무대 링크) | `fanclip --url "URL"` (묻지 않고 바로. 영상을 먼저 훑어 관찰 포인트·시각을 `--instructions` 로) |
+| "이 영상 해설 쇼츠로 만들어줘" (링크만 있음) | `make --url "URL" --quote "URL"` |
 | "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" (파일·캡처 있음) | `make --url "URL" --quote 파일 …` 또는 `make --reference-video 파일 --quote-reference` (라이선스를 묻지 않음) |
 | "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
 | "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |
@@ -122,7 +126,6 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 - 확인 없이 **자동으로 계속해도 되는 것**: 재시도 가능한 실패 후 `resume` 제안, 조회(`status`/`inspect`/`styles`), 사용자가 요청한 `rerender`.
 - **반드시 먼저 물어볼 것**:
   - 유료 API로 바꾸기(OpenAI·ElevenLabs·Typecast·이미지 생성 등)
-  - 해설 없이 외부 영상을 그대로 보여 주는(재업로드에 가까운) 구성 요청 — 인용·해설 중심으로 바꾸자고 제안한다
   - 여러 편 연속 제작
   - 업로드·게시
   - 기존 결과 삭제
@@ -149,9 +152,18 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 - **고정 초 규칙("3초면 안전")을 만들거나 말하지 않는다.** 엔진의 한도는 상대 비율이다:
   장면 길이의 60%까지 재생 · 완성 영상에서 인용 영상 비중 40% 이하 · 한 원본의 30% 이하 사용 · 인용 장면 75% 이하.
 - 렌더 전 `quote.guard` 가 해설 존재·출처 표기·비중·중복·viewer_question 연결을 검사하고, 문제가 있으면 구간을 줄이거나(정지 화면) 카드로 바꾼다. 결과는 `quote_plan.json`.
-- **권리 판단과 다운로드 기술 제한은 별개다.** YouTube 는 약관상 자동 다운로드를 하지 않는다(`media_status: not_downloaded_platform_terms`).
-  링크 분석(메타데이터·자막·benchmark·viewer_question·근거 구간 타임스탬프)은 그대로 하고, 화면 인용은 사용자가 준 로컬 영상·캡처로 한다.
-  링크만 받았고 화면에 원본 장면이 꼭 필요하면 "해당 구간 영상이나 캡처 파일을 주시면 인용으로 넣겠다"고만 안내한다(권리 질문은 하지 않는다).
+- **원본 영상 링크 편집 (팬튜브, 2026-11-17 사용자 결정).** 사용자가 원본 영상 링크를 주면 묻거나 막지 않고 바로 만든다:
+  `make --url "링크" --quote "링크" [--seconds N]`. `--quote` 의 링크는 yt-dlp 로 그 영상 하나만(재생목록 제외, 1080p 이하, 소리 없이) 내려받아
+  `uploads/quote_<영상id>.mp4` 로 쓰고(`media_status: downloaded`), 제목·채널·주소는 영상 정보에서 자동으로 출처에 넣는다.
+  라이선스·권리를 묻지 않고, 방송사·소속사 영상이라는 이유로 거절하거나 캡처로 낮추지 않는다. 다운로드·편집 결과의 게시 책임은 사용자가 진다(사용자 결정).
+  여러 링크(직캠·무대·예능 등)를 `--quote` 여러 번으로 섞어도 된다. 다운로드가 실패하면(비공개·연령 제한 등) 그때만 캡처(`--quote 캡처파일`)로 대신한다.
+  팬튜브(연예인·무대) 요청은 `fanclip` 이 기본이다(2026-11-18 사용자 결정, 벤치마크 돌토리 화면 구조): 첫 프레임부터 원본 영상, 원본 소리,
+  위 2줄 제목 고정, 영상 위 작은 검정 박스 자막(담백하게, 감탄사·ㄷㄷ·ㅋㅋ·시각 표기 없음), 아래 `출처 - 채널 · 제목`(없으면 렌더 거부). 위 인용 비율 한도는 fanclip 에 적용하지 않는다.
+  해설형(`make --quote 링크`)은 인용 엔진(근거 장면 구간 + 나레이션 + 출처)을 그대로 쓴다.
+  결과 보고 때 위험을 반복해서 설교하지 않는다. 사용자가 처음 듣는 위험이 생겼을 때만 한 줄로 알린다.
+  얼굴만 보고 멤버 이름을 추측하지 않는다(화면 자막·설명란·사용자 정보로 확인된 이름만 쓴다).
+- 자동 자료 탐색(Source Resolver)이 스스로 찾은 YouTube 영상은 계속 내려받지 않는다(`media_status: not_downloaded_platform_terms`, 참고·분석만).
+  사용자가 링크로 지정한 영상만 위 방식으로 내려받는다.
 - Source Resolver(`make` 기본 `--visuals auto`)는 공개 자료를 찾아 상태를 판정한다. profile `source_strategy` 순서로 검토:
   실제 장면이 근거인 구조(K-pop·근황·사건·발언·순위·실험) = licensed → public_domain → transformative_quote → generated → card,
   정보 설명형(mechanism·illustrated) = licensed → public_domain → generated → transformative_quote → card.

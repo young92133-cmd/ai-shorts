@@ -43,12 +43,41 @@
   카드엔 연도 없음, 2027년 1월 국세청 안내로 재확인) 추가.
 - 원본·수정본 10편 백업(Git 밖): `../backups/qa-5-decks-20261021/decks_original_and_qa.zip`(175파일, 38MB, SHA256SUMS.json, 내용 대조 OK).
 
+### 진행 (2026-10-21, 미커밋 · 커밋/push 는 승인 후) — V1.0 운영 준비 마무리 (프로그램 코드 변경 없음)
+- 게시 묶음 `output/_publish_2026-10-21/`(Git 밖, 수정본에서 복사): 01 신용점수·03 점심값·04 관리비·05 구독료 = 게시 가능,
+  02 연말정산 = `_보류`(2026년 귀속 국세청 공식 기준 확인 전). 캡션 수정은 묶음 복사본에만: 연말정산 요약 → "월세 증빙과 부양가족 요건은 직접 챙기기",
+  구독료 `#월3만원` → `#구독료정리`. 검사: 해시태그·출처·PNG 일치, 캡션 숫자는 카드와 일치(13월=관용 해시태그, '월 3만 원 이상'은 3만 2천 원과 모순 없음),
+  원본·수정본 175파일은 이전 백업 체크섬과 동일(변경 없음).
+- 운영 데이터 분리: 공통 양식 `docs/content_log_template.csv`(Git), 실제 기록 `ops_data/content_log.csv`(`.gitignore`, 게시일·조회·저장·공유·댓글 수 열 추가).
+  안내 `docs/CONTENT_OPS.md`.
+- 백업(새 폴더, 기존 백업 그대로): `../backups/publish-20261021/publish_package_20261021.zip` — 게시 묶음+ops_data+캐릭터 참고판 63파일 12MB,
+  SHA256SUMS.json·ZIP_SHA256.txt, testzip·내용 대조 OK. OneDrive 폴더 안·OneDrive 실행 중, 클라우드 업로드 완료 여부는 미확인.
+- 캐릭터: 제작 사양 `characters/hamtorich_01/EXPRESSION_SPEC.md`(공통 측정값·4종별 기준 몸/눈/눈썹/입·등록 이름·검수표),
+  참고판 `output/_character_refs_2026-10-21/hamtorich_expression_reference.png`. 원본 포즈·bible 변경 없음, 그림은 사용자 제작.
+
 ### 테스트
 
 - 2026-10-21 전체 `unittest discover`: **406개 통과**(V1.0 405 + 훅 표지 줄 균등 1).
 
+### 진행 (2026-11-17, Claude, 미커밋) — YouTube 링크 → 화면 캡처 인용 쇼츠 실사용
+- 방식: 내장 브라우저로 링크를 열고 `<video>` 프레임을 canvas 로 그려 전체 화면에 띄운 뒤 스크린샷(800x450 파일) → `make --topic … --quote 캡처 --quote-source "제목 | 채널 | URL"`.
+  영상 녹화·다운로드는 하지 않는다(정지 화면만). 자막 없는 영상은 `--url` 을 쓰면 V1 이 음성 인식용 오디오를 내려받으므로 topic 모드 + 관찰을 `--instructions` 로 넣었다.
+- 코드: `run._choose_benchmark` 근거 게이트가 인용 캡처(이미지)도 근거로 인정(kpop_observation_clip 후보 가능) ·
+  `quote._take_images` 캡처를 파일명 단어(예: `b_0m20s_배경_보라.jpg`)와 장면 나레이션이 겹치는 장면에 배치(이전: 파일 순서 → 장면·캡처 어긋남). 테스트 1개 추가.
+- 실제: 베스티 '연애의 조건' 인기가요(2026-11-15) → 최종 `output/20261117_222547_451a/final.mp4` 28.5초·5장면, kpop_observation_clip 90점, 인용 3장면(엔딩 의상·댄서 대비·디자인 비교), 검증 통과.
+  앞선 2편은 폐기 사유: 캡처-장면 어긋남(`221624_8b47`), 다른 방송(음악중심) 조회수를 이 무대 것처럼 씀 + 주제 날짜 오기(`222155_3a7c`). 캡처 원본 `output/_captures/bestie_20251115/`.
+- 팬튜브 결정(사용자): 링크로 준 원본은 막지 않고 내려받아 편집. `make --url L --quote L` → `youtube.download_quote`(재생목록 제외·1080p·무음) →
+  `uploads/quote_<id>.mp4`, 출처 자동. 자동 탐색이 찾은 YouTube 는 계속 미다운로드. AGENTS.md '원본 영상 링크 편집'. 테스트 1개 추가(다운로드는 가짜).
+- 팬튜브 실제(돌토리 구조 지정): `output/20261118_000850_71b6/final.mp4` 27.5초, 원본 링크 자동 다운로드, 인용 3장면(3:10 엔딩·2:52 대열·3:14 클로즈업), 출처 표기·검증 통과.
+  첫 시도 `20261117_235847_97b2` 는 장면-구간 어긋남 → `quote._scene_prefer`(문구 속 시각 '삼 분 십사 초'·근거 설명 단어로 장면별 근거 구간) 수정, 테스트 2개.
+- 팬 클립(2026-11-18, 사용자 요청 + 돌토리 화면 재확인): 새 명령 `fanclip --url L` (`app/pipeline/fanclip.py`, `core.fanclip`). 원본 영상·소리만,
+  위 2줄 제목·영상 위 검정 박스 자막·아래 `출처 - 채널 · 제목`(없으면 거부), Pretendard(`assets/fonts`, OFL). AI 1회로 구간·제목·자막 선택. 실제 `output/20261118_213341_dcc8/final.mp4` 29.2초.
+  AGENTS.md: 팬튜브 기본 = fanclip. 테스트 `tests/test_fanclip.py` 4개.
+- 테스트: 전체 414개 중 413 통과, `test_topics...test_cli_rank_approve_create_dry_run` 1개 실패 — 이 변경과 무관(변경을 빼도 실패, 날짜 의존 추정, 별도 작업 제안).
+
 ## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)
 
+- [별도 브랜치] 캐릭터·그림체 확장 시제품: 작업 폴더 `../shorts-ai-styles`(브랜치 `feature/character-styles`, 미커밋). 상세 그 폴더의 `docs/CHARACTER_STYLES_2026-10-21.md`.
 - V1.0 전 권장: 햄토리치 감정 포즈(슬픔·놀람·무표정·생각) 그림 추가(목록 `characters/hamtorich_01/README.md`, 사용자 제작),
   게시 전 수치 확인 습관(카드에 나온 숫자를 출처와 대조), 카드뉴스는 직접 찍은 사진·그림을 '이미지 넣기'로 보강.
 - [승인 대기] 최적화 5단계: 옛 MVP 데모·verify 스크립트 4개 `scripts/legacy/` 이동 또는 삭제.

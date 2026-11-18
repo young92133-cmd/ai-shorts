@@ -13,7 +13,7 @@ from .models import Word
 def _ydl(opts: dict[str, Any]):
     import yt_dlp
 
-    base = {"quiet": True, "no_warnings": True, "noprogress": True, "retries": 3}
+    base = {"quiet": True, "no_warnings": True, "noprogress": True, "retries": 3, "noplaylist": True}  # 재생목록 링크도 그 영상 하나만
     return yt_dlp.YoutubeDL({**base, **opts})
 
 
@@ -131,6 +131,28 @@ def _download_sync(url: str, workdir: Path, audio_only: bool) -> Path:
 
 async def download_media(url: str, workdir: Path, audio_only: bool) -> Path:
     return await asyncio.to_thread(_download_sync, url, workdir, audio_only)
+
+
+def _download_quote_sync(url: str, dest_dir: Path, with_audio: bool = False) -> tuple[Path, dict[str, Any]]:
+    """인용·팬 클립용 원본 영상을 내려받는다. 1080p 이하. 파일명 quote_<영상id>.mp4
+    with_audio=False(인용 모드): 우리 나레이션을 쓰므로 영상만. True(팬 클립): 원본 소리까지."""
+    info = _info_sync(url)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"quote_{info.get('id') or 'video'}"
+    fmt = ("bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best" if with_audio
+           else "bestvideo[height<=1080][ext=mp4]/bestvideo[height<=1080]/best[height<=1080]/best")
+    opts = {"format": fmt,
+            "outtmpl": str(dest_dir / f"{stem}.%(ext)s"), "merge_output_format": "mp4"}
+    with _ydl(opts) as y:
+        y.download([info.get("webpage_url") or url])
+    files = sorted(dest_dir.glob(f"{stem}.*"), key=lambda p: p.stat().st_mtime)
+    if not files:
+        raise RuntimeError("인용할 원본 영상을 내려받지 못했습니다.")
+    return files[-1], info
+
+
+async def download_quote(url: str, dest_dir: Path, with_audio: bool = False) -> tuple[Path, dict[str, Any]]:
+    return await asyncio.to_thread(_download_quote_sync, url, dest_dir, with_audio)
 
 
 def _whisper_sync(audio: Path, model_size: str = "small") -> list[Word]:

@@ -229,8 +229,9 @@ async def _choose_benchmark(benchmark: str, *, mode: str, llm: dict[str, Any], t
         return decision, "", None
     integ = bench_auto.load_integration()
     forced = None if benchmark == "auto" else bench_auto.validate_choice(benchmark, integ)
-    has_video = _has_licensed_video(registry) or quotemod.has_quote_video(registry)
     quotes = quotemod.quote_items(registry)
+    # 근거 화면: 권리 확인 영상 또는 인용 자료(영상·캡처). 캡처도 표정·의상·동작 같은 장면 관찰의 근거가 된다
+    has_video = _has_licensed_video(registry) or bool(quotes)
     quote_media = (f"사용자가 준 인용 자료 영상 {sum(q.kind == 'video' for q in quotes)}개·캡처 "
                    f"{sum(q.kind == 'image' for q in quotes)}장 — 분석·비평·비교·해설용 transformative_quote") if quotes else ""
     progress("script", 3, "시청자가 볼 이유와 어울리는 콘텐츠 구조를 분석하는 중")

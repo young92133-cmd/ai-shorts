@@ -84,7 +84,7 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--note", default="", help="권리 근거 (예: 내가 직접 찍은 사진)")
     mk.add_argument("--confirm-rights", action="store_true", help="첨부 파일을 영상에 써도 된다는 것을 확인함")
     mk.add_argument("--quote", action="append", default=[], dest="quotes",
-                    help="분석·비평·비교·해설에 인용할 외부 영상·캡처 (transformative_quote, 여러 번 가능)")
+                    help="인용할 외부 영상·캡처 파일 또는 원본 영상 링크(YouTube 등, 자동으로 내려받음). 여러 번 가능")
     mk.add_argument("--quote-source", default="", help='인용 원본 출처 "제목 | 채널 | URL" (비우면 --url 을 출처로)')
     mk.add_argument("--quote-reference", action="store_true", help="--reference-video 파일도 인용 자료로 쓴다")
     mk.add_argument("--visuals", default="auto", choices=("auto", "cards"), help="화면 자료: auto(기본, 권리 확인 가능한 공개 영상·사진 자동 탐색) | cards(자체 카드만)")
@@ -95,6 +95,13 @@ def _parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=help_)
         p.add_argument("project_id", nargs="?", help="생략하면 가장 최근 프로젝트")
 
+    fcp = sub.add_parser("fanclip", help="팬 클립(팬튜브): 원본 영상 링크 → 원본 영상·소리만으로 쇼츠 (제목·자막·출처)")
+    fcp.add_argument("--url", required=True, help="원본 영상 링크")
+    fcp.add_argument("--seconds", type=int, default=30, help="목표 길이(10~60초, 기본 30)")
+    fcp.add_argument("--instructions", default="", help="관찰 포인트·시각 등 지시")
+    fcp.add_argument("--title", default="", help='제목 직접 지정 "첫 줄 | 강조 줄"')
+    fcp.add_argument("--llm", default=None)
+    fcp.add_argument("--model", default=None)
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
     ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "benchmark", "carousel", "files"))
@@ -255,6 +262,9 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             quotes=a.quotes, quote_source=a.quote_source, quote_reference=a.quote_reference,
             hint=a.hint, content_format=tone, allow_openai=a.allow_openai,
             benchmark=a.benchmark, visuals=a.visuals, log=_log, **extra)
+    if a.cmd == "fanclip":
+        return await core.fanclip(url=a.url, seconds=a.seconds, instructions=a.instructions, title=a.title,
+                                  llm=a.llm, model=a.model, log=_log)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,

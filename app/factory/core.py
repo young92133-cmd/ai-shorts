@@ -288,10 +288,30 @@ def parse_quote_source(text: str | None, default_url: str = "") -> dict[str, str
     return {"title": rest[0] if rest else "", "channel": rest[1] if len(rest) > 1 else "", "url": url}
 
 
-def _copy_quotes(job_dir: Path, quotes: list[str] | None, source: dict[str, str]) -> dict[str, Any]:
-    """인용 자료(외부 영상·캡처)를 업로드 폴더로 복사한다. 권리 확인이 아니라 인용 목적·출처를 기록한다."""
+def _is_link(text: str) -> bool:
+    return str(text).startswith(("http://", "https://"))
+
+
+async def _download_quote_links(job_dir: Path, quotes: list[str] | None, source: dict[str, str]) -> dict[str, Any]:
+    """--quote 에 준 링크(YouTube 등)는 원본 영상을 내려받아 인용 자료로 쓴다 (팬튜브 편집, AGENTS.md '원본 영상 링크 편집').
+    출처(제목·채널·주소)는 영상 정보에서 자동으로 채운다. --quote-source 를 주면 그것이 우선한다."""
+    from ..pipeline import youtube
+
     rights: dict[str, Any] = {}
-    for path in quotes or []:
+    for link in [q for q in quotes or [] if _is_link(q)]:
+        path, info = await youtube.download_quote(link, job_dir / "uploads")
+        rights[path.name] = quotemod.quote_rights(
+            title=source.get("title") or info.get("title") or path.stem,
+            channel=source.get("channel") or info.get("channel", ""),
+            url=source.get("url") if source.get("url") and not source.get("auto_url") else info.get("webpage_url", link))
+        rights[path.name]["media_status"] = "downloaded"
+    return rights
+
+
+def _copy_quotes(job_dir: Path, quotes: list[str] | None, source: dict[str, str]) -> dict[str, Any]:
+    """인용 자료(외부 영상·캡처)를 업로드 폴더로 복사한다. 권리 확인이 아니라 인용 목적·출처를 기록한다. 링크는 건너뛴다."""
+    rights: dict[str, Any] = {}
+    for path in [q for q in quotes or [] if not _is_link(q)]:
         src = Path(path)
         if not src.is_file() or not kind_of(src):
             raise FactoryError("invalid", f"인용 파일을 쓸 수 없습니다: {path}")
@@ -352,7 +372,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     ref = Path(reference_video).resolve() if reference_video else None
     if ref and (not ref.is_file() or kind_of(ref) != "video" or ref.stat().st_size > 200 * 1024 * 1024):
         raise FactoryError("invalid", "참고 영상은 200MB 이하의 읽을 수 있는 영상 파일이어야 합니다.")
-    names = [Path(p).name for p in assets or []] + [Path(p).name for p in quotes or []] + ([ref.name] if ref else [])
+    names = [Path(p).name for p in assets or []] + [Path(p).name for p in quotes or [] if not _is_link(p)] + ([ref.name] if ref else [])
     if len({n.casefold() for n in names}) != len(names):
         raise FactoryError("invalid", "첨부 파일과 참고 영상의 파일명이 겹칩니다. 이름을 다르게 해 주세요.")
     style_data = find_style(style)
@@ -371,6 +391,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
         rights = _copy_assets(job_dir, assets, asset_rights, ref)
         qsource = parse_quote_source(quote_source, url or "")
         rights.update(_copy_quotes(job_dir, quotes, qsource))
+        rights.update(await _download_quote_links(job_dir, quotes, {**qsource, "auto_url": "" if quote_source else "1"}))
         if ref and quote_reference:
             rights[ref.name] = quotemod.quote_rights(title=qsource.get("title") or ref.stem,
                                                      channel=qsource.get("channel", ""), url=qsource.get("url", ""))
@@ -388,6 +409,68 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
             return _summary(job_dir, state, **_script_view(job_dir))
         return await _finish(job_dir, state, result)
     except Exception as e:  # noqa: BLE001 - 실패도 상태 파일에 남기고 JSON 으로 알린다
+        return _fail(job_dir, state, e)
+
+
+async def fanclip(*, url: str, seconds: int = 30, instructions: str = "", title: str = "", llm: str | None = None,
+                  model: str | None = None, log: Log = print) -> dict[str, Any]:
+    """팬 클립(팬튜브): 원본 영상 링크 → 구간 선택(AI 1회) → 원본 영상·소리만으로 9:16 렌더.
+    위 2줄 제목, 영상 위 담백한 자막, 아래 '출처 - 채널 · 제목'. 카드·정지 화면·나레이션·정리 화면 없음."""
+    from ..pipeline import clip_analyzer, fanclip as fc, youtube
+
+    if not url or not url.startswith(("http://", "https://")):
+        raise FactoryError("invalid", "팬 클립은 원본 영상 링크가 필요합니다.")
+    if isinstance(seconds, bool) or not isinstance(seconds, int) or not 10 <= seconds <= 60:
+        raise FactoryError("invalid", "팬 클립 길이는 10~60초 사이 정수여야 합니다.")
+    request = {"mode": "fanclip", "input": url, "seconds": seconds, "instructions": instructions, "title": title,
+               "llm": llm, "model": model, "preset": "daily"}
+    run_cfg = _run_cfg(request)
+    require_ffmpeg()
+    project_id = _new_id()
+    job_dir = output_root() / project_id
+    state = st.save(job_dir, st.new(project_id, request))
+    try:
+        log("[download] 원본 영상(소리 포함) 내려받는 중")
+        src, info = await youtube.download_quote(url, job_dir / "uploads", with_audio=True)
+        duration = float(info.get("duration") or 0) or float((await probe_video(src)).get("duration") or 0)
+        info = {**info, "duration": duration}
+        transcript: list[str] = []
+        try:
+            words = await youtube.fetch_transcript(url, job_dir)
+            transcript = youtube.words_to_lines(words) if words else []
+        except Exception:  # noqa: BLE001 - 자막이 없어도 만든다
+            transcript = []
+        shots = clip_analyzer.detect_shots(src, duration)
+        log(f"[plan] 샷 경계 {len(shots)}개, 구간 고르는 중")
+        with _ai_session(job_dir, state, run_cfg):
+            plan = await llmmod.ask_structured(run_cfg["llm"], fc.SYSTEM,
+                                               fc.build_prompt(info, seconds, shots, transcript, instructions),
+                                               fc.FanClipPlan)
+        if title and "|" in title:
+            top, accent = [x.strip() for x in title.split("|", 1)]
+            plan = plan.model_copy(update={"title_top": top, "title_accent": accent})
+        plan = fc.normalize(plan, duration, seconds)
+        channel, vtitle = info.get("channel", ""), info.get("title", "")
+        short_title = vtitle.split("|")[0].strip()
+        credit = f"출처 - {channel}" + (f" · {short_title}" if short_title else "") if channel else f"출처 - {short_title or url}"
+        (job_dir / "fanclip_plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+        log("[render] 팬 클립 렌더 중")
+        final = job_dir / "final.mp4"
+        out = fc.render(src, plan, credit, job_dir / "fanclip", final)
+        source = {"usage": "fan_clip", "path": str(src), "media_status": "downloaded",
+                  "attribution": {"title": vtitle, "channel": channel, "url": info.get("webpage_url", url)},
+                  "credit": credit, "clip_ranges": [f"{s.start:.1f}-{s.end:.1f}" for s in plan.segments]}
+        (job_dir / "sources.json").write_text(json.dumps([source], ensure_ascii=False, indent=2), encoding="utf-8")
+        tags = " ".join(plan.hashtags)
+        meta = (f"[제목]\n{plan.upload_title}\n\n[설명]\n{plan.description}\n\n{tags}\n\n"
+                f"[출처]\n원본: {channel} · {vtitle}\n{info.get('webpage_url', url)}\n")
+        (job_dir / "meta.txt").write_text(meta, encoding="utf-8")
+        state = st.advance(job_dir, state, "render_complete", topic=plan.upload_title,
+                           outputs={"final": str(final), "meta": str(job_dir / "meta.txt"),
+                                    "plan": str(job_dir / "fanclip_plan.json"), "sources": str(job_dir / "sources.json")})
+        return _summary(job_dir, state, fanclip={**out, "title": [plan.title_top, plan.title_accent], "credit": credit,
+                                                  "segments": [s.model_dump() for s in plan.segments]})
+    except Exception as e:  # noqa: BLE001
         return _fail(job_dir, state, e)
 
 
