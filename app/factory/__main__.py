@@ -100,8 +100,14 @@ def _parser() -> argparse.ArgumentParser:
     fcp.add_argument("--seconds", type=int, default=20, help="목표 길이(10~60초, 기본 20 — 벤치마크 채널 대표 길이)")
     fcp.add_argument("--instructions", default="", help="관찰 포인트·시각 등 지시")
     fcp.add_argument("--title", default="", help='제목 직접 지정 "첫 줄 | 강조 줄"')
+    fcp.add_argument("--follow", default=None, help="따라 할 인기 쇼츠 분석 메모 파일(find-shorts 의 notes/<id>.md)")
     fcp.add_argument("--llm", default=None)
     fcp.add_argument("--model", default=None)
+    fs = sub.add_parser("find-shorts", help="원본 링크로 만든 쇼츠 중 조회수 높은 것 찾기 + 분석용 장면 모음")
+    fs.add_argument("--url", required=True, help="원본 영상 링크")
+    fs.add_argument("--limit", type=int, default=10, help="후보 수(1~15, 기본 10)")
+    fs.add_argument("--query", action="append", default=[], help="추가 검색어 (여러 번 가능)")
+    fs.add_argument("--no-analyze", action="store_true", help="장면 모음 이미지를 만들지 않고 목록만")
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
     ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "benchmark", "carousel", "files"))
@@ -264,7 +270,9 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             benchmark=a.benchmark, visuals=a.visuals, log=_log, **extra)
     if a.cmd == "fanclip":
         return await core.fanclip(url=a.url, seconds=a.seconds, instructions=a.instructions, title=a.title,
-                                  llm=a.llm, model=a.model, log=_log)
+                                  llm=a.llm, model=a.model, follow=a.follow, log=_log)
+    if a.cmd == "find-shorts":
+        return await core.find_shorts(url=a.url, limit=a.limit, queries=a.query, analyze=not a.no_analyze, log=_log)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,

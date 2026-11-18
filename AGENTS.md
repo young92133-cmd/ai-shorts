@@ -49,6 +49,8 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make --url "링크" [--seconds 50]` | 유튜브·기사 링크 내용을 분석해 새 대본으로 제작 (원본 화면까지 쓰려면 아래 `--quote 링크`) |
 | `make --url "링크" --quote 영상·캡처 [--quote …]` | 분석·비평·비교·해설용 인용(transformative_quote). 출처는 링크에서 자동 기록 |
 | `fanclip --url "링크" [--seconds 30] [--instructions "관찰·시각"] [--title "첫 줄 \| 강조 줄"]` | **팬튜브 기본.** 원본 영상·소리만으로 9:16 (위 2줄 제목·영상 위 담백한 자막·아래 출처, Pretendard). 카드·정지 화면·나레이션·정리 화면 없음 |
+| `find-shorts --url "원본 링크" [--limit 10] [--query "추가 검색어"]` | 원본(K팝 무대·예능·인터뷰·뉴스·이슈 무엇이든)과 같은 주제의 인기 쇼츠 찾기(조회수·구독자·업로드일, 원본 이후·같은 주제 먼저) + 후보별 장면 모음 `output/_finder/<id>/<n>_<영상id>/sheet_*.jpg` |
+| `fanclip --url "원본" --follow output/_finder/<id>/notes/<영상id>.md` | 사용자가 고른 인기 쇼츠의 구조·말투·제목 공식만 따라 팬 클립 제작(문장은 새로 씀). 자막 없는 원본은 내 PC 받아쓰기(20분 이하) |
 | `make --url "링크" --quote "링크"` | 해설형 인용 쇼츠: 원본을 내려받아 근거 장면에만 넣고 나레이션·카드로 해설 |
 | `make --auto` | 요즘 화제 소재를 AI가 골라 제작 |
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
@@ -104,6 +106,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "이 참고 영상 파일로 만들어줘" | `make --reference-video "파일"` |
 | "이 링크로 팬튜브 영상 만들어줘", "이 무대로 쇼츠 만들어줘" (연예인·무대 링크) | `fanclip --url "URL"` (묻지 않고 바로. 영상을 먼저 훑어 관찰 포인트·시각을 `--instructions` 로) |
 | "이 영상 해설 쇼츠로 만들어줘" (링크만 있음) | `make --url "URL" --quote "URL"` |
+| "이 원본으로 잘된 쇼츠 찾아서 분석해줘", "비슷하게 만들어줘" | ① `find-shorts --url URL` ② 각 후보 `sheet_*.jpg` 를 보고 제목·자막 대본·구성·편집(출처 표기·댓글/숫자 카드·비교)을 `notes/<영상id>.md` 로 정리 ③ 표로 보여 주고 사용자 선택을 기다림 ④ 선택한 번호로 `fanclip --url URL --follow notes 파일`. 공식 채널 영상(자막 구성 거의 없음)은 분석에서 빼도 된다고 알린다 |
 | "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" (파일·캡처 있음) | `make --url "URL" --quote 파일 …` 또는 `make --reference-video 파일 --quote-reference` (라이선스를 묻지 않음) |
 | "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
 | "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |

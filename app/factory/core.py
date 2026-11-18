@@ -412,8 +412,46 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
         return _fail(job_dir, state, e)
 
 
+async def find_shorts(*, url: str, limit: int = 10, queries: list[str] | None = None, analyze: bool = True,
+                      log: Log = print) -> dict[str, Any]:
+    """원본 링크로 만든 쇼츠 중 조회수 높은 것 찾기(쇼츠 검색, API 키 없음) + 분석용 장면 모음 이미지.
+    결과 output/_finder/<id>/candidates.json, 후보마다 <n>_<영상id>/sheet_*.jpg. 분석 메모는 notes/<영상id>.md 로 남긴다."""
+    import asyncio
+
+    from ..pipeline import shorts_finder as sf
+
+    if not url or not url.startswith(("http://", "https://")):
+        raise FactoryError("invalid", "원본 영상 링크가 필요합니다.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 15:
+        raise FactoryError("invalid", "찾을 쇼츠 수는 1~15 사이여야 합니다.")
+    require_ffmpeg()
+    run_id = _new_id()
+    root = output_root() / "_finder" / run_id
+    root.mkdir(parents=True, exist_ok=True)
+    result = await asyncio.to_thread(sf.find, url, limit, queries or [], 25, log)
+    for n, c in enumerate(result["candidates"], 1):
+        c["rank"] = n
+        if not analyze:
+            continue
+        folder = root / f"{n:02d}_{c['id']}"
+        try:
+            log(f"[analyze] {n}. {c['title'][:40]}")
+            video = await asyncio.to_thread(sf.download_short, c["url"], folder)
+            c["sheets"] = [str(x) for x in await asyncio.to_thread(sf.contact_sheets, video, folder)]
+            video.unlink(missing_ok=True)   # 분석 이미지만 남기고 영상 파일은 지운다
+        except Exception as e:  # noqa: BLE001 - 한 편 실패해도 나머지는 분석
+            c["sheets"], c["analyze_error"] = [], f"{type(e).__name__}: {llmmod.safe_error(e)}"
+    (root / "notes").mkdir(exist_ok=True)
+    (root / "candidates.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    view = [{k: c.get(k) for k in ("rank", "title", "channel", "subscribers", "views", "views_per_sub", "upload_date",
+                                   "duration", "url", "relevance", "sheets")} for c in result["candidates"]]
+    return {"status": "found", "finder_id": run_id, "dir": str(root), "source": result["source"],
+            "queries": result["queries"], "candidates": view,
+            "next": "후보 장면 모음을 분석해 notes/<영상id>.md 로 정리 → 사용자 선택 → fanclip --url 원본 --follow notes 파일"}
+
+
 async def fanclip(*, url: str, seconds: int = 20, instructions: str = "", title: str = "", llm: str | None = None,
-                  model: str | None = None, log: Log = print) -> dict[str, Any]:
+                  model: str | None = None, follow: str | None = None, log: Log = print) -> dict[str, Any]:
     """팬 클립(팬튜브): 원본 영상 링크 → 구간 선택(AI 1회) → 원본 영상·소리만으로 9:16 렌더.
     위 2줄 제목, 영상 위 담백한 자막, 아래 '출처 - 채널 · 제목'. 카드·정지 화면·나레이션·정리 화면 없음."""
     from ..pipeline import clip_analyzer, fanclip as fc, youtube
@@ -422,7 +460,13 @@ async def fanclip(*, url: str, seconds: int = 20, instructions: str = "", title:
         raise FactoryError("invalid", "팬 클립은 원본 영상 링크가 필요합니다.")
     if isinstance(seconds, bool) or not isinstance(seconds, int) or not 10 <= seconds <= 60:
         raise FactoryError("invalid", "팬 클립 길이는 10~60초 사이 정수여야 합니다.")
-    request = {"mode": "fanclip", "input": url, "seconds": seconds, "instructions": instructions, "title": title,
+    if follow:
+        fp = Path(follow)
+        if not fp.is_file():
+            raise FactoryError("invalid", f"따라 할 쇼츠 분석 파일이 없습니다: {follow}")
+        guide = "[따라 할 인기 쇼츠 분석 — 구조·말투·제목 공식·자막 리듬만 따른다. 문장·자막을 그대로 쓰지 않는다]"
+        instructions = "\n\n".join(x for x in (instructions, guide + "\n" + fp.read_text(encoding="utf-8")[:4000]) if x)
+    request = {"mode": "fanclip", "follow": str(follow or ""), "input": url, "seconds": seconds, "instructions": instructions, "title": title,
                "llm": llm, "model": model, "preset": "daily"}
     run_cfg = _run_cfg(request)
     require_ffmpeg()
@@ -440,6 +484,14 @@ async def fanclip(*, url: str, seconds: int = 20, instructions: str = "", title:
             transcript = youtube.words_to_lines(words) if words else []
         except Exception:  # noqa: BLE001 - 자막이 없어도 만든다
             transcript = []
+        if not transcript and duration <= 20 * 60:
+            # 인터뷰·예능·이슈 영상은 발언이 근거다. 자막이 없으면 내 PC 에서 받아쓴다(faster-whisper, 무료).
+            try:
+                log("[transcribe] 자막이 없어 내 PC 에서 받아쓰는 중")
+                words = await youtube.transcribe(src)
+                transcript = youtube.words_to_lines(words) if words else []
+            except Exception as e:  # noqa: BLE001 - 받아쓰기 실패해도 화면만으로 만든다
+                log(f"[transcribe] 건너뜀: {llmmod.safe_error(e)}")
         shots = clip_analyzer.detect_shots(src, duration)
         log(f"[plan] 샷 경계 {len(shots)}개, 구간 고르는 중")
         with _ai_session(job_dir, state, run_cfg):

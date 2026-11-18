@@ -87,6 +87,16 @@
 - 베스티 팬 클립 최신본(벤치마크 대본 규칙): `output/20261118_223447_bc27/final.mp4` 22초. 3번 장면 댄서 구간만 58~62초로 수동 조정 후 재렌더.
   설치 방법 요약 `motion/README.md`. 전체 테스트 415개 중 414 통과(기존 topics 1개 실패, 무관).
 
+### 완료 (2026-11-18, Claude, 커밋) — 제작 단계 지도 도구 추가 설치
+- PySceneDetect·auto-editor·Supertonic(.venv), 스킬 humanize-korean·watch(claude-video, local 고정)·watch-video(khou, 이름 바꿔 수동)·video-use·HyperFrames,
+  참고 awesome-opus-videos, `../OpenMontage`(AGPL, 별도 venv). Aside 는 상용이라 설치 안 함. 표 `motion/README.md`. watch-video 실제 프레임 추출 OK.
+
+### 완료 (2026-11-18, Claude, 커밋) — 원본 링크 → 인기 쇼츠 찾기·분석 → 따라 만들기
+- `find-shorts` (`app/pipeline/shorts_finder.py`, `core.find_shorts`): 쇼츠 검색 페이지(쇼츠 필터) 파싱 + yt-dlp 상세(구독자·업로드일). 음악 무대/일반(팬튜브·이슈) 검색어 자동,
+  원본 이후·같은 주제 우선, 후보 저화질 다운로드 → 장면 모음(시각 표시) 후 영상 삭제. 분석 메모는 채팅 AI 가 `notes/<id>.md` 로. `fanclip --follow` 가 메모를 대본 지침으로.
+- fanclip: 무대 외 예능·인터뷰·이슈도 대상(발언 근거), 자막 없으면 faster-whisper 받아쓰기. 베스티 실사용 `output/_finder/20261118_230307_a53e`(후보 10, 메모 7) — 사용자 선택 대기.
+- 분석 결론: 인기 쇼츠는 멤버 이름·실제 수치/댓글 카드·방송 간 비교·두 겹 자막을 씀(우리 대본의 부족한 점). 테스트 `tests/test_shorts_finder.py` 7개.
+
 ## 남은 작업 / 다음 작업 (V1.0 판단 단계 — 새 기능 추가 보류)
 
 - [별도 브랜치] 캐릭터·그림체 확장 시제품: 작업 폴더 `../shorts-ai-styles`(브랜치 `feature/character-styles`, 미커밋). 상세 그 폴더의 `docs/CHARACTER_STYLES_2026-10-21.md`.
