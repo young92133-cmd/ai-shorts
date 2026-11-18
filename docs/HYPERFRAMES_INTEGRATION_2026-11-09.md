@@ -1,5 +1,10 @@
 # HyperFrames 2단계 — 기존 AI Shorts 최소 통합
 
+> 2026-11-10 저장 완료: `f0a7d85db3fa739715543060d964da929d2290f0`,
+> `origin/codex/shorts-handoff-20261106`과 SHA 일치 확인. main/feature 브랜치 변경 없음.
+> 이 문서의 본문은 검증된 **2단계 기준 기록**이다. 이후 화면·성능 변경과 최신 테스트는
+> [3단계 보고서](HYPERFRAMES_STAGE3_2026-11-10.md)를 따른다. 3단계 변경은 미커밋·미푸시다.
+
 2026-11-09, `shorts-ai-codex` / `codex/shorts-handoff-20261106`, 기준 `7a5d7da`.
 Node 24.22.1 / npm 12.2.2 / HyperFrames **0.9.23** / Chrome Headless Shell 152.0.7977.30 / FFmpeg 9.0.1.
 설치 버전·잠금 파일·PoC는 이번 작업에서 바꾸지 않았다. 새 버전 알림은 있었으나 자동 업데이트하지 않았다.

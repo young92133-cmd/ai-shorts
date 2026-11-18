@@ -26,7 +26,7 @@ Each attempt retains `render-result.json`; each successful output has a
 Invalid paths/data never trigger fallback. Missing local tools or failed local
 HyperFrames commands may fall back only when explicitly enabled. Failures keep
 the old delivery and their local logs. A process-wide OS file lock permits only
-one HyperFrames render, with one Chrome worker. Cancellation waits for its own
+one HyperFrames render, with a bounded one or two capture workers. Cancellation waits for its own
 Node/Chrome process tree to stop before releasing the slot.
 
 Input assets are limited to the job, repository `assets/`, and explicit trusted
@@ -39,20 +39,104 @@ Saved word timestamps are reused verbatim. Captions wrap around 14 characters
 at word/sentence boundaries into at most two rows; a long word is fitted, never
 cut. With no word timestamps a legacy cue stays static instead of inventing
 speech alignment. Noto Sans KR is reused from the preserved PoC assets.
-Key content occupies x < 930 and 250 ≤ y < 1520. Source images are contained,
-not cropped, so existing baked-in text is also kept within the safe area.
+Key text occupies x < 930 and 250 ≤ y < 1520 by default. Stage three's
+`rendering.hyperframes.layout: adaptive` fills the background independently of
+this text-safe box (`safe_area: {left: 72, top: 250, right: 150, bottom: 400}`).
+Use `layout: legacy` for the original stage-two placement.
 
 Narration, BGM, source audio and optional `sfx: [{path,start,volume}]` are premixed
-locally in a separate WAV. Optional `rendering.hyperframes.duck_bgm: true` enables
+locally when mixing is needed. Adaptive voice-only exports reuse the copied
+original audio directly, skipping a redundant WAV. Optional `rendering.hyperframes.duck_bgm: true` enables
 sidechain ducking only in this premix. It does not change the FFmpeg audio graph.
 Original video offsets and limited `visual.play` durations are honored, freezing
 the remaining frame where needed. Image zoom and slideshow crossfade timing
-reuse the timeline; broll retains its original cut timing.
+reuse the timeline; matching saved blueprint fade hints may enrich adaptive
+presentation without changing scene or speech clocks.
 
 The completed same-content comparison and validation are recorded in
 `docs/HYPERFRAMES_INTEGRATION_2026-11-09.md`. Economics/engineering presets and
 `--variants` are not part of this stage. The environment remains pinned to 0.9.23;
 the CLI's later-version notice does not upgrade it automatically.
+
+## Adaptive presentation (stage three)
+
+`app/pipeline/hyperframes_layout.py` verifies optional local blueprint/script
+hints against the saved scene's timing, asset identity and wording. Only an
+existing rights-registered generated card can become native HTML text. Missing
+or stale hints retain the raster. A composited photo can reuse its exact
+rights-checked parent, with matching attribution and the same path safeguards.
+No new material is downloaded, and no input timeline/sidecar is rewritten.
+
+Headings, comparison labels, existing key numbers, underline/arrow reveals and
+explicit step-count diagrams are separate HTML layers. Diagram heights are
+decorative and labelled accordingly; statistics are never invented. Static
+background decoration reuses the Shorts graphics helper once per export.
+Large portrait photos allow a bounded center crop; wide/small photos retain
+the entire subject above a preblurred full-screen background. Small photos
+are capped at 2.5× base foreground enlargement plus at most 1.8% gentle motion.
+Landscape video retains its original
+aspect and decoding resolution, with a static first-frame blurred backdrop.
+Timed video remains a direct stage child, as required by official lint.
+
+`cache_media: true` caches completed video derivatives by source SHA, original
+offset/play/duration and conversion settings under `.tools/hyperframes/cache/`.
+One concurrent render remains mandatory. `low_memory: false` keeps the normal
+capture path; forcing screenshot safe mode was slower in the actual comparison
+and showed no reliable memory advantage in provisional sampling. Resolution and delivery quality
+are unchanged. See `docs/HYPERFRAMES_STAGE3_2026-11-10.md` for measured tradeoffs.
+
+```powershell
+# New report directory protects earlier comparisons; uses saved content only.
+../shorts-ai/.venv/Scripts/python.exe -B scripts/compare_renderers.py --renderer hyperframes --report output/my-new-comparison
+./scripts/hyperframes.ps1 check ABSOLUTE_GENERATED_PROJECT --strict --json
+./.tools/hyperframes/node.exe scripts/verify_hyperframes_layout.mjs ABSOLUTE_GENERATED_PROJECT output/my-new-comparison/layout-audit.json
+../shorts-ai/.venv/Scripts/python.exe -B scripts/verify_hyperframes_stage3.py --report output/my-new-comparison
+```
+
+The DOM audit checks every output frame's key-text ranges, Korean font loading
+and title/caption separation. The MP4 audit independently probes the delivery,
+checks actual highlight/animation pixels and voice correlation, preserves A/B
+hashes and produces contact sheets. Background pixels may cross safety guides;
+the stage-two all-foreground pixel assertion is intentionally not used here.
+Measurement v2 filters process ancestry by creation time as well as PID to
+exclude unrelated processes after Windows PID reuse; historical A/B metrics
+used the older PID-only sampler, limiting strict CPU/memory comparability.
+
+## Capture performance (stage 3.1)
+
+`rendering.hyperframes.workers` accepts only 1 or 2; omitted settings retain 1.
+The current 32 GB PC configuration uses **2** for faster parallel software
+capture. `low_memory: true` pins the passed worker count to 1. The OS lock still
+allows only one render job at a time. Use `workers: 1` to reduce memory.
+
+Paired debug runs averaged 88.639 → 67.052 seconds, with unchanged visual HTML,
+caption clocks and delivery encoder quality. Memory increased to about 2.9 GiB.
+The actual normal CLI delivery took 68.589 seconds / 2.896 GiB; both the
+60-second / 2.2-GiB and 40-second / 2-GiB targets remain unmet. Two workers select
+the official parallel screenshot path, while the prior one-worker run used
+drawElement. Full-frame SSIM 0.998259 / PSNR 52.419 dB, exact caption timestamps,
+actual highlight checks and visual contact sheets verified preservation.
+
+No animations were removed, and resolution/CRF were not reduced. Software
+H.264 remains the default; AMD AMF encoding was confirmed in a separate trial
+but not adopted. The unsuccessful image-sequence experiments are retained only
+in Git-ignored output, not in production source. Caption measurement reuses the
+existing Noto 700-weight font cache without changing fitted geometry.
+
+```powershell
+# A fresh report directory is required. Rerender only: no script/TTS generation.
+../shorts-ai/.venv/Scripts/python.exe -B scripts/profile_hyperframes.py --report output/new-profile --debug --workers 2
+# Optional diagnostic-only Page RPC timing, not used in production renders.
+../shorts-ai/.venv/Scripts/python.exe -B scripts/profile_hyperframes.py --report output/new-rpc-profile --debug --rpc-profile
+```
+
+The profiler records official engine phases, adapter stages, process CPU/memory
+and logical I/O, plus system CPU/physical-disk context. Logical process I/O
+includes pipes; system disk rates cannot be attributed exclusively to the
+render. Overlapping capture/encode intervals are not additive. See
+`docs/HYPERFRAMES_PERFORMANCE_2026-11-11.md` for every trial, measurement limits,
+backups, output paths and remaining bottlenecks. Node/HyperFrames packages and
+the pinned installation remain unchanged.
 
 ## Installed environment (2026-11-08)
 

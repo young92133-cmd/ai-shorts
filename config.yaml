@@ -9,6 +9,11 @@ rendering:
     timeout_seconds: 600
     duck_bgm: false           # HyperFrames 전용 사전 믹스. 기존 FFmpeg 믹스는 변경하지 않음
     asset_roots: []           # 잡 폴더·assets 외에 신뢰할 로컬 미디어 폴더만 명시
+    layout: adaptive         # adaptive | legacy (2단계 화면 재현용)
+    safe_area: {left: 72, top: 250, right: 150, bottom: 400}
+    low_memory: false        # worker 1 유지. screenshot 강제는 더 느렸고 메모리 이득은 미확인
+    cache_media: true        # 내용·구간·변환 설정으로 키를 만든 로컬 파생 영상 캐시
+    workers: 2              # 이 PC의 빠른 소프트웨어 경로. RAM 약 3GiB; 절약하려면 1
 
 llm:
   # claude  : Claude Code 로그인(구독) 사용, API 키 불필요. 모델: claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5

@@ -21,8 +21,6 @@ import threading
 import time
 from typing import Any
 
-from PIL import ImageFont
-
 from .media import run_ffmpeg, has_audio, probe_duration, probe_video
 from .models import Word
 from .subtitles import group_lines
@@ -196,11 +194,8 @@ def validate(tl: dict, job_dir: Path, options: dict | None = None) -> dict:
 
 
 def _font_size(rows: list[str], maximum: int = 52, width: int = 760) -> int:
-    font = ImageFont.truetype(str(FONT), maximum)
-    try:
-        font.set_variation_by_axes([700])
-    except (OSError, ValueError):
-        pass
+    from .hyperframes_layout import font as noto_font
+    font = noto_font(maximum)
     length = max((font.getlength(s) for s in rows), default=1)
     size = min(maximum, math.floor(maximum * width / max(1, length)))
     if size < 16:
@@ -211,10 +206,22 @@ def _font_size(rows: list[str], maximum: int = 52, width: int = 760) -> int:
 def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None = None) -> dict:
     """Export escaped local HTML and original-timed captions, without external commands."""
     data = validate(tl, job_dir, options)
+    options = options or {}
+    layout = options.get("layout", "legacy")
+    if layout not in ("legacy", "adaptive"):
+        raise AdapterValidationError("HyperFrames layout must be legacy/adaptive")
+    adaptive = layout == "adaptive"
+    from . import hyperframes_layout as presentation
+    safe = presentation.safe_area(options) if adaptive else None
+    plans = presentation.presentations(data, job_dir) if adaptive else []
+    for scene, plan in zip(data["scenes"], plans):
+        scene["adaptive_fade"] = plan.get("fade", scene["fade"])
     if not FONT.is_file() or not GSAP.is_file():
         raise HyperframesError("Missing local Noto Sans KR/GSAP assets; restore the pinned renderer environment")
     project.mkdir(parents=True, exist_ok=False)
     assets = project / "assets"; assets.mkdir()
+    if adaptive:
+        presentation.native_background(assets / "native-background.jpg")
     shutil.copyfile(FONT, assets / "NotoSansKR-VF.ttf")
     shutil.copyfile(FONT.parent / "OFL.txt", assets / "OFL.txt")
     shutil.copyfile(GSAP, assets / "gsap.min.js")
@@ -229,9 +236,13 @@ def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None 
             copied[path] = target
             manifest.append({"original": str(path), "asset": target, "sha256": digest})
         return copied[path]
-    markup, tweens, videos = [], [], []
+    markup, tweens, videos, layout_records = [], [], [], []
     total = data["total"]
     for i, scene in enumerate(data["scenes"]):
+        if adaptive:
+            layer, animations, prepared, record = presentation.scene_layers(i, scene, plans[i], data, safe, copy, project)
+            markup.append(layer); tweens.extend(animations); videos.extend(prepared); layout_records.append(record)
+            continue
         start, dur = scene["start"], scene["duration"]
         fade = scene["fade"] if i else 0
         duration = dur + (min(data["scenes"][i+1]["fade"], dur/2) if i+1 < len(data["scenes"]) else 0)
@@ -262,7 +273,7 @@ def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None 
                           f'data-duration="{dur:.6f}" style="font-size:{size}px">{_esc(scene["credit"])}</div>')
     for i, page in enumerate(data["pages"]):
         texts = [" ".join(w["text"] for w in row) for row in page["rows"]]
-        size = _font_size(texts)
+        size = _font_size(texts, 58, safe["width"]-48) if adaptive else _font_size(texts)
         rows = []
         for r, row in enumerate(page["rows"]):
             spans = []
@@ -276,6 +287,8 @@ def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None 
         markup.append(f'<div id="caption-{i}" class="clip caption" data-key-text="true" data-start="{page["start"]:.6f}" '
                       f'data-duration="{page["end"]-page["start"]:.6f}" data-track-kind="captions" '
                       f'style="font-size:{size}px">{"".join(rows)}</div>')
+        if adaptive:
+            tweens.append(f'tl.fromTo("#caption-{i}",{{y:8}},{{y:0,duration:0.12,ease:"power2.out"}},{page["start"]:.6f});')
     comments = []
     roots = [ROOT / "assets", *(Path(p) for p in (options or {}).get("asset_roots", []))]
     for i, c in enumerate(tl.get("comments", [])):
@@ -294,7 +307,7 @@ def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None 
     markup.extend(comments)
     template = (RENDERER / "scene.html").read_text(encoding="utf-8")
     # Insert untrusted (escaped) text last so it cannot become a template marker.
-    page = template.replace("{{DURATION}}", f"{total:.6f}").replace("{{TWEENS}}", "\n".join(tweens)).replace("{{MARKUP}}", "\n".join(markup))
+    page = template.replace("{{ADAPTIVE_CSS}}", presentation.css(safe) if adaptive else "").replace("{{DURATION}}", f"{total:.6f}").replace("{{TWEENS}}", "\n".join(tweens)).replace("{{MARKUP}}", "\n".join(markup))
     (project / "compositions").mkdir()
     (project / "compositions/shorts.html").write_text(page, encoding="utf-8")
     main = (RENDERER / "timeline.html").read_text(encoding="utf-8").replace("{{DURATION}}", f"{total:.6f}")
@@ -303,20 +316,57 @@ def export_project(tl: dict, job_dir: Path, project: Path, options: dict | None 
     (project / "timeline-input.json").write_text(json.dumps(tl, ensure_ascii=False, indent=2), encoding="utf-8")
     (project / "asset-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     (project / "caption-map.json").write_text(json.dumps(data["pages"], ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"project": project, "total": total, "videos": videos, "audio": audio, "sfx": sfx}
+    if adaptive:
+        (project / "layout-map.json").write_text(json.dumps({"safe_area": safe, "scenes":layout_records}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"project": project, "total": total, "videos": videos, "audio": audio, "sfx": sfx,
+            "adaptive": adaptive, "cache_media": options.get("cache_media", False) is True}
 
 
 async def prepare_media(export: dict, duck_bgm: bool = False) -> None:
     project, total = export["project"], export["total"]
+    prepared = []
+    async def background(video):
+        if video.get("background"):
+            await run_ffmpeg(["-i",str(video["target"]),"-frames:v","1","-vf",
+                              "scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:2,eq=brightness=-0.12,scale=1080:1920",
+                              str(video["background"])],cwd=project)
     for v in export["videos"]:
+        # The cache is content-addressed and only publishes complete local
+        # derivatives. Original assets and the timeline remain untouched.
+        with v["source"].open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        key = hashlib.sha256(json.dumps([digest,v["src_start"],v["play"],v["duration"],v.get("portrait",False),"hf-media-v2-ffmpeg9.0.1-crf18-gop30"],sort_keys=True).encode()).hexdigest()
+        cache = TOOLS / "cache/prepared/v1" / (key + ".mp4")
+        if export.get("cache_media") and cache.is_file() and cache.stat().st_size:
+            shutil.copyfile(cache, v["target"])
+            prepared.append({"target":v["target"].name,"cache_hit":True,"cache_key":key})
+            await background(v)
+            continue
         available = await probe_duration(v["source"]) - v["src_start"]
         if available <= 0:
             raise AdapterValidationError("Video source start is past EOF")
         play = min(v["play"], available)
+        filters = f"trim=duration={play:.6f},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={v['duration']:.6f},trim=duration={v['duration']:.6f},fps=30,setsar=1"
         await run_ffmpeg(["-ss", f'{v["src_start"]:.6f}', "-i", str(v["source"]),
-                          "-an", "-vf", f"trim=duration={play:.6f},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={total:.6f},trim=duration={v['duration']:.6f},fps=30,setsar=1",
-                          "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", str(v["target"])], cwd=project)
+                          "-an", "-vf", filters,
+                          "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-g", "30", "-keyint_min", "30", "-pix_fmt", "yuv420p", str(v["target"])], cwd=project)
+        prepared.append({"target":v["target"].name,"cache_hit":False,"cache_key":key})
+        if export.get("cache_media"):
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            # render_slot serializes these writers; a crash leaves only .tmp.
+            temporary = cache.with_suffix(".tmp")
+            shutil.copyfile(v["target"], temporary); temporary.replace(cache)
+        await background(v)
     audio = export["audio"]
+    if (export.get("adaptive") and audio["narration"] and not audio["bgm"] and not export["sfx"]
+            and not any(v["has_audio"] for v in export["videos"])):
+        # HyperFrames already decodes/mixes the original file. Avoid an extra
+        # MP3 -> WAV round trip when no actual mixing is needed.
+        root = project / "index.html"
+        relative = audio["narration"].relative_to(project).as_posix()
+        root.write_text(root.read_text(encoding="utf-8").replace('src="assets/mix.wav"', f'src="{relative}"'), encoding="utf-8")
+        (project / "media-preparation.json").write_text(json.dumps({"narration_passthrough":True,"videos":prepared}),encoding="utf-8")
+        return
     args, filters = [], []
     idx = 0
     if audio["narration"]:
@@ -347,6 +397,7 @@ async def prepare_media(export: dict, duck_bgm: bool = False) -> None:
         labels.append(f"[fx{i}]"); idx += 1
     filters.append("".join(labels) + f"amix=inputs={len(labels)}:duration=first:normalize=0,apad,atrim=duration={total:.6f}[out]")
     await run_ffmpeg([*args, "-filter_complex", ";".join(filters), "-map", "[out]", "-c:a", "pcm_s16le", str(project / "assets/mix.wav")], cwd=project)
+    (project / "media-preparation.json").write_text(json.dumps({"narration_passthrough":False,"videos":prepared}),encoding="utf-8")
 
 
 @contextmanager
@@ -424,6 +475,7 @@ async def _execute_async(command: list[str], cwd: Path, env: dict, log: Path, ti
 async def render_hyperframes(tl: dict, job_dir: Path, out: Path, project: Path, options: dict | None = None) -> Path:
     options = options or {}
     validate(tl, job_dir, options)  # Security/data errors are not eligible for fallback.
+    workers = render_workers(options)
     node = TOOLS / "node.exe" if os.name == "nt" else TOOLS / "node"
     cli = RENDERER / "node_modules/hyperframes/bin/hyperframes.mjs"
     package = cli.parent.parent / "package.json"
@@ -437,6 +489,10 @@ async def render_hyperframes(tl: dict, job_dir: Path, out: Path, project: Path, 
     timeout = number(options.get("timeout_seconds", 600), "render timeout", minimum=10, maximum=3600)
     with render_slot():
         export = export_project(tl, job_dir, project, options)
+        (project / 'runtime-settings.json').write_text(json.dumps({
+            'requested_workers':options.get('workers',1), 'passed_workers':workers,
+            'quality':'delivery', 'encoder':'software', 'fps':30,
+            'note':'Actual worker/capture resolution is recorded by the HyperFrames CLI trace.'}),encoding='utf-8')
         try:
             await prepare_media(export, duck_bgm=options.get("duck_bgm") is True)
         except AdapterValidationError:
@@ -454,8 +510,9 @@ async def render_hyperframes(tl: dict, job_dir: Path, out: Path, project: Path, 
                     "HYPERFRAMES_SKIP_SKILLS":"1", "HYPERFRAMES_NO_TELEMETRY":"1", "DO_NOT_TRACK":"1"})
         await _execute_async([str(node), str(cli), "lint", str(project), "--json"],
                              project, env, project / "lint.log", min(timeout, 60))
+        profile = ["--low-memory-mode"] if options.get("low_memory") is True else []
         await _execute_async([str(node), str(cli), "render", str(project), "--fps", "30", "--quality", "delivery",
-                                          "--workers", "1", "--strict", "--output", str(out.resolve())],
+                                          "--workers", str(workers), *profile, "--strict", "--output", str(out.resolve())],
                              project, env, project / "render.log", timeout)
         if not out.is_file() or out.stat().st_size == 0:
             raise HyperframesError("HyperFrames returned without an MP4")
@@ -466,3 +523,11 @@ async def render_hyperframes(tl: dict, job_dir: Path, out: Path, project: Path, 
         if abs(float(info["format"]["duration"]) - export["total"]) > 0.12:
             raise HyperframesError("HyperFrames output duration validation failed")
     return out
+
+
+def render_workers(options: dict) -> int:
+    """Bound parallel capture inside the existing single-render OS lock."""
+    workers=options.get('workers',1)
+    if type(workers) is not int or workers not in (1,2):
+        raise AdapterValidationError('HyperFrames workers must be 1 or 2')
+    return 1 if options.get('low_memory') is True else workers
