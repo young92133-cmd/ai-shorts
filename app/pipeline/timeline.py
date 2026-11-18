@@ -75,8 +75,10 @@ def build_timeline(
     titles_enabled: bool = True,
     comments: list[dict[str, Any]] | None = None,
     comment_slots: list[dict[str, Any]] | None = None,
+    title_bar: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """comment_slots: 스타일이 참고 영상에서 찾은 댓글 자리 (⑦ 에서 캡처를 올리면 이 자리부터 채운다).
+    title_bar: {"top", "accent"} 를 주면 위쪽에 2줄 제목을 영상 내내 고정한다(장면별 상단 키워드는 끈다).
 
     scenes 항목: {"duration", "title", "credit", "visual": {"kind": image|video, "path", "src_start", "has_audio"}}"""
     out_scenes = []
@@ -102,6 +104,8 @@ def build_timeline(
                       "style": subtitle_style, "lines": lines},
         "comments": comments or [],
         "comment_slots": comment_slots or [],
+        **({"title_bar": {"top": title_bar.get("top", ""), "accent": title_bar.get("accent", "")}}
+           if title_bar and (title_bar.get("top") or title_bar.get("accent")) else {}),
     }
 
 
@@ -219,7 +223,7 @@ def ass_inputs(tl: dict[str, Any]) -> dict[str, Any]:
     scenes = tl["scenes"]
     return {
         "titles": [(s["start"], s["start"] + s["duration"], s["title"]) for s in scenes]
-        if sub.get("titles_enabled", True) else [],
+        if sub.get("titles_enabled", True) and not tl.get("title_bar") else [],
         "credits": [(s["start"], s["start"] + s["duration"], s["credit"]) for s in scenes if s.get("credit")],
         "comments": [(c["start"], c["end"], c["text"]) for c in tl.get("comments", []) if c["kind"] == "text"],
         "lines": sub["lines"] if sub.get("enabled", True) else [],
@@ -245,6 +249,14 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
             p = resolve(c["path"], job_dir)
             if p.is_file():
                 overlays.append({**c, "path": p})
+    bar = tl.get("title_bar")
+    if bar:  # 위 2줄 고정 제목 띠: 영상 처음부터 끝까지, 화면 폭 전체
+        from .fanclip import title_band
+        band_h = int(h * 0.172)
+        png = title_band(bar.get("top", ""), bar.get("accent", ""), job_dir / "title_band.png",
+                         width=w, height=band_h)
+        overlays.insert(0, {"path": png, "start": 0.0, "end": total_duration(tl), "x": 0.5,
+                            "y": round(band_h / 2 / h, 4), "width": 1.0})
 
     narration = resolve(tl["narration"], job_dir) if tl.get("narration") else None
     bgm = resolve(tl["bgm"], job_dir) if tl.get("bgm") else None

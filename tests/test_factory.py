@@ -264,6 +264,22 @@ class CliJsonTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(any(p["id"] == "daily" for p in data["presets"]))
 
+    def test_issue_tone_uses_saved_issue_style_by_default(self):
+        self.assertEqual(core._format_style(None, "issue"), "style-7f6cc67e")   # 저장소의 styles/ 파일
+        self.assertEqual(core._format_style("style-f8b83e20", "issue"), "style-f8b83e20")
+        self.assertIsNone(core._format_style(None, "information"))
+        with patch.object(core, "load_styles", return_value={}):              # 파일이 없으면 스타일 없이
+            self.assertIsNone(core._format_style(None, "issue"))
+        self.assertTrue(core.find_style("style-7f6cc67e").get("title_bar"))
+
+    def test_style_resave_keeps_title_bar(self):
+        from app.pipeline import styles as stylemod
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = {"paths": {"styles": folder}}
+            stylemod.save_style(cfg, "style-x", {"name": "이슈", "title_bar": True})
+            saved = stylemod.save_style(cfg, "style-x", {"name": "이슈 수정", "tone": "반말"})
+        self.assertTrue(saved["title_bar"])
+
     def test_make_json_shape(self):
         fake = {"status": "waiting_for_script_approval", "project_id": "p1", "script_path": "x/script.json",
                 "next_action": "resume", "message": "m"}

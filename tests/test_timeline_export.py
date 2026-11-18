@@ -124,6 +124,35 @@ class RenderTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(filters[2].startswith("[8:v]"))
         self.assertEqual(last, "[ovo2]")
 
+    async def test_title_bar_is_fixed_overlay_and_hides_scene_titles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            job_dir = Path(folder)
+            tl = _make_timeline(job_dir)
+            tl["title_bar"] = {"top": "오늘자 잠적했다는", "accent": "시험 만점자"}
+            fake = AsyncMock(return_value=job_dir / "final.mp4")
+            with patch.object(timeline, "render_slideshow", new=fake):
+                await timeline.render_timeline(tl, job_dir, job_dir / "final.mp4")
+            ass = (job_dir / "subs.ass").read_text(encoding="utf-8-sig")
+            band = fake.await_args.kwargs["overlays"][0]
+            with Image.open(band["path"]) as img:
+                size = img.size
+        self.assertEqual((band["start"], band["end"], band["width"]), (0.0, 5.0, 1.0))
+        self.assertEqual(size, (1080, int(1920 * 0.172)))
+        self.assertLess(band["y"], 0.1)
+        self.assertNotIn("키워드1", ass)              # 장면별 상단 키워드는 고정 제목과 겹치지 않게 끈다
+
+    def test_split_title_and_title_bar_only_for_style_flag(self):
+        from app.pipeline.fanclip import split_title
+        from app.pipeline.models import Script
+        self.assertEqual(split_title("오늘자 잠적했다는 시험 만점자"), ("오늘자 잠적했다는", "시험 만점자"))
+        self.assertEqual(split_title("근황"), ("", "근황"))
+        script = Script(topic="t", scenes=[], titles=["세무사가 자수하니까 큰일난 사람들"], description="",
+                        hashtags=[], sources=[])
+        self.assertIsNone(run._title_bar(None, script))
+        self.assertIsNone(run._title_bar({"name": "x"}, script))
+        self.assertEqual(run._title_bar({"title_bar": True}, script),
+                         {"top": "세무사가 자수하니까", "accent": "큰일난 사람들"})
+
     async def test_render_timeline_passes_overlays_and_subtitles(self):
         with tempfile.TemporaryDirectory() as folder:
             job_dir = Path(folder)

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "noejeongu",
+  "name": "뇌전구 @뇌전구",
+  "analyzed_at": "2026-11-18",
+  "genre": "이슈 속보 (사회·시험·연예 사건 시리즈)",
+  "references": [
+    "https://www.youtube.com/@뇌전구/shorts",
+    "https://www.youtube.com/shorts/4QL0pxLhqjw",
+    "https://www.youtube.com/shorts/8V033GM2cgY",
+    "https://www.youtube.com/shorts/0ziR5cfeH0s",
+    "https://www.youtube.com/shorts/nSQvlntMU8k"
+  ],
+  "analysis_records": [
+    "Claude 2026-11-18: 쇼츠 48편 메타데이터(조회·좋아요·길이·업로드 시각) + 상위 4편 자동 자막 + 화면 캡처",
+    "구독 6.38만, 영상 약 3,000개, 48편(3.7일) 조회 중앙값 23만, 100만+ 11편, 길이 중앙값 47초, 좋아요율 0.87%",
+    "제목에 특정 인물 별명이 들어간 편 중앙값 131만 vs 일반 AI/수능 주제 14~18만"
+  ],
+  "observed_structure": [
+    "제목 읽기 → 배경 한 줄 → 증거(캡처·발언)를 대사처럼 재연 → '그러나/알고 보니' 반전 → 구체 근거 → 비꼬는 한 줄"
+  ],
+  "observed_patterns": [
+    "하루 약 13편, 3~5시간마다 2~5편 묶음 업로드",
+    "사건 하나를 여러 편으로 쪼갠 시리즈",
+    "위 2줄 고정 제목(흰 줄 + 노란 줄), 아래 큰 흰 자막, 2~3초 장면 전환",
+    "나레이션 100%(원본 소리 거의 없음), 썰 전달체 반말 '~했다고 함/~거임'",
+    "화면: 방송·뉴스 장면, 커뮤니티·SNS 캡처, 제품 사진, 인물 사진(일부 AI 생성 의심)"
+  ],
+  "adopted_elements": [
+    "제목 공식 '[오늘자/결국] + 행동·결과 + ~다는/~한 이유 + 인물 별명'",
+    "위 2줄 고정 제목 띠",
+    "45~55초, 장면 2~3초, 비꼬는 한 줄 엔딩",
+    "사건 시리즈화"
+  ],
+  "do_not_copy": [
+    "로고/워터마크/채널 그래픽",
+    "원본 대본 문장/장면/외부 영상 파일",
+    "실존 인물 얼굴의 AI 생성, 확인 안 된 의혹의 단정"
+  ],
+  "derived_profiles": [
+    "curiosity_update_story"
+  ],
+  "findings": [
+    {
+      "name": "이슈 속보 variation",
+      "analysis_depth": "metadata_and_transcript",
+      "structure": [
+        "제목 읽기 → 배경 한 줄 → 증거 재연 → 반전 → 구체 근거 → 비꼬는 한 줄"
+      ],
+      "derived_profiles": [
+        "curiosity_update_story"
+      ],
+      "next_work": "새 profile 없이 스타일 style-7f6cc67e + make --tone issue 기본값으로 반영. 실제 MP4 검증은 사용자 요청 시"
+    }
+  ]
+}

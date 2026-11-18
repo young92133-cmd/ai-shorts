@@ -177,6 +177,32 @@ def frame_overlay(title_top: str, title_accent: str, credit: str, out: Path) -> 
     return out
 
 
+def split_title(title: str) -> tuple[str, str]:
+    """제목 한 줄을 위 2줄(맥락 / 강조)로 나눈다. 띄어쓰기 기준, 둘째 줄이 같거나 조금 짧게."""
+    words = " ".join(str(title or "").split()).split(" ")
+    if len(words) < 2:
+        return "", words[0] if words else ""
+    total = sum(len(w) for w in words)
+    best = min(range(1, len(words)),
+               key=lambda k: (abs(sum(len(w) for w in words[:k]) - total / 2), -k))
+    return " ".join(words[:best]), " ".join(words[best:])
+
+
+def title_band(title_top: str, title_accent: str, out: Path, *, width: int = W, height: int = 330,
+               accent: tuple[int, int, int] = (255, 212, 0)) -> Path:
+    """쇼츠 위쪽에 영상 내내 고정하는 2줄 제목 띠(검은 바탕, 흰 줄 + 강조색 줄)."""
+    img = Image.new("RGBA", (width, height), (*BG, 255))
+    d = ImageDraw.Draw(img)
+    f1 = _fit(d, title_top, "ExtraBold", 80, width - 90)
+    f2 = _fit(d, title_accent, "ExtraBold", 92, width - 70)
+    for text, font, y, fill in ((title_top, f1, 0.36, (255, 255, 255)), (title_accent, f2, 0.70, accent)):
+        if text:
+            d.text((width / 2, height * y), text, font=font, fill=fill, anchor="mm",
+                   stroke_width=3, stroke_fill=(0, 0, 0))
+    img.save(out)
+    return out
+
+
 def caption_overlay(text: str, out: Path, voice: str = "") -> Path:
     """영상 위 작은 검정 박스 자막 + (선택) 괄호 속마음 대사 (전체 화면 크기 투명 PNG)."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))

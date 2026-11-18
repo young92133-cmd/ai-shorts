@@ -38,3 +38,6 @@ characters/*/generated/
 
 # 받은편지함 원본 (등록본은 assets/carousel_backgrounds, characters/ 에 남는다)
 assets/inbox/_done/
+
+# 개인 운영 데이터(게시일·조회수·저장수 등) — 양식은 docs/content_log_template.csv
+ops_data/

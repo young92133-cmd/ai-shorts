@@ -45,8 +45,20 @@ CARD_CHOICES = tuple(k for k in cards.CARD_KINDS if k != "safe_card")
 FORMATS = {
     "information": {"name": "정보형", "instructions": "정보/상식을 쉽게 설명하고 근거 없는 숫자나 단정을 보태지 마세요."},
     "story": {"name": "스토리/사연형", "instructions": "상황→작은 변화→결말의 이야기로 구성하세요. 창작 사연은 창작이라고 명시하고 실제 사건처럼 꾸미지 마세요."},
-    "issue": {"name": "일반 이슈형", "instructions": "이슈의 배경→핵심→생활에 미치는 영향을 정리하세요. 불확실한 정보는 단정하지 마세요."},
+    # 이슈 채널 기본 = 뇌전구형 이슈 속보 스타일 (2026-11-18 사용자 결정, benchmarks/sources/noejeongu.json)
+    "issue": {"name": "이슈 속보형", "style": "style-7f6cc67e",
+              "instructions": "지금 화제인 사건 한 조각을 45~55초 썰 전달체로 빠르게 전하세요. "
+                              "보도·당사자 발언·공개 게시물로 확인된 것만 사실처럼 말하고, 의혹은 의혹이라고 쓰세요. "
+                              "인물은 별명으로 부르고 외모 평가·사생활 추정·범죄 단정은 하지 마세요."},
 }
+
+
+def _format_style(style: str | None, content_format: str | None) -> str | None:
+    """--style 을 따로 안 주면 형식(tone)의 기본 스타일을 쓴다. 기본 스타일 파일이 없으면 스타일 없이 만든다."""
+    if style:
+        return style
+    default = FORMATS.get(content_format or "", {}).get("style")
+    return default if default and default in load_styles(_cfg()) else None
 
 
 class FactoryError(Exception):
@@ -375,7 +387,7 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
     names = [Path(p).name for p in assets or []] + [Path(p).name for p in quotes or [] if not _is_link(p)] + ([ref.name] if ref else [])
     if len({n.casefold() for n in names}) != len(names):
         raise FactoryError("invalid", "첨부 파일과 참고 영상의 파일명이 겹칩니다. 이름을 다르게 해 주세요.")
-    style_data = find_style(style)
+    style_data = find_style(_format_style(style, content_format))
     request = {"mode": mode, "input": text, "preset": preset, "style": style_data["id"] if style_data else None,
                "seconds": seconds, "review": review, "instructions": instructions, "llm": llm, "model": model,
                "tts": tts, "voice": voice, "subtitles": subtitles, "allow_openai": allow_openai,

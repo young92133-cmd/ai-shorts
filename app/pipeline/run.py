@@ -275,6 +275,15 @@ async def _choose_benchmark(benchmark: str, *, mode: str, llm: dict[str, Any], t
     return decision, block, len(roles)
 
 
+def _title_bar(style: dict[str, Any] | None, script: Script) -> dict[str, str] | None:
+    """스타일이 위 2줄 고정 제목을 쓰면(title_bar: true) 첫 제목 후보를 맥락 / 강조 두 줄로 나눈다."""
+    if not (style or {}).get("title_bar") or not script.titles:
+        return None
+    from .fanclip import split_title
+    top, accent = split_title(script.titles[0])
+    return {"top": top, "accent": accent}
+
+
 async def run_pipeline(
     job_dir: Path,
     mode: str,
@@ -829,7 +838,7 @@ async def run_pipeline(
                         "highlight": sub_cfg.get("highlight", "#FFD400"),
                         "outline": sub_cfg.get("outline", "#000000")},
         subtitles_enabled=bool(vcfg.get("subtitles", True)), titles_enabled=bool(vcfg.get("titles", True)),
-        comments=tl_comments, comment_slots=comment_slots)
+        comments=tl_comments, comment_slots=comment_slots, title_bar=_title_bar(style, script))
     # 타인 댓글 후보는 대본 검토에만 남기고 영상에는 싣지 않는다.
     tl["comments"] = []
     blueprintmod.check_timeline(blueprint, tl)   # 설계도와 어긋난 타임라인으로는 렌더하지 않는다

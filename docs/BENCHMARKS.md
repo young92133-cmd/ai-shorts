@@ -11,7 +11,7 @@
 - tested: 자동 테스트(mock)가 있다
 - real_video_verified: 실제 Claude 구독 + Edge TTS + ffmpeg 로 MP4 를 만들고 `verify_factory_v1.py --verify` 를 통과했다
 
-## 1. Benchmark source (10개 등록 + 미등록 분석·언급 5건)
+## 1. Benchmark source (11개 등록 + 미등록 분석·언급 5건)
 
 채널 이름은 source 로만 쓰고 production profile 이름으로 쓰지 않는다. 한 source 가 여러 profile 로, 여러 source 가 한 profile 로 갈 수 있다.
 
@@ -22,6 +22,7 @@
 | idol_tamjeong | 아이돌탐정 @IDOL탐정 (구독 5.16만, 중앙값 49만) | 2026-11-18 | 연예 이슈 팬 클립 | '무대 도중 ~한 순간' 질문형 제목 → 상황을 짧은 어절로 끊어 따라감 → 행동의 이유 공개 → 괄호 한줄평('괜히 ~가 아님') | kpop_observation_clip (`fanclip` 대본 규칙) | ✅ | ✅ | ✅ | ✅ `fanclip` | ✅ | ✅ (베스티 재제작) |
 | detailv | 디테일 @Detailv (구독 9.53천, 중앙값 9.7만) | 2026-11-18 | 연예 이슈 팬 클립 | 상황(신난/바쁜 인물) → 이상한 행동 → '알고 보니 ~였음' → 가벼운 추측 한줄('~인가 봄 ㅋㅋ') | kpop_observation_clip (`fanclip` 대본 규칙) | ✅ | ✅ | ✅ | ✅ `fanclip` | ✅ | ✅ (베스티 재제작) |
 | jamkkanman_idol | 잠깐만아이돌 @잠깐만아이돌 (구독 1.14만, 중앙값 8.8만) | 2026-11-18 | 연예 이슈 팬 클립 | 두 인물 대비 제목 → 장면마다 상황 자막 + 괄호 속마음 대사 → 관계·성격 한줄평 | kpop_observation_clip (`fanclip` 대본 규칙) | ✅ | ✅ | ✅ | ✅ `fanclip` | ✅ | ✅ (베스티 재제작) |
+| noejeongu | 뇌전구 @뇌전구 (구독 6.38만, 중앙값 23만, 하루 약 13편) | 2026-11-18 | 이슈 속보 시리즈 | 제목 읽기 → 배경 한 줄 → 증거를 대사처럼 재연 → 반전 → 구체 근거 → 비꼬는 한 줄 (위 2줄 고정 제목, 45~55초, 장면 2~3초) | curiosity_update_story variation (스타일 `style-7f6cc67e` = `make --tone issue` 기본) | ✅ | ✅ | ✅ | ✅ 스타일 경로(benchmark auto 대신 스타일 구성) | ✅ | ❌ |
 | zzal_ing | 짤잉 @zzal_ing | 2026-10-02 | 근황/이유/후속 | 궁금증 → 과거 → 변화 → 현재 → 제목의 답 | curiosity_update_story | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (A·F·G) |
 | bks_simulation | BKS Simulation | 2026-10-03 | 단일 변수 물리 비교 | 질문/장치 → 변수 하나 → 반복 → 결과 비교 | physics_comparison_simulation | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |
 | lesgi | 레스기 | 2026-10-03 | 순위 사례 | 쉬운 주제 → 5위부터 1위 → 마지막 보상 | ranked_moments | ✅ | ✅ | ✅ | △ 근거 영상 있을 때만 | ✅ | ❌ |

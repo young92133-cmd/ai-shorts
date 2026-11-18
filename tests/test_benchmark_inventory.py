@@ -31,11 +31,11 @@ def select(name, data=None, seconds=None):
 class RegistryTests(unittest.TestCase):
     def test_loads_entire_source_inventory_and_bidirectional_links(self):
         result = registry.inventory()
-        self.assertEqual(result['source_count'], 10)
+        self.assertEqual(result['source_count'], 11)
         self.assertEqual(result['profile_count'], 8)
         self.assertEqual({s['id'] for s in result['sources']},
                          {'doltori', 'zzal_ing', 'lesgi', 'bks_simulation', 'architecture_mania', 'factory_reference',
-                          'yeonye_sosik_news', 'idol_tamjeong', 'detailv', 'jamkkanman_idol'})
+                          'yeonye_sosik_news', 'idol_tamjeong', 'detailv', 'jamkkanman_idol', 'noejeongu'})
 
     def test_reference_catalog_is_distinguished_from_observed_footage(self):
         src = registry.load_source('factory_reference')
@@ -274,7 +274,7 @@ class ProductionTests(unittest.IsolatedAsyncioTestCase):
         out=io.StringIO()
         with redirect_stdout(out),redirect_stderr(io.StringIO()):
             code=cli.main(['benchmark','sources'])
-        self.assertEqual(code,0);self.assertEqual(json.loads(out.getvalue())['source_count'],10)
+        self.assertEqual(code,0);self.assertEqual(json.loads(out.getvalue())['source_count'],11)
 
     async def test_unknown_selection_before_any_media_io(self):
         with self.assertRaises(core.FactoryError) as error:

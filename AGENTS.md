@@ -56,7 +56,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make --script "완성 대본"` / `--script-file 파일` | 완성 대본 직접 입력 (보조 기능) |
 | `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
 | `make ... --format card_news\|insta_toon\|hybrid\|all` | 카드뉴스·인스타툰·하이브리드 PNG(1080x1350) / all = 쇼츠+하이브리드 (아래 '카드뉴스 · 인스타툰' 절) |
-| `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
+| `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 이슈 속보형 기본 지침 (예전 `--format 톤값`도 동작). issue 는 `--style` 을 안 주면 뇌전구형 스타일 `style-7f6cc67e`(위 2줄 고정 제목·45~55초·썰 전달체) 사용 |
 | `characters [list\|show ID\|add --file\|import\|generate\|approve]` | 캐릭터 목록·등록·그림 가져오기·생성 견적·포즈 승인. generate는 `--confirm-cost` 없으면 API 미호출 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
@@ -108,6 +108,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | "이 영상 해설 쇼츠로 만들어줘" (링크만 있음) | `make --url "URL" --quote "URL"` |
 | "이 원본으로 잘된 쇼츠 찾아서 분석해줘", "비슷하게 만들어줘" | ① `find-shorts --url URL` ② 각 후보 `sheet_*.jpg` 를 보고 제목·자막 대본·구성·편집(출처 표기·댓글/숫자 카드·비교)을 `notes/<영상id>.md` 로 정리 ③ 표로 보여 주고 사용자 선택을 기다림 ④ 선택한 번호로 `fanclip --url URL --follow notes 파일`. 공식 채널 영상(자막 구성 거의 없음)은 분석에서 빼도 된다고 알린다 |
 | "이 영상으로 분석 쇼츠 만들어줘", "이 영상 재가공해서 만들어줘", "이 장면들 써서 비교해줘" (파일·캡처 있음) | `make --url "URL" --quote 파일 …` 또는 `make --reference-video 파일 --quote-reference` (라이선스를 묻지 않음) |
+| "이슈 쇼츠 만들어줘", "이슈채널용으로 만들어줘" (사건·논란·근황) | `make --topic "…" --tone issue --seconds 50` (뇌전구형 이슈 속보 스타일) |
 | "중간 확인 없이 45초로 완성해" | `make --topic "…" --seconds 45` (`--review` 없음) |
 | "두 대본 다 좋아. 계속 만들어" | 해당 `batch-resume ID` |
 

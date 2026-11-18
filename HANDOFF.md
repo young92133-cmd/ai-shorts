@@ -11,6 +11,15 @@
   확인: `git fetch` 후 `git status -sb` 에 ahead/behind 가 없으면 GitHub 와 일치.
 - 계획 문서: `docs/OPTIMIZATION_PLAN_2026-10-14.md`(5·6단계 승인 대기), `docs/STUDIO_PLAN_2026-10-16.md`.
 
+### 진행 (2026-11-19, Claude, 미커밋) — 이슈채널 = 뇌전구형 이슈 속보 스타일 (사용자 결정)
+- 벤치마크 `benchmarks/sources/noejeongu.json`(48편 수치·상위 4편 자막·화면) → 새 profile 없이 curiosity_update_story variation. 현황판 갱신.
+- 스타일 `styles/style-7f6cc67e.yaml`(제목 공식·썰 전달체·45~55초·장면 2~3초·비꼬는 엔딩·인물 AI 얼굴 금지) + `title_bar: true`.
+- `make --tone issue` 는 `--style` 이 없으면 이 스타일을 자동 사용(`core._format_style`, 파일 없으면 스타일 없이).
+- 위 2줄 고정 제목 띠: `fanclip.split_title/title_band` → `run._title_bar` → `timeline.build_timeline(title_bar=)` → `render_timeline` 가
+  전체 길이 오버레이로 얹고 장면별 상단 키워드는 끈다. `styles.save_style` 이 웹 UI 재저장 때 title_bar 유지.
+- 테스트: 새 5개 포함 426개 중 425 통과. 실패 1 = `test_topics.test_cli_rank_approve_create_dry_run` — 고정 날짜 `TODAY=2026-10-08`
+  만료 문제(이번 변경과 무관, 미수정). 실제 MP4 제작 검증은 아직 안 함(사용자 요청 시).
+
 ### 지난 기록 (커밋됨)
 - 스튜디오 S1~S4·인스타툰 품질 개선·백업 상세: `docs/history/HANDOFF_2026-10-16_18_studio.md`
 - 카드 순서·추가·삭제, 실행 취소·이미지 넣기·화면(커밋 93307ff·ed75434): `docs/history/HANDOFF_2026-10-19_20_studio_edit.md`

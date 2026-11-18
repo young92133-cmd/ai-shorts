@@ -84,6 +84,9 @@ def save_style(cfg: dict[str, Any], style_id: str | None, data: dict[str, Any]) 
     if slots:
         out["comment_slots"] = slots
         out["comment_pattern"] = str(data.get("comment_pattern", "") or "").strip()
+    # 위 2줄 고정 제목 띠. 웹 UI 편집 화면에는 이 칸이 없으므로 기존 값을 유지한다
+    if data.get("title_bar", (existing.get(sid) or {}).get("title_bar")):
+        out["title_bar"] = True
     if not out["name"]:
         out["name"] = sid
 
