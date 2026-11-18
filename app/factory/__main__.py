@@ -39,6 +39,12 @@ def _parser() -> argparse.ArgumentParser:
     src.add_argument("--script", dest="script_text", help="완성 대본 직접 입력 (보조 기능)")
     src.add_argument("--script-file", help="완성 대본 텍스트 파일")
     src.add_argument("--reference-video", help="참고 영상 파일 (분석 전용, 200MB 이하)")
+    src.add_argument("--video", action="append", help="Benchmark 제작용 권리 확인 로컬 영상 (반복 지정 가능)")
+    mk.add_argument("--benchmark", help="구조적 benchmark profile 이름")
+    benchmark_input = mk.add_mutually_exclusive_group()
+    benchmark_input.add_argument("--benchmark-plan", help="검증할 제작 계획 JSON (AI 호출 없음)")
+    benchmark_input.add_argument("--benchmark-observations", help="시간대별 관찰 JSON (프레임 분석 생략)")
+    mk.add_argument("--mute-source", action="store_true", help="Benchmark에서 원본 오디오 제외")
     mk.add_argument("--hint", default="", help="참고 영상의 주제 힌트 (사실 근거로 취급하지 않음)")
     mk.add_argument("--seconds", type=int, help="목표 길이(초)")
     mk.add_argument("--preset", default="daily", help="분야 기본값 (styles 명령으로 목록 확인)")
@@ -53,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--voice")
     mk.add_argument("--no-subtitles", action="store_true")
     mk.add_argument("--asset", action="append", default=[], help="장면 화면 후보 파일 (여러 번 가능)")
-    mk.add_argument("--license", default="my_channel", help="첨부 파일 권리: my_channel | ai_generated | pexels | pixabay | kogl_type0 | kogl_type1")
+    mk.add_argument("--license", default="my_channel", help="첨부 파일 권리: my_channel | licensed_upload | ai_generated | pexels | pixabay | kogl_type0 | kogl_type1")
     mk.add_argument("--note", default="", help="권리 근거 (예: 내가 직접 찍은 사진)")
     mk.add_argument("--confirm-rights", action="store_true", help="첨부 파일을 영상에 써도 된다는 것을 확인함")
 
@@ -64,7 +70,7 @@ def _parser() -> argparse.ArgumentParser:
 
     ins = sub.add_parser("inspect", help="대본·장면·화면·파일 보기")
     ins.add_argument("project_id", nargs="?")
-    ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "files"))
+    ins.add_argument("--part", default="all", choices=("all", "script", "scenes", "visuals", "files", "benchmark"))
 
     ed = sub.add_parser("edit-scene", help="렌더 전 장면 문장/강조문구 수정")
     ed.add_argument("project_id", nargs="?")
@@ -82,6 +88,7 @@ def _parser() -> argparse.ArgumentParser:
     sv.add_argument("--confirm-rights", action="store_true")
 
     sub.add_parser("styles", help="프리셋·스타일 목록")
+    sub.add_parser("benchmark-profiles", help="구조적 benchmark profile 목록과 설정")
     tr = sub.add_parser("trends", help="요즘 화제 키워드")
     tr.add_argument("--limit", type=int, default=10)
 
@@ -122,7 +129,9 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
             seconds=a.seconds, review=a.review, instructions=a.instructions, llm=a.llm, model=a.model, tts=a.tts,
             voice=a.voice, subtitles=False if a.no_subtitles else None, assets=a.asset,
             asset_rights=core._own_rights(a.license, a.note, a.confirm_rights), reference_video=a.reference_video,
-            hint=a.hint, content_format=a.content_format, allow_openai=a.allow_openai, log=_log)
+            hint=a.hint, content_format=a.content_format, allow_openai=a.allow_openai, log=_log,
+            video=a.video, benchmark=a.benchmark, benchmark_plan=a.benchmark_plan,
+            benchmark_observations=a.benchmark_observations, mute_source=a.mute_source)
     if a.cmd == "batch":
         return await batch.make(topics=a.topics, select=a.select, candidates_id=a.candidates_id, count=a.count,
                                 seconds=a.seconds, preset=a.preset, style=a.style, content_format=a.content_format,
@@ -147,6 +156,9 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         return await core.rerender(a.project_id, log=_log)
     if a.cmd == "styles":
         return core.styles()
+    if a.cmd == "benchmark-profiles":
+        from . import benchmark
+        return benchmark.profiles()
     if a.cmd == "trends":
         return await core.trends(a.limit, log=_log)
     if a.cmd == "export":

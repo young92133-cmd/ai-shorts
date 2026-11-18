@@ -200,7 +200,8 @@ async def _finish(job_dir: Path, state: dict[str, Any], result: dict[str, Any]) 
     outputs = {name: str(job_dir / f) for name, f in (
         ("final_video", "final.mp4"), ("thumbnail", "thumb.jpg"), ("meta", "meta.txt"), ("script", "script.json"),
         ("blueprint", bpmod.FILE), ("timeline", tlmod.FILE), ("visuals", visualsmod.MANIFEST),
-        ("sources", "sources.json")) if (job_dir / f).exists()}
+        ("sources", "sources.json"), ("benchmark", "benchmark.json"),
+        ("benchmark_profile", "benchmark_profile.json")) if (job_dir / f).exists()}
     state = st.advance(job_dir, state, "render_complete", error="", failed_at="", outputs=outputs,
                        video={"duration": duration, "resolution": f"{stream.get('width')}x{stream.get('height')}"})
     _write_web_job(job_dir, state, result)
@@ -242,8 +243,21 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                voice: str | None = None, subtitles: bool | None = None, assets: list[str] | None = None,
                asset_rights: dict[str, Any] | None = None, reference_video: str | None = None,
                hint: str = "", content_format: str | None = None, allow_openai: bool | None = None,
+               video: list[str] | None = None, benchmark: str | None = None,
+               benchmark_plan: str | None = None, benchmark_observations: str | None = None,
+               mute_source: bool = False,
                log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다."""
+    if benchmark:
+        if any((topic, url, auto, script_text, reference_video, assets, style, content_format, tts, voice, allow_openai)):
+            raise FactoryError("invalid", "Benchmark에는 --video 입력과 profile 설정을 사용하세요. V1 입력/스타일/TTS 옵션은 함께 사용할 수 없습니다.")
+        from . import benchmark as benchmarkmod
+        return await benchmarkmod.make(video=video or [], benchmark=benchmark, seconds=seconds, review=review,
+                    hint=hint, instructions=instructions, llm=llm, model=model, subtitles=subtitles,
+                    asset_rights=asset_rights, benchmark_plan=benchmark_plan,
+                    benchmark_observations=benchmark_observations, mute_source=mute_source, log=log)
+    if video or benchmark_plan or benchmark_observations or mute_source:
+        raise FactoryError("invalid", "영상 관찰 입력에는 --benchmark profile을 지정하세요.")
     modes = [bool(topic), bool(url), bool(auto), bool(script_text), bool(reference_video)]
     if sum(modes) != 1:
         raise FactoryError("invalid", "topic / url / auto / script / reference-video 중 하나만 지정해 주세요.")
@@ -309,6 +323,9 @@ async def resume(project_id: str | None = None, log: Log = print) -> dict[str, A
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     status = state.get("status")
+    if state.get("request", {}).get("benchmark"):
+        from . import benchmark as benchmarkmod
+        return await benchmarkmod.resume(job_dir.name, log=log)
     if status == "render_complete":
         raise FactoryError("not_ready", "이미 완성된 영상입니다. 다시 만들려면 rerender 를 쓰세요.",
                            final_video=state.get("outputs", {}).get("final_video", ""))
@@ -351,6 +368,11 @@ def inspect(project_id: str | None = None, part: str = "all") -> dict[str, Any]:
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
     out = _summary(job_dir, state)
+    if part in ("all", "benchmark") and state.get("request", {}).get("benchmark"):
+        from ..benchmarks.engine import PLAN_FILE, PROFILE_FILE
+        out["benchmark"] = json.loads((job_dir / PLAN_FILE).read_text(encoding="utf-8")) if (job_dir / PLAN_FILE).is_file() else None
+        out["benchmark_profile"] = json.loads((job_dir / PROFILE_FILE).read_text(encoding="utf-8"))
+        out["analysis_method"] = state["request"].get("analysis_method")
     if part in ("all", "script") and (job_dir / "script.json").is_file():
         out["script"] = _script_view(job_dir)
     if part in ("all", "scenes", "visuals") and (job_dir / bpmod.FILE).is_file():
@@ -412,6 +434,9 @@ async def set_visual(project_id: str | None, scene: int, *, card: str | None = N
         raise FactoryError("invalid", f"카드 종류: {', '.join(CARD_CHOICES)}")
     job_dir = project_dir(project_id)
     state = st.load(job_dir)
+    if state.get("request", {}).get("benchmark"):
+        raise FactoryError("not_ready", "Benchmark 근거 장면을 카드로 바꾸면 claim을 증명할 수 없습니다. "
+                           "근거 구간 변경은 수정한 benchmark-plan으로 새 작업을 만드세요.")
     rendered = state.get("status") == "render_complete"
     script = PlannedScript.model_validate_json((job_dir / "script.json").read_text(encoding="utf-8"))
     if not 1 <= scene <= len(script.scenes):
@@ -480,6 +505,10 @@ async def set_visual(project_id: str | None, scene: int, *, card: str | None = N
 async def rerender(project_id: str | None = None, log: Log = print, **extra: Any) -> dict[str, Any]:
     """저장된 렌더 재료(timeline.json)로 영상만 다시 만든다. 조사·대본·음성은 다시 하지 않는다."""
     job_dir = project_dir(project_id)
+    if st.load(job_dir).get("request", {}).get("benchmark"):
+        from . import benchmark as benchmarkmod
+        result = await benchmarkmod.resume(job_dir.name, log=log, rerender=True)
+        return {**result, "rerendered": result.get("status") == "render_complete", **extra}
     state = st.load(job_dir)
     if not (job_dir / tlmod.FILE).is_file():
         raise FactoryError("not_ready", "다시 렌더할 재료가 없습니다. 먼저 영상을 완성해 주세요.", status=state.get("status"))

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "profile_name": "kpop_observation_clip",
+  "content_type": "observation_clip",
+  "observation_type": "comparison",
+  "reason_to_watch": "같은 동작에서도 시선 방향이 달라지는 순간을 확인해 보세요.",
+  "viewer_question": "같은 동작인데 시선은 어떻게 다를까?",
+  "hook": "같은 동작, 다른 시선?",
+  "claim": "두 구간에서 같은 팔 동작을 할 때 시선 방향이 다르다.",
+  "evidence_type": "visual",
+  "evidence": [
+    {
+      "id": "evidence_1", "evidence_type": "visual",
+      "content": "첫 구간의 팔 동작과 정면을 보는 시선",
+      "supports_claim": "같은 동작을 비교할 첫 기준 구간이다.",
+      "clip": {"source_id": "video_1", "start": 31, "end": 37},
+      "observation_ids": ["observation_1"]
+    },
+    {
+      "id": "evidence_2", "evidence_type": "visual",
+      "content": "다른 구간의 같은 팔 동작과 옆으로 향하는 시선",
+      "supports_claim": "팔 동작은 같고 시선 방향이 다른 두 번째 근거다.",
+      "clip": {"source_id": "video_1", "start": 64, "end": 70},
+      "observation_ids": ["observation_2"]
+    }
+  ],
+  "reaction_captions": ["먼저 정면을 보는 시선", "이번에는 옆으로 향하는 시선"],
+  "payoff": "같은 동작의 차이는 시선 방향에서 확인할 수 있어요.",
+  "ending_question": "어느 쪽 표현이 더 눈에 들어오나요?",
+  "confidence": 0.8,
+  "reasoning_summary": "두 관찰 구간에서 확인된 팔 동작과 시선을 비교한다. 인물의 감정이나 실력은 추측하지 않는다. 예시이며 실제 입력 영상에서 직접 확인해야 한다."
+}

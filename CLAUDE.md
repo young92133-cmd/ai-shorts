@@ -1,5 +1,7 @@
 # AI 콘텐츠팩토리 — Claude Code 사용 규칙
 
+**2026-10-02 별도 worktree 범위:** 사용자가 V2 Benchmark Engine 1단계를 명시적으로 요청했다. 이 체크아웃의 `kpop_observation_clip` 구현·CLI·전체 profile·제한은 `BENCHMARK_ENGINE.md`, 최신 검증은 `HANDOFF.md` 맨 위를 따른다. 다른 컨셉을 개발 중인 원래 `shorts-ai`와 섞지 않는다. 자연어 “이 영상으로 kpop_observation_clip 벤치마크를 적용해서 쇼츠 만들어줘”는 권리 확인된 로컬 파일에 `make --video 파일 --benchmark kpop_observation_clip --note 근거 --confirm-rights`로 매핑한다. 원본 오디오 권리도 확인한다. `--review`/`resume`과 상태·조회 명령을 재사용하고 TTS는 호출하지 않는다. 개발 검증은 mock만 사용한다. 새 커밋과 push는 사용자 요청 전 금지한다. 아래 V1 기록의 범위 제한은 기존 기록이다.
+
 이 프로젝트는 한국어 9:16 유튜브 쇼츠를 만드는 **범용 AI 콘텐츠팩토리**다.
 **이 채팅이 메인 화면**이다. Codex와 Claude Code는 사용자의 자연어 요청을 아래 명령으로 바꿔 실행하고, 결과 JSON을 쉬운 말로 알려준다.
 웹 UI(`AI Shorts 실행.cmd` → http://127.0.0.1:8765)는 결과 확인·세부 수정·미리보기용 보조 화면이다.

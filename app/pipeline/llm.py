@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 import json
+import base64
 import os
 import re
 import shutil
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, AsyncIterable, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -170,7 +171,7 @@ def find_claude_cli() -> str | None:
     return None
 
 
-async def _ask_claude_code(model: str, system: str, user: str, schema: type[T], effort: str) -> T:
+async def _ask_claude_code(model: str, system: str, user: str | AsyncIterable[dict[str, Any]], schema: type[T], effort: str) -> T:
     try:
         from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
     except ImportError as e:
@@ -214,6 +215,34 @@ async def _ask_claude_code(model: str, system: str, user: str, schema: type[T], 
 
 
 # ---------- OpenAI ----------
+
+async def ask_subscription_images(llm: dict[str, Any], system: str, user: str,
+                                  images: list[tuple[str, Path]], schema: type[T]) -> T:
+    """Local JPEG frames via Claude subscription; never fall back to a paid API.
+
+    Inline image blocks do not grant the child CLI filesystem or network tools.
+    The ordinary V1 text provider path remains unchanged.
+    """
+    if llm.get("provider", "claude") not in ("claude", "auto"):
+        raise ProviderError("paid_not_allowed", "Benchmark 화면 분석은 Claude 구독 경로만 지원합니다.")
+    model = llm.get("claude_model") if llm.get("provider") == "auto" else llm.get("model")
+    model = model or llm.get("model", "")
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": user}]
+    for label, path in images:
+        blocks += [{"type": "text", "text": label},
+                   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                    "data": base64.b64encode(path.read_bytes()).decode("ascii")}}]
+
+    async def messages():
+        yield {"type": "user", "message": {"role": "user", "content": blocks}}
+
+    try:
+        result = await _ask_claude_code(model, system, messages(), schema, llm.get("effort", "medium"))
+    except Exception as exc:
+        _record("claude", model, "failed", error_kind(exc))
+        raise
+    _record("claude", model, "success")
+    return result
 
 async def _ask_openai(model: str, system: str, user: str, schema: type[T], effort: str) -> T:
     key = env("OPENAI_API_KEY")

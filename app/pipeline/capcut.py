@@ -367,10 +367,11 @@ async def build_draft(tl: dict[str, Any], job_dir: Path, draft_dir: Path, name: 
     d.track("video", ov_segs)
 
     # 나레이션
-    narr = await asyncio.to_thread(bring, resolve(tl["narration"], job_dir), "narration.mp3")
-    narr_dur = await probe_duration(narr)
-    nid = d.audio(narr, _us(narr_dur))
-    d.track("audio", [d.segment(nid, 0, min(narr_dur, total), visual=False)])
+    if tl.get("narration"):
+        narr = await asyncio.to_thread(bring, resolve(tl["narration"], job_dir), "narration.mp3")
+        narr_dur = await probe_duration(narr)
+        nid = d.audio(narr, _us(narr_dur))
+        d.track("audio", [d.segment(nid, 0, min(narr_dur, total), visual=False)])
 
     # 배경음악 - 영상보다 짧으면 이어 붙인다
     if tl.get("bgm"):
@@ -490,8 +491,9 @@ async def export_pack(tl: dict[str, Any], job_dir: Path, out_zip: Path) -> Path:
                 await asyncio.to_thread(shutil.copy2, src, dst)
             order.append(f"{n} / {_clock(s['start'])} / {s['duration']:.2f}초 / {dst.name} / {s.get('title', '')}")
 
-        await asyncio.to_thread(shutil.copy2, resolve(tl["narration"], job_dir), tmp / "narration.mp3")
-        order += ["", "narration.mp3 - 나레이션 (0초부터)"]
+        if tl.get("narration"):
+            await asyncio.to_thread(shutil.copy2, resolve(tl["narration"], job_dir), tmp / "narration.mp3")
+            order += ["", "narration.mp3 - 나레이션 (0초부터)"]
         if tl.get("bgm") and resolve(tl["bgm"], job_dir).is_file():
             bgm = resolve(tl["bgm"], job_dir)
             await asyncio.to_thread(shutil.copy2, bgm, tmp / f"bgm{bgm.suffix}")

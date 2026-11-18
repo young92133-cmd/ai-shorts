@@ -93,7 +93,7 @@ class BlueprintScene(BaseModel):
 class VideoBlueprint(BaseModel):
     """완성 MP4를 만들기 위한 장면별 설계도. timeline.json과 역할이 다르다."""
     version: int = 1
-    timing: Literal["estimated", "tts_aligned"] = "estimated"
+    timing: Literal["estimated", "tts_aligned", "evidence_aligned"] = "estimated"
     topic: str
     width: int = 1080
     height: int = 1920

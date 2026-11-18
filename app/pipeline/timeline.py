@@ -63,7 +63,7 @@ def build_timeline(
     *,
     width: int, height: int, fps: int,
     mode: str,
-    narration: Path,
+    narration: Path | None,
     bgm: Path | None,
     bgm_volume: float,
     source_volume: float,
@@ -89,6 +89,7 @@ def build_timeline(
             "visual": {"kind": v["kind"], "path": rel(v["path"], job_dir),
                        "src_start": round(float(v.get("src_start", 0.0)), 3),
                        "has_audio": bool(v.get("has_audio", False)),
+                       **({"src_end": float(v["src_end"])} if "src_end" in v else {}),
                        "source_url": v.get("source_url", "")},
         })
         t += float(s["duration"])
@@ -234,7 +235,8 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
     st = tl["subtitles"]["style"]
     ass = build_ass([], job_dir / "subs.ass", w, h, font=st.get("font", "Malgun Gothic"),
                     size=int(st.get("size", 64)), highlight=st.get("highlight", "#FFD400"),
-                    outline=st.get("outline", "#000000"), **ass_inputs(tl))
+                    outline=st.get("outline", "#000000"),
+                    **({"margin_v": int(h * 0.1)} if tl.get("benchmark") else {}), **ass_inputs(tl))
 
     overlays = []
     for c in tl.get("comments", []):
@@ -243,7 +245,7 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
             if p.is_file():
                 overlays.append({**c, "path": p})
 
-    narration = resolve(tl["narration"], job_dir)
+    narration = resolve(tl["narration"], job_dir) if tl.get("narration") else None
     bgm = resolve(tl["bgm"], job_dir) if tl.get("bgm") else None
     common = dict(ass_path=ass, bgm=bgm, width=w, height=h, fps=fps,
                   bgm_volume=float(tl["bgm_volume"]), fonts_dir=fonts_dir, overlays=overlays)
@@ -254,9 +256,18 @@ async def render_timeline(tl: dict[str, Any], job_dir: Path, out_path: Path,
             clip = {"kind": v["kind"], "path": resolve(v["path"], job_dir), "duration": s["duration"]}
             if v["kind"] == "video":
                 clip.update(start=v["src_start"], has_audio=v["has_audio"])
+                if "src_end" in v:
+                    clip["end"] = v["src_end"]
             clips.append(clip)
+        benchmark_options = {}
+        if tl.get("benchmark"):
+            benchmark_options = {"blur_background": tl["benchmark"].get("blur_background", True),
+                                 "frame_layout": tl["benchmark"].get("frame_layout", "evidence"),
+                                 "audio_fade_seconds": tl["benchmark"].get("audio_fade_seconds", 0)}
         return await render_broll(clips, narration, out_path,
-                                  source_volume=float(tl["source_volume"]), **common)
+                                  source_volume=float(tl["source_volume"]), **common, **benchmark_options)
+    if narration is None:
+        raise ValueError("slideshow timeline requires narration")
     images = [resolve(s["visual"]["path"], job_dir) for s in tl["scenes"]]
     durations = [float(s["duration"]) for s in tl["scenes"]]
     return await render_slideshow(images, durations, narration, out_path,

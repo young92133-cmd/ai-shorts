@@ -1,5 +1,19 @@
 # 개발 계획 — 참고 영상의 좋은 기능을 내 AI 쇼츠 제작기에 맞게 적용
 
+## 2026-10-02 — 사용자 요청 V2 Benchmark Engine 1단계 (별도 worktree)
+
+다른 컨셉의 동시 작업과 분리한 `shorts-ai-benchmark-v2`, 기준 `dce81daa`. 사용자 요청이 아래 기존 V1 범위 제한을 이 기능에 한해 갱신한다. 실제 제공하는 profile은 `kpop_observation_clip` 하나다.
+
+- [x] 기존 V1 구조/132개 테스트 확인, 독립 worktree 구성
+- [x] 장르 중립 공통 계약·JSON 로더·시청 이유 우선 두 단계 분석
+- [x] 로컬 영상 권리·hash·근거/관찰·confidence 검증
+- [x] 설정 기반 단계 시간·TTS 없는 adapter·기존 b-roll/자막 재사용
+- [x] Factory CLI·review/resume/edit/inspect/rerender·결과 보존 연결
+- [x] 새 테스트 43개와 기존 132개, 총 175개 전체 회귀 검증
+- [x] 전체 profile·CLI·확장 범위·미검증 부분 문서화 및 diff/status 검사
+
+완료 상세는 `BENCHMARK_ENGINE.md`와 `HANDOFF.md`. 실제 제작·유료 호출·새 커밋·push는 하지 않았다. 다른 profile, 다운로드, 채널 자산 복제, V1 rewrite는 범위 밖이다.
+
 ## V1 기능·실사용 검증 완료 (2026-10-01)
 
 **이 절이 아래 9월 계획의 우선순위를 대체한다.** 새 제작 엔진과 영상 품질 기능은 추가하지 않는다.

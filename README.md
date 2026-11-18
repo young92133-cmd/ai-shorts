@@ -1,5 +1,7 @@
 # AI 콘텐츠팩토리
 
+V2 첫 기능인 범용 Benchmark Engine 1단계는 이 별도 worktree에서 개발했다. 실제 제공하는 profile은 `kpop_observation_clip` 하나이며, 권리 확인 로컬 영상 → 시청 이유/질문 → claim → 근거 → 기존 renderer로 제작한다. CLI·전체 profile·테스트·제한은 [BENCHMARK_ENGINE.md](BENCHMARK_ENGINE.md)를 참고한다. 기존 V1 사용법은 아래에 유지한다.
+
 주제 한 줄, 유튜브 URL, 완성 대본, 또는 "지금 핫한 이슈"에서 9:16 세로 쇼츠 mp4 를 자동으로 만드는 개인용 도구.
 
 ## 채팅으로 사용하는 방법 (V1)

@@ -1,0 +1,9 @@
+{
+  "subject": "같은 팔 동작의 시선 방향 비교 (실제 영상에 맞게 수정해야 하는 예시)",
+  "observations": [
+    {"id": "observation_1", "source_id": "video_1", "start": 31, "end": 37,
+     "description": "팔을 들어 올리는 구간에서 정면을 보는 시선이 확인된다."},
+    {"id": "observation_2", "source_id": "video_1", "start": 64, "end": 70,
+     "description": "같은 팔 동작의 다른 구간에서 옆으로 향하는 시선이 확인된다."}
+  ]
+}

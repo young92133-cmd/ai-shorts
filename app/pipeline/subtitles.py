@@ -172,6 +172,9 @@ def words_to_lines(words: list[Word] | list[list[Word]]) -> list[dict]:
 
 def _karaoke_event(line: dict) -> str:
     start, end = float(line["start"]), float(line["end"])
+    if line.get("static"):
+        return (f"Dialogue: 1,{_ts(start)},{_ts(end)},Sub,,0,0,0,,"
+                + "\\N".join(_esc(row) for row in wrap_title(line["text"], 16, max_lines=3)))
     words = line.get("words") or [{"text": line["text"], "start": start, "end": end}]
     parts: list[str] = []
     t = start

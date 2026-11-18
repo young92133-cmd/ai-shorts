@@ -219,7 +219,7 @@ def _ninefix(src: str, out: str, width: int, height: int, fps: int, blur: bool) 
 
 async def render_broll(
     clips: list[dict],
-    narration: Path,
+    narration: Path | None,
     out_path: Path,
     ass_path: Path | None = None,
     bgm: Path | None = None,
@@ -231,6 +231,8 @@ async def render_broll(
     blur_background: bool = True,
     fonts_dir: Path | None = None,
     overlays: list[dict] | None = None,
+    audio_fade_seconds: float = 1.5,
+    frame_layout: str = "full",
 ) -> Path:
     """여러 소스 영상·이미지를 장면 순서대로 이어 붙이고 나레이션을 얹는다.
 
@@ -280,14 +282,35 @@ async def render_broll(
         else:
             idx = input_index(Path(c["path"]), False, dur)
             s = float(c.get("start", 0.0))
-            e = s + dur
+            e = min(s + dur, float(c["end"])) if "end" in c else s + dur
             # 원본이 모자랄 수 있으니 뒤를 마지막 프레임으로 채운 뒤 정확히 자른다
             filters.append(
-                f"[{idx}:v]trim={s:.3f}:{e + 1.0:.3f},setpts=PTS-STARTPTS,"
+                f"[{idx}:v]trim={s:.3f}:{e if 'end' in c else e + 1.0:.3f},setpts=PTS-STARTPTS,"
                 f"tpad=stop_mode=clone:stop_duration={dur:.3f},"
                 f"trim=duration={dur:.3f},setpts=PTS-STARTPTS[raw{k}]"
             )
-            filters.append(_ninefix(f"[raw{k}]", vl, width, height, fps, blur_background))
+            if frame_layout == "evidence":
+                # Contain the entire proof frame between our own title and caption areas.
+                top, body = int(height * 0.22) // 2 * 2, int(height * 0.58) // 2 * 2
+                if blur_background:
+                    filters.append(
+                        f"[raw{k}]split[ec{k}][eb{k}];"
+                        f"[eb{k}]scale={width}:{body}:force_original_aspect_ratio=increase,"
+                        f"crop={width}:{body},setsar=1,boxblur=30:10[ebg{k}];"
+                        f"[ec{k}]scale={width}:{body}:force_original_aspect_ratio=decrease,setsar=1[efg{k}];"
+                        f"[ebg{k}][efg{k}]overlay=(W-w)/2:(H-h)/2[ebody{k}];"
+                        f"[ebody{k}]pad={width}:{height}:0:{top}:color=0x122033,"
+                        f"setsar=1,fps={fps},format=yuv420p[{vl}]")
+                else:
+                    filters.append(
+                        f"[raw{k}]scale={width}:{body}:force_original_aspect_ratio=decrease,"
+                        f"pad={width}:{body}:(ow-iw)/2:(oh-ih)/2:color=0x122033,"
+                        f"pad={width}:{height}:0:{top}:color=0x122033,"
+                        f"setsar=1,fps={fps},format=yuv420p[{vl}]")
+            elif frame_layout == "full":
+                filters.append(_ninefix(f"[raw{k}]", vl, width, height, fps, blur_background))
+            else:
+                raise ValueError(f"unknown b-roll frame_layout: {frame_layout}")
 
             if c.get("has_audio"):
                 filters.append(
@@ -304,29 +327,35 @@ async def render_broll(
     filters.append("".join(f"{v}{a}" for v, a in zip(vlabels, alabels))
                    + f"concat=n={len(clips)}:v=1:a=1[vcat][acat]")
 
-    narr_idx = len(index_of)
-    inputs.extend(["-i", str(narration)])
-    filters.append(f"[{narr_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo[narr]")
-    mix = "[acat][narr]"
-    n_mix = 2
+    next_index = len(index_of)
+    mix, n_mix = "[acat]", 1
+    if narration is not None:
+        inputs.extend(["-i", str(narration)])
+        filters.append(f"[{next_index}:a]aformat=sample_rates=44100:channel_layouts=stereo[narr]")
+        next_index += 1
+        mix, n_mix = mix + "[narr]", n_mix + 1
 
     if bgm and bgm.exists():
         inputs.extend(["-i", str(bgm)])
         filters.append(
-            f"[{narr_idx + 1}:a]aloop=loop=-1:size=2147483647,volume={bgm_volume},"
+            f"[{next_index}:a]aloop=loop=-1:size=2147483647,volume={bgm_volume},"
             f"aformat=sample_rates=44100:channel_layouts=stereo[bgm]")
         mix += "[bgm]"
-        n_mix = 3
+        next_index += 1
+        n_mix += 1
 
     total_duration = sum(float(c["duration"]) for c in clips)
-    fade_duration = min(1.5, total_duration)
+    fade_duration = min(max(0.0, audio_fade_seconds), total_duration)
     fade_start = max(0.0, total_duration - fade_duration)
-    filters.append(f"{mix}amix=inputs={n_mix}:duration=first:dropout_transition=0:normalize=0,"
-                   f"afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}[aout]")
+    audio_filter = (f"{mix}amix=inputs={n_mix}:duration=first:dropout_transition=0:normalize=0"
+                    if n_mix > 1 else f"{mix}anull")
+    if fade_duration:
+        audio_filter += f",afade=t=out:st={fade_start:.3f}:d={fade_duration:.3f}"
+    filters.append(audio_filter + "[aout]")
 
     last = "[vcat]"
     if overlays:
-        ov_args, ov_filters, last = _apply_overlays(overlays, narr_idx + n_mix - 1, last,
+        ov_args, ov_filters, last = _apply_overlays(overlays, next_index, last,
                                                      total_duration, width, fps)
         inputs += ov_args
         filters += ov_filters

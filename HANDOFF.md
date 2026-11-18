@@ -1,5 +1,17 @@
 # HANDOFF — 개발 인수인계 문서
 
+## 2026-10-02 — V2 Benchmark Engine 1단계, 독립 작업 폴더
+
+**최신 작업:** `C:\Users\young\OneDrive\Desktop\클로드코드\shorts-ai-benchmark-v2`에 구현했다. 기준 HEAD `dce81daad0c69fd765be5f15915d58630ab1679f`, detached HEAD. 원래 `shorts-ai`에서는 다른 컨셉의 Claude Code/Codex 작업이 진행 중이므로 이 작업은 이 별도 폴더에서 이어간다. 이 변경을 원래 작업에 임의로 합치지 않는다. 새 커밋·push·amend·rebase는 하지 않았다.
+
+시청 이유 → 질문 → 고정된 hook/claim → 근거 → payoff의 범용 계약/분석, 실제 profile `kpop_observation_clip` 하나, 권리 확인 로컬 영상 입력, TTS 없는 기존 b-roll/자막 렌더, snapshot/hash 기반 review/resume/rerender가 구현됐다. 기존 V1 동작과 프로젝트 파일을 유지하며, 근거 전체가 payoff 전에 나오고 구간 밖 화면이 나오지 않도록 검사한다. 자세한 10항목 보고·CLI·전체 profile은 `BENCHMARK_ENGINE.md`에 있다.
+
+검증: 기존 132 + 새 43 = **175개 테스트 통과**, compileall·CLI help/profile 목록·git diff/status 확인. 실제 영상/Claude 이미지 분석/FFmpeg 제작/CapCut 앱 검증은 실행하지 않았다. AI·TTS·FFmpeg/FFprobe 테스트는 mock이며 유료 호출은 없었다. 기존 사용자 산출물은 삭제하지 않았다.
+
+실행 환경: 별도 `.venv`는 번들 Python 3.12.14로 만들고 `.pth`에서 원래 `shorts-ai/.venv/Lib/site-packages` 의존성을 읽어 사용한다. 원래 Python 3.12.10 launcher가 사라진 실행 파일을 가리키므로 원래 venv로 이 체크아웃을 실행하지 않는다. Python/의존성 파일은 git ignore 대상이다. 새 PC에서는 Python 3.12로 별도 venv와 requirements를 설치한다. 이 체크아웃의 새 output은 자체 output 폴더에 남는다.
+
+---
+
 ## 2026-10-01 — 다른 PC 이동용 체크포인트 (현재 인계 기준)
 
 **이번 저장은 이동용 WIP 체크포인트이며 V1 release나 최종 완료 승인을 의미하지 않는다. 다음 개발·기능 추가는 사용자의 새 요청을 기다린다.** 이 절의 이동·백업 지침이 아래 이전 작업 기록보다 우선한다.
