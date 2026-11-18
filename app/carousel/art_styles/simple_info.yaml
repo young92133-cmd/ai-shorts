@@ -1,0 +1,14 @@
+id: simple_info
+name: 심플한 정보형 인스타툰풍
+description: 두 가지 색의 평평한 배경, 얇은 선, 네모 말풍선, 효과 없음. 정보 전달 위주.
+palette: {bg: '#F7F8FA', bg2: '#F7F8FA', line: '#3A3F4B', bubble_line: '#3A3F4B', accent: '#3B6CFF', panel: '#FFFFFF', highlight: '#DDE6FF', cover_bg: '#FFFFFF',
+  cover_bg2: '#EEF2FF', cover_ink: '#1E2433', ink: '#1E2433', sub: '#5B6273', band: '#DDE6FF'}
+style: {panel_border: 3}
+art:
+  scene: flat
+  effects: none
+  bubble: box
+  bubble_line: 0.55
+  panel_radius: 10
+  sticker: 0
+  mascot: {ink: '#3A3F4B', line_scale: 0.65}

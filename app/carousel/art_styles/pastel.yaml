@@ -1,0 +1,14 @@
+id: pastel
+name: 부드러운 파스텔 일러스트풍
+description: 흐릿하고 밝은 파스텔 배경, 연한 갈색 선, 둥근 말풍선, 효과는 가볍게.
+palette: {bg: '#FDF5F7', bg2: '#F3EEFB', line: '#8C7B8F', bubble_line: '#B49FB6', accent: '#C48FB4', highlight: '#FFE3EE', hot: '#E07A9A', panel: '#FFFFFF',
+  cover_bg: '#F8E6EF', cover_bg2: '#E8E0F6', cover_ink: '#5A4660', ink: '#4A3F55', sub: '#7D6F86', band: '#E9D7F2'}
+style: {panel_border: 4}
+art:
+  scene: pastel
+  effects: light
+  bubble: round
+  bubble_line: 0.7
+  panel_radius: 36
+  sticker: 8
+  mascot: {ink: '#7A6670', line_scale: 0.8}

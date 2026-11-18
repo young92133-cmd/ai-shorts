@@ -26,7 +26,7 @@ from typing import Any
 from . import core, batch, benchmark, topics
 from ..carousel import characters as charmod
 from ..carousel.schema import OUTPUT_FORMATS
-from ..carousel.templates import list_templates
+from ..carousel.templates import list_art_styles, list_templates
 
 TONES = tuple(core.FORMATS)
 
@@ -74,6 +74,7 @@ def _parser() -> argparse.ArgumentParser:
     mk.add_argument("--request", dest="request_text", default="", help="사용자 자연어 요청 원문 (출력 형식 자동 인식)")
     mk.add_argument("--template", help="캐러셀 템플릿: " + " | ".join(t["id"] for t in list_templates()))
     mk.add_argument("--character", help="인스타툰 캐릭터 id (characters 명령으로 목록)")
+    mk.add_argument("--art-style", dest="art_style", help="그림체: " + " | ".join(s["id"] for s in list_art_styles()))
     mk.add_argument("--pages", type=int, help="캐러셀 장수 (6~10, 기본 8)")
     mk.add_argument("--model")
     mk.add_argument("--tts", help="edge | openai | elevenlabs | typecast")
@@ -115,6 +116,10 @@ def _parser() -> argparse.ArgumentParser:
     sv.add_argument("--confirm-rights", action="store_true")
 
     sub.add_parser("styles", help="프리셋·스타일·캐러셀 템플릿·캐릭터 목록")
+    asr = sub.add_parser("art-style", help="참고 스크린샷으로 나만의 그림체 만들기 (색·밝기·선 비율만 측정, 무료)")
+    asr.add_argument("--id", required=True, help="영문 소문자 id (예: my_clean)")
+    asr.add_argument("--name", required=True, help="화면에 보일 이름")
+    asr.add_argument("--image", action="append", required=True, help="참고 스크린샷 (여러 번 지정 가능)")
     tn = sub.add_parser("toon", help="주제 → 자동 스토리(무료 규칙 | 선택 Claude) → 무료 렌더 인스타툰")
     tn.add_argument("--topic", required=True)
     fx = tn.add_mutually_exclusive_group(required=True)
@@ -246,7 +251,7 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
         extra = {}
         if output_format or a.request_text or a.research_file or a.template or a.character or a.pages:
             extra = dict(output_format=output_format, request_text=a.request_text, template=a.template,
-                         character=a.character, pages=a.pages, research_file=a.research_file)
+                         character=a.character, pages=a.pages, research_file=a.research_file, art_style=a.art_style)
         return await core.make(
             topic=a.topic, url=a.url, auto=a.auto, script_text=script_text, preset=a.preset, style=a.style,
             seconds=a.seconds, review=a.review, instructions=a.instructions, llm=a.llm, model=a.model, tts=a.tts,
@@ -278,6 +283,14 @@ async def _dispatch(a: argparse.Namespace) -> dict[str, Any]:
                                      note=a.note, confirm_rights=a.confirm_rights, log=_log)
     if a.cmd == "rerender":
         return await core.rerender(a.project_id, log=_log)
+    if a.cmd == "art-style":
+        from ..carousel.style_ref import create_from_references
+        try:
+            path = create_from_references(a.id, a.name, a.image)
+        except ValueError as e:
+            raise core.FactoryError("invalid", str(e)) from e
+        return {"status": "ok", "art_style": a.id, "file": str(path),
+                "message": f"그림체 '{a.name}'을 만들었습니다. make --art-style {a.id} 또는 스튜디오 그림체 목록에서 고르세요."}
     if a.cmd == "styles":
         return core.styles()
     if a.cmd == "toon":

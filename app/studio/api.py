@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from ..carousel import characters as charmod
 from ..carousel.schema import CAROUSEL_FORMATS
-from ..carousel.templates import list_templates
+from ..carousel.templates import list_art_styles, list_templates
 from ..factory import core
 from ..factory.core import FactoryError
 from . import project as studio
@@ -36,6 +36,7 @@ class CreateBody(BaseModel):
     character: str = ""
     image_search: bool = True
     instructions: str = ""
+    art_style: str = ""
 
 
 def _err(e: Exception) -> HTTPException:
@@ -56,7 +57,7 @@ async def page():
 
 @router.get("/api/studio/choices")
 async def choices():
-    return {"formats": list(CAROUSEL_FORMATS), "templates": list_templates(),
+    return {"formats": list(CAROUSEL_FORMATS), "templates": list_templates(), "art_styles": list_art_styles(),
             "characters": [{"id": c.id, "name": c.name} for c in charmod.list_characters()],
             "pages": list(range(6, 11))}
 
@@ -87,7 +88,8 @@ async def create(body: CreateBody):
         try:
             out = await _in_thread(studio.create, body.topic, fmt=body.format, pages=body.pages,
                                    template=body.template, character=body.character,
-                                   image_search=body.image_search, instructions=body.instructions, log=log)
+                                   image_search=body.image_search, instructions=body.instructions,
+                                   art_style=body.art_style, log=log)
             task.update(status="done" if out.get("status") == "render_complete" else "error", result=out)
         except Exception as e:  # noqa: BLE001 - 화면에 이유를 보여 준다
             task.update(status="error", result={"message": e.message if isinstance(e, FactoryError) else str(e)})
@@ -162,6 +164,19 @@ async def add(pid: str, body: PageAdd):
         raise HTTPException(400, "kind 는 card | comic 입니다.")
     try:
         return await _in_thread(studio.add_page, pid, body.after, body.kind)
+    except Exception as e:  # noqa: BLE001
+        raise _err(e)
+
+
+class Look(BaseModel):
+    art_style: str | None = None
+    character: str | None = None
+
+
+@router.post("/api/studio/projects/{pid}/look")
+async def look(pid: str, body: Look):
+    try:
+        return await _in_thread(studio.set_look, pid, art_style=body.art_style, character=body.character or None)
     except Exception as e:  # noqa: BLE001
         raise _err(e)
 

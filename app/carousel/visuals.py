@@ -99,6 +99,7 @@ class CharacterArtist:
             except Exception as e:  # noqa: BLE001
                 log(f"AI 이미지 공급자를 쓸 수 없어 마스코트로 그립니다 ({safe_error(e)})")
         self.bibles: dict[str, charmod.CharacterBible] = {}
+        self.mascot_style: dict[str, Any] = {}    # 그림체가 정한 앱 그림 캐릭터의 선 색·굵기 (캐릭터 자체 설정이 우선)
         self.ai_failed = False
 
     def bible(self, char_id: str) -> charmod.CharacterBible | None:
@@ -180,7 +181,8 @@ class CharacterArtist:
             self.log(f"{bible.name}: 맞는 포즈 그림이 없어 글자 중심 컷으로 그립니다")
             return PanelArt(kind="none")
         try:
-            return PanelArt(kind="cutout", image=draw_mascot(bible.mascot, beat.emotion, beat.pose), source="mascot")
+            return PanelArt(kind="cutout", image=draw_mascot({**self.mascot_style, **bible.mascot}, beat.emotion, beat.pose),
+                            source="mascot")
         except Exception as e:  # noqa: BLE001
             self.log(f"마스코트를 그리지 못했습니다 ({e})")
             return PanelArt(kind="none")
@@ -198,6 +200,6 @@ class CharacterArtist:
         if not bible.mascot_fallback:
             return None
         try:
-            return draw_mascot(bible.mascot, emotion, pose)
+            return draw_mascot({**self.mascot_style, **bible.mascot}, emotion, pose)
         except Exception:  # noqa: BLE001
             return None

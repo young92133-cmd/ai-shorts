@@ -306,6 +306,34 @@ class StudioTests(FactoryTestCase):
             for name in [f"card_{i:02d}.png" for i in range(1, 8)]:
                 self.assertEqual(z.read(name), (folder / name).read_bytes())
 
+    async def test_set_look_changes_style_and_lead_character_with_undo(self):
+        pid = await self._make("insta_toon")
+        folder, heads, _ = self._state(pid, "insta_toon")
+        before = {p.name: p.read_bytes() for p in folder.glob("card_*.png")}
+        state = await studio.set_look(pid, art_style="clean_webtoon", character="minji_01")
+        self.assertEqual(state["art_style"], "clean_webtoon")
+        self.assertEqual(state["characters"][0]["id"], "minji_01")
+        leads = {b["character_id"] for p in state["pages"] if p["kind"] == "comic" for b in p["data"]["panels"]}
+        self.assertNotIn("hamtorich_01", leads)
+        self.assertIn("minji_01", leads)
+        _, heads_after, _ = self._state(pid, "insta_toon")
+        self.assertEqual(heads_after, heads)                               # 문구는 그대로
+        changed = [n for n, b in before.items() if (folder / n).read_bytes() != b]
+        self.assertGreaterEqual(len(changed), 6)                          # 그림은 실제로 바뀐다
+        with self.assertRaises(FactoryError):
+            await studio.set_look(pid, art_style="no_such_style")
+        await studio.undo(pid)
+        back = studio.load(pid)
+        self.assertEqual((back["art_style"], back["characters"][0]["id"]), ("default", "hamtorich_01"))
+        self.assertEqual({n: (folder / n).read_bytes() for n in before}, before)   # 실행 취소하면 원래 그림 그대로
+
+    async def test_make_with_art_style_is_saved_in_plan(self):
+        out = await studio.create("전세 vs 월세", fmt="card_news", pages=7, art_style="pastel", log=_quiet)
+        self.assertEqual(out["status"], "render_complete", out.get("message"))
+        self.assertEqual(studio.load(out["project_id"])["art_style"], "pastel")
+        with self.assertRaises(FactoryError):
+            await studio.create("주제", fmt="card_news", art_style="nope")
+
     async def test_add_comic_page_to_insta_toon(self):
         pid = await self._make("insta_toon")
         before = studio.load(pid)
@@ -356,6 +384,16 @@ class StudioTests(FactoryTestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["undo_count"], before - 1)
         self.assertIsNone(r.json()["pages"][n - 1]["image"])
+        # 그림체 목록·적용 (화면의 '그림체·주인공 적용' 버튼과 같은 경로)
+        self.assertIn("simple_info", [s["id"] for s in client.get("/api/studio/choices").json()["art_styles"]])
+        page = client.get("/studio").text
+        self.assertIn('id="look-style"', page)
+        self.assertIn('id="artstyle"', page)
+        r = client.post(f"/api/studio/projects/{pid}/look", json={"art_style": "simple_info"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["art_style"], "simple_info")
+        self.assertEqual(client.post(f"/api/studio/projects/{pid}/look", json={"art_style": "nope"}).status_code, 400)
+        self.assertEqual(client.post(f"/api/studio/projects/{pid}/look", json={"character": "minji_01"}).status_code, 400)  # 카드뉴스
 
 
 if __name__ == "__main__":

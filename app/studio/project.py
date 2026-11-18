@@ -35,14 +35,14 @@ LIMITS = {"headline": 60, "label": 20, "body": 200, "caption": 200, "dialogue": 
 
 async def create(topic: str, *, fmt: str = "card_news", pages: int = 8, template: str | None = None,
                  character: str | None = None, image_search: bool = True, instructions: str = "",
-                 log=lambda m: None) -> dict[str, Any]:
+                 art_style: str | None = None, log=lambda m: None) -> dict[str, Any]:
     """주제로 새 캐러셀 프로젝트를 만든다 (조사 → 문구 → 장면 → PNG). Factory make 와 같은 경로."""
     if fmt not in CAROUSEL_FORMATS:
         raise FactoryError("invalid", f"형식은 {' / '.join(CAROUSEL_FORMATS)} 중 하나입니다.")
     if not topic.strip():
         raise FactoryError("invalid", "주제를 입력해 주세요.")
     return await core.make(topic=topic.strip(), output_format=fmt, pages=pages, template=template or None,
-                           character=character or None, visuals="auto" if image_search else "cards",
+                           character=character or None, visuals="auto" if image_search else "cards", art_style=art_style or None,
                            instructions=instructions, log=log)
 
 
@@ -105,7 +105,7 @@ def load(project_id: str) -> dict[str, Any]:
     return {"project_id": job.name, "format": fmt, "status": state.get("status"), "title": manifest.get("title", ""),
             "topic": manifest.get("topic") or state.get("topic", ""), "template": plan.template,
             "characters": manifest.get("characters", []), "pages": pages, "caption": caption,
-            "pose_gaps": manifest.get("pose_gaps", []), "undo_count": len(_snapshots(out_dir)),
+            "pose_gaps": manifest.get("pose_gaps", []), "undo_count": len(_snapshots(out_dir)), "art_style": plan.art_style or "default",
             "redo_count": len(_snapshots(out_dir, REDO)), "card_types": list(CARD_TYPES),
             "options": options(manifest)}
 
@@ -136,7 +136,7 @@ def _clean(field: str, value: Any) -> Any:
     return text[:LIMITS.get(field, 40)]
 
 
-def _sentences(text: str) -> list[str]:
+def _items_from_text(text: str) -> list[str]:
     import re
     parts = [x.strip(" -·•") for x in re.split(r"[.\n!?]|, ", text or "")]
     return [x[:40] for x in parts if len(x) >= 2][:5]
@@ -148,9 +148,9 @@ def _retype(page: CardPage, new_type: str) -> CardPage:
         raise FactoryError("invalid", f"카드 종류는 {', '.join(CARD_TYPES)} 중 하나입니다.")
     upd: dict[str, Any] = {"type": new_type, "layout": ""}       # 예전 종류의 레이아웃 지정은 버린다
     if new_type in ("checklist", "summary") and not page.items:
-        upd["items"] = _sentences(page.body) or [page.headline or "항목을 입력하세요"]
+        upd["items"] = _items_from_text(page.body) or [page.headline or "항목을 입력하세요"]
     if new_type == "comparison" and page.compare is None:
-        pts = page.items or _sentences(page.body)
+        pts = page.items or _items_from_text(page.body)
         half = max(1, (len(pts) + 1) // 2)
         upd["compare"] = Comparison(title=page.headline, left_label="이전", right_label="이후",
                                     left_points=pts[:half] or ["내용을 입력하세요"], right_points=pts[half:] or ["내용을 입력하세요"])
@@ -188,7 +188,7 @@ def _kit(job: Path, state: dict[str, Any], fmt: str, plan: CarouselPlan, manifes
     cfg = core._run_cfg(state.get("request") or {})
     chars = manifest.get("characters") or []
     default_id = chars[0]["id"] if chars else (state.get("request") or {}).get("character") or carousel_settings(cfg)["character"]
-    kit = render_kit(job, fmt=fmt, tpl=load_template(plan.template, fmt), cfg=cfg, default_id=default_id,
+    kit = render_kit(job, fmt=fmt, tpl=load_template(plan.template, fmt, plan.art_style), cfg=cfg, default_id=default_id,
                      total=len(plan.pages))
     if manifest.get("pins_in_records"):   # 순서 편집 뒤에는 파일 이름 번호 대신 페이지 기록의 이미지를 쓴다
         kit.pinned = {}
@@ -376,6 +376,35 @@ async def set_image(project_id: str, page_no: int, src: Path, name: str, *, conf
 async def clear_image(project_id: str, page_no: int) -> dict[str, Any]:
     """n장의 사진·올린 이미지를 빼고 앱 그래픽으로 다시 그린다 (파일은 지우지 않음)."""
     return await _set_record_image(project_id, page_no, None)
+
+
+async def set_look(project_id: str, *, art_style: str | None = None, character: str | None = None) -> dict[str, Any]:
+    """그림체·주인공을 바꿔 전체를 다시 그린다 (문구·구성 그대로, AI 호출 없음, 실행 취소 가능).
+    주인공은 지금 주인공이 나오는 컷만 바꾸고, 상대역(tag:…·다른 캐릭터)은 그대로 둔다."""
+    job, state, fmt, out_dir = _paths(project_id)
+    plan = CarouselPlan.model_validate(_read(out_dir / "plan.json"))
+    manifest = _read(out_dir / MANIFEST, {}) or {}
+    if art_style is not None:
+        try:
+            load_template(plan.template, fmt, art_style)
+        except ValueError as e:
+            raise FactoryError("invalid", str(e)) from e
+    old_chars = manifest.get("characters") or []
+    old_id = old_chars[0]["id"] if old_chars else ""
+    if character:
+        if fmt == "card_news":
+            raise FactoryError("invalid", "카드뉴스에는 주인공 캐릭터가 없습니다.")
+        bible = charmod.get_character(character)
+        manifest["characters"] = [bible.model_dump(include={"id", "name", "role"})]
+    items = _items(plan, manifest)
+    for it in items:
+        if character and isinstance(it["page"], ComicPage):
+            it["page"] = it["page"].model_copy(update={"panels": [
+                b.model_copy(update={"character_id": character}) if b.character_id == old_id else b for b in it["page"].panels]})
+    _backup(out_dir)
+    plan = plan.model_copy(update={"art_style": plan.art_style if art_style is None else art_style})
+    await _render_pages(job, state, fmt, out_dir, plan, manifest, items)
+    return load(project_id)
 
 
 async def move_page(project_id: str, page_no: int, to: int) -> dict[str, Any]:

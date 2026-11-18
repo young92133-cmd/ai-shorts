@@ -322,7 +322,7 @@ def r_cover_hook(canvas, tpl, page: CardPage, assets: PageAssets) -> dict:
         bb = art.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox() or (0, 0, art.width, art.height)
         char_left = head[0] - cw / 2 + bb[0] * cw / art.width
         # 효과는 제목 아래 영역에만 (제목 글자와 겹치지 않게)
-        draw_effects(canvas, (0, tpl.box("cover", "title")[3], W, H), head, page.character_emotion or "happy", seed=page.headline)
+        _fx(tpl, canvas, (0, tpl.box("cover", "title")[3], W, H), head, page.character_emotion or "happy", seed=page.headline)
         used = "character"
     elif assets.image and Path(assets.image).is_file():
         paste_image(canvas, Path(assets.image), cbox, _radius(tpl))
@@ -659,16 +659,71 @@ def paste_cutout(canvas: Image.Image, art: Image.Image, box, *, anchor: str = "b
 
 
 
+# ---------- 그림체(art_styles) ----------
+
+def _lighten(c, k: float):
+    return tuple(int(v + (255 - v) * k) for v in c[:3])
+
+
+def art_scene(img: Image.Image, tpl: Template) -> Image.Image:
+    """그림체에 맞춰 배경 표현을 바꾼다: detailed(그대로) · pastel(밝고 흐릿) · flat(두 가지 색 면) · lineart(선만 남긴 흰 배경)."""
+    from PIL import ImageStat
+    mode = tpl.art.get("scene", "detailed")
+    img = img.convert("RGB")
+    w, h = img.size
+    if mode == "pastel":
+        img = Image.blend(img, Image.new("RGB", img.size, (255, 255, 255)), 0.38)
+        return img.filter(ImageFilter.GaussianBlur(max(1, w // 420)))
+    if mode == "flat":       # 위(벽·하늘)와 아래(바닥·땅)의 평균색으로 면을 나눠 시간대 분위기는 남긴다
+        cut = int(h * 0.62)
+        top = ImageStat.Stat(img.crop((0, 0, w, cut))).mean
+        bottom = ImageStat.Stat(img.crop((0, cut, w, h))).mean
+        out = Image.new("RGB", img.size, _lighten(top, 0.3))
+        d = ImageDraw.Draw(out)
+        d.rectangle([0, cut, w, h], fill=_lighten(bottom, 0.3))
+        d.line([(0, cut), (w, cut)], fill=tpl.color("line"), width=max(2, w // 320))
+        return out
+    if mode == "lineart":    # 윤곽선만 남기고 아주 옅은 바탕색 (밤 장면은 조금 더 어둡게)
+        mean = ImageStat.Stat(img).mean
+        dark = sum(mean) / 3 < 110
+        edges = img.convert("L").filter(ImageFilter.FIND_EDGES).point(lambda v: 150 if v > 22 else 0)
+        paper = Image.new("RGB", img.size, _lighten(mean, 0.62 if dark else 0.9))
+        return Image.composite(Image.new("RGB", img.size, tpl.color("line")), paper, edges)
+    return img
+
+
+def _fx(tpl: Template, canvas, box, head, emotion: str, *, seed: str = "") -> None:
+    """감정 효과: full(전부) · light(웃는 장면의 반짝이는 뺌) · none."""
+    level = tpl.art.get("effects", "full")
+    if level == "none" or (level == "light" and emotion in ("happy", "confident")):
+        return
+    draw_effects(canvas, box, head, emotion, seed=seed)
+
+
+def sticker(img: Image.Image, px: int, color=(255, 255, 255)) -> Image.Image:
+    """투명 배경 캐릭터 둘레에 흰 테두리(px 는 1254px 높이 기준). 축소해서 넓힌 뒤 되돌려 빠르게 계산한다."""
+    if px <= 0 or img.mode != "RGBA":
+        return img
+    k = 4
+    small = img.getchannel("A").resize((max(1, img.width // k), max(1, img.height // k)), Image.BILINEAR)
+    r = max(1, round(px * img.height / 1254 / k))
+    grown = small.filter(ImageFilter.MaxFilter(2 * r + 1)).resize(img.size, Image.BILINEAR).point(lambda v: 255 if v > 60 else 0)
+    out = Image.new("RGBA", img.size, (*color, 0))
+    out.putalpha(grown)
+    out.alpha_composite(img)
+    return out
+
+
 def scene_background(tpl: Template, size: tuple[int, int], beat: ComicBeat, reaction: bool) -> Image.Image:
     """배경 라이브러리(승인된 장면 그림) → 없으면 앱이 그리는 단순 배경. 감정·장소에 맞춰 분위기 조명을 입힌다."""
     from .backgrounds import pick
     from .effects import apply_mood, mood_for, speed_lines
     w, h = size
     lib = pick(beat.background)
+    lines_on = tpl.art.get("effects", "full") == "full" and (reaction or beat.emotion in ("surprised", "angry"))
     if lib:
-        img = cover_fit(Image.open(lib).convert("RGB"), w, h)
-        img = apply_mood(img, mood_for(beat.background, beat.emotion))
-        if reaction or beat.emotion in ("surprised", "angry"):
+        img = art_scene(apply_mood(cover_fit(Image.open(lib).convert("RGB"), w, h), mood_for(beat.background, beat.emotion)), tpl)
+        if lines_on:
             lines = speed_lines(size, (w / 2, h * 0.42), color=(255, 255, 255), alpha=110)
             img.paste(lines, (0, 0), lines)
         return img
@@ -677,7 +732,8 @@ def scene_background(tpl: Template, size: tuple[int, int], beat: ComicBeat, reac
     img = draw_scene(size, beat.background or "방", mood=mood if mood in ("night", "sunset", "gloomy") else "")
     if mood in ("crisis", "gloomy"):
         img = apply_mood(img, mood)
-    if reaction or beat.emotion in ("surprised", "angry"):
+    img = art_scene(img, tpl)
+    if lines_on:
         lines = speed_lines(size, (w / 2, h * 0.42), color=(255, 255, 255), alpha=150)
         img.paste(lines, (0, 0), lines)
     return img
@@ -727,7 +783,7 @@ def speech_bubble(canvas: Image.Image, tpl: Template, text: str, box, tail_to: t
     bw, bh = bx1 - bx0, by1 - by0
     cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
     line_c, fill_c = tpl.color("bubble_line", "#151515"), tpl.color("bubble", "#FFFFFF")
-    lw = max(4, int(tpl.width * 0.005))
+    lw = max(2, int(tpl.width * 0.005 * float(tpl.art.get("bubble_line", 1.0))))
     if tail_to:
         tx, ty = tail_to
         bxm = min(max(tx, bx0 + bw * 0.25), bx1 - bw * 0.25)
@@ -746,7 +802,8 @@ def speech_bubble(canvas: Image.Image, tpl: Template, text: str, box, tail_to: t
         d.polygon(pts, fill=fill_c, outline=line_c)
         d.line(pts + [pts[0]], fill=line_c, width=lw)
     else:
-        d.rounded_rectangle([bx0, by0, bx1, by1], radius=int(min(bw, bh) * 0.45), fill=fill_c, outline=line_c, width=lw)
+        roundness = 0.14 if tpl.art.get("bubble") == "box" else 0.45
+        d.rounded_rectangle([bx0, by0, bx1, by1], radius=int(min(bw, bh) * roundness), fill=fill_c, outline=line_c, width=lw)
         if tail_to:   # 꼬리와 몸통 사이 선을 지운다
             d.line([(tail[0][0] + lw, base_y), (tail[2][0] - lw, base_y)], fill=fill_c, width=lw + 2)
     draw_text(d, lines, fnt, lh, (bx0, by0, bx1, by1), align="center", valign="middle", fill=tpl.color("ink"))
@@ -812,6 +869,14 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
     w, h = x1 - x0, y1 - y0
     bubble_pos = beat.speech_bubble_position or "top_right"
     used = art.source or "none"
+    radius = int(tpl.art.get("panel_radius", 0))
+    page_bg = canvas.crop((x0, y0, x1, y1)) if radius else None      # 둥근 모서리 밖은 페이지 바탕으로 되돌린다
+    edge = int(tpl.art.get("sticker", 0))
+    if edge and art.kind == "cutout" and art.image is not None:
+        from dataclasses import replace
+        art = replace(art, image=sticker(art.image, edge),
+                      partner=replace(art.partner, image=sticker(art.partner.image, edge))
+                      if art.partner and art.partner.image is not None else art.partner)
     partner = None
     if art.kind == "scene" and art.image is not None:
         canvas.paste(cover_fit(art.image.convert("RGB"), w, h), (x0, y0))
@@ -836,8 +901,8 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
             p_low = y1 + int(h * 0.10) if low > y1 else y1     # 상대역은 얼굴이 몸 가운데라 조금만 자른다
             p_head = paste_cutout(canvas, partner.image, (x0 + int(w * 0.50), y0 + int(h * top), x1 - int(w * 0.03), p_low),
                                   anchor="bottom", clip=(x0, y0, x1, y1))
-            draw_effects(canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
-            draw_effects(canvas, (x0, y0, x1, y1), p_head, beat.partner_emotion, seed=beat.partner_dialogue)
+            _fx(tpl, canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
+            _fx(tpl, canvas, (x0, y0, x1, y1), p_head, beat.partner_emotion, seed=beat.partner_dialogue)
             speech_bubble(canvas, tpl, beat.partner_dialogue, _bubble_box((x0, y0, x1, y1), "top_right", 0.26, 0.44),
                           tail_to=p_head, shout=beat.partner_emotion in ("surprised", "angry"))
         elif art.kind == "cutout" and art.image is not None:
@@ -863,7 +928,7 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
             else:
                 top_y = y1 - (y1 - y0) * scale
                 head = paste_cutout(canvas, art.image, (area[0], int(top_y), area[2], y1), anchor="bottom")
-            draw_effects(canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
+            _fx(tpl, canvas, (x0, y0, x1, y1), head, beat.emotion, seed=beat.dialogue)
     if _clean(beat.sfx):
         # 캐릭터는 말풍선 반대쪽에 서므로 효과음은 말풍선 쪽(아래)에, 두 인물 컷은 가운데 위에
         sfx_text(canvas, tpl, beat.sfx, (x0, y0, x1, y1), right=bubble_pos.endswith("right"), center=bool(partner))
@@ -874,7 +939,13 @@ def draw_panel(canvas: Image.Image, tpl: Template, box, beat: ComicBeat, art: Pa
     # 장면 캡션은 말풍선과 겹치지 않는 위쪽 모서리 → 아니면 아래 (원경 컷의 작은 캐릭터를 가리지 않게)
     narration_box(canvas, tpl, note, (x0, y0, x1, y1), top=bubble_pos.startswith("bottom") or bubble_pos.endswith("right"))
     border = int(tpl.style.get("panel_border", 6))
-    ImageDraw.Draw(canvas).rectangle([x0, y0, x1, y1], outline=tpl.color("line", "#151515"), width=border)
+    if radius:
+        mask = Image.new("L", (w, h), 255)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=0)
+        canvas.paste(page_bg, (x0, y0), mask)
+        ImageDraw.Draw(canvas).rounded_rectangle([x0, y0, x1, y1], radius=radius, outline=tpl.color("line", "#151515"), width=border)
+    else:
+        ImageDraw.Draw(canvas).rectangle([x0, y0, x1, y1], outline=tpl.color("line", "#151515"), width=border)
     return used
 
 

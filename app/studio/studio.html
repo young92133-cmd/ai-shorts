@@ -78,6 +78,7 @@ button.danger { color:var(--err); }
         <div><label for="pages">장수</label><select id="pages"></select></div>
         <div><label for="template">템플릿</label><select id="template"><option value="">형식 기본값</option></select></div>
         <div><label for="character">캐릭터</label><select id="character"><option value="">기본 캐릭터</option></select></div>
+        <div><label for="artstyle">그림체</label><select id="artstyle"></select></div>
       </div>
       <label><input type="checkbox" id="imgsearch" checked> 공개 사진 찾기 (권리 확인되는 것만, 무료)</label>
       <label for="instructions">추가 요청 (선택)</label>
@@ -96,6 +97,9 @@ button.danger { color:var(--err); }
   <section id="v-project" hidden>
     <div class="top">
       <h2 id="p-title"></h2>
+      <select id="look-style" title="그림체"></select>
+      <select id="look-char" title="주인공 (만화 컷)"></select>
+      <button class="act" onclick="applyLook()" title="문구는 그대로 두고 그림체·주인공만 바꿔 전체를 다시 그립니다 (실행 취소 가능)">그림체·주인공 적용</button>
       <button class="act" id="undo" onclick="undo()" title="마지막 편집(문구·종류·장면·순서·추가·삭제·이미지)을 되돌립니다">↶ 실행 취소</button>
       <button class="act" id="redo" onclick="redo()" title="실행 취소한 편집을 다시 적용합니다">↷ 다시 실행</button>
       <button onclick="exportZip()">PNG 전부 저장 (ZIP)</button>
@@ -147,6 +151,9 @@ async function init() {
   $("pages").innerHTML = c.pages.map(n => `<option ${n === 8 ? "selected" : ""}>${n}</option>`).join("");
   $("template").innerHTML += c.templates.map(t => `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`).join("");
   $("character").innerHTML += c.characters.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  const styles = c.art_styles.map(x => `<option value="${esc(x.id)}" title="${esc(x.description)}">${esc(x.name)}</option>`).join("");
+  $("artstyle").innerHTML = styles; $("look-style").innerHTML = styles;
+  $("look-char").innerHTML = `<option value="">주인공 그대로</option>` + c.characters.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
   document.querySelectorAll("#fmt button").forEach(b => b.onclick = () => {
     document.querySelectorAll("#fmt button").forEach(x => x.classList.toggle("on", x === b)); fmt = b.dataset.v; });
   await loadProjects();
@@ -168,7 +175,8 @@ function showCreate() { $("v-create").hidden = false; $("v-project").hidden = tr
 async function create() {
   $("create-msg").textContent = ""; $("create-msg").className = "hint";
   const body = {topic: $("topic").value, format: fmt, pages: +$("pages").value, template: $("template").value,
-                character: $("character").value, image_search: $("imgsearch").checked, instructions: $("instructions").value};
+                character: $("character").value, image_search: $("imgsearch").checked, instructions: $("instructions").value,
+                art_style: $("artstyle").value === "default" ? "" : $("artstyle").value};
   let t;
   try { t = await api("/api/studio/projects", {method: "POST", body: JSON.stringify(body)}); }
   catch (e) { $("create-msg").textContent = e.message; $("create-msg").className = "err"; return; }
@@ -198,6 +206,8 @@ async function openProject(pid, page = 1) {
   $("add-comic").hidden = P.format === "card_news";
   $("undo").textContent = `↶ 실행 취소${P.undo_count ? ` (${P.undo_count})` : ""}`; $("undo").disabled = !P.undo_count;
   $("redo").textContent = `↷ 다시 실행${P.redo_count ? ` (${P.redo_count})` : ""}`; $("redo").disabled = !P.redo_count;
+  $("look-style").value = P.art_style || "default"; $("look-char").value = "";
+  $("look-char").hidden = P.format === "card_news";
 }
 
 function drawStrip() {
@@ -280,6 +290,8 @@ function movePage(d) {
   busy(() => post(`pages/${cur}/move`, {to}), n => `${n}장으로 옮기고 전체 번호를 다시 그렸습니다.`, () => to);
 }
 const addPage = kind => busy(() => post("pages-add", {after: cur, kind}), n => `${n}장에 새 ${kind === "comic" ? "만화 컷을" : "카드를"} 넣었습니다. 문구를 고친 뒤 저장하세요.`, () => cur + 1);
+const applyLook = () => busy(() => post("look", {art_style: $("look-style").value, character: $("look-char").value || null}),
+  () => "그림체·주인공을 바꿔 전체를 다시 그렸습니다. (실행 취소 가능)", () => cur);
 const undo = () => busy(() => post("undo"), () => "마지막 편집을 되돌렸습니다.", () => cur);
 const redo = () => busy(() => post("redo"), () => "되돌린 편집을 다시 적용했습니다.", () => cur);
 function pickImage() { $("imgfile").value = ""; $("imgfile").click(); }

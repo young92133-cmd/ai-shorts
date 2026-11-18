@@ -1,0 +1,3 @@
+# AI 검색(ripgrep·Glob) 기본 대상에서 뺀다 — 파일은 그대로 있고 경로로 직접 열 수 있다 (토큰 절약)
+docs/history/
+samples/

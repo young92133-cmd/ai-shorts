@@ -1,0 +1,45 @@
+{
+  "id": "minji_01",
+  "name": "민지",
+  "role": "사회초년생 직장인 (사람형 인스타툰 주인공)",
+  "appearance": {
+    "face": "soft oval face, almond eyes, small nose, subtle warm cheeks",
+    "hair_style": "long dark-brown hair with a fixed side part and mint hair clip",
+    "hair_color": "dark brown",
+    "age_look": "mid 20s"
+  },
+  "default_outfit": {
+    "top": "beige cardigan over white collar",
+    "top_color": "#EBC9A4"
+  },
+  "accessories": ["small mint hair clip on the same side"],
+  "personality": "솔직하고 잘 놀라는 사회초년생. 돈 문제에 서툴지만 배우려 한다.",
+  "speech_style": "~요 체, 짧고 생생하게",
+  "visual_style": "original clean editorial webtoon, curved hair silhouette, restrained cel shading",
+  "reference_images": [],
+  "mascot": {
+    "skin": "#FFE3D3",
+    "hair": "#3A2A24",
+    "hair_style": "long",
+    "eye": "#2B2118",
+    "outfit": "#EBC9A4",
+    "outfit_detail": "#FFFFFF",
+    "cheek": "#F5B8AA",
+    "face": "editorial",
+    "hairpin": "#73A69B",
+    "ink": "#3A302E",
+    "line_scale": 0.8
+  },
+  "prompt_lock": "",
+  "master_reference": "",
+  "design_rules": [
+    "Keep the same oval face, side part, mint hair clip and long dark-brown hair on all eight pages",
+    "Keep skin #FFE3D3, hair #3A2A24, cardigan #EBC9A4 and collar #FFFFFF fixed",
+    "Only eyes, brows, mouth and arm pose express emotion; do not redesign outfit or proportions",
+    "This is a procedural free character profile, not a copy of a named artist or an approved generated pose"
+  ],
+  "poses": [],
+  "default_pose": "",
+  "mascot_fallback": true,
+  "rights": "owned"
+}

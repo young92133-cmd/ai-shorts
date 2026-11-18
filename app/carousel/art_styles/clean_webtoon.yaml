@@ -1,0 +1,14 @@
+id: clean_webtoon
+name: 깔끔한 사람 캐릭터 중심 웹툰풍
+description: 흰 바탕에 얇은 선화 배경(선만 남긴 배경), 또렷한 검은 선, 인물에 흰 테두리, 효과 최소.
+palette: {bg: '#FFFFFF', bg2: '#FFFFFF', line: '#1E1E24', bubble_line: '#1E1E24', accent: '#1E1E24', panel: '#FFFFFF', highlight: '#FFE46B', cover_bg: '#FFFFFF',
+  cover_bg2: '#F2F2F2', cover_ink: '#1E1E24', ink: '#1E1E24', sub: '#55555E', band: '#FFE46B'}
+style: {panel_border: 5}
+art:
+  scene: lineart
+  effects: light
+  bubble: round
+  bubble_line: 0.85
+  panel_radius: 0
+  sticker: 10
+  mascot: {ink: '#1E1E24', line_scale: 0.9}

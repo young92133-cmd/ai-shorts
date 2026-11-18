@@ -31,6 +31,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 ## 토큰 절약
 
 - 필요한 파일만 `rg` 로 찾아 해당 부분만 읽는다. 큰 문서(HANDOFF 기록, docs/history, docs/AGENT_REFERENCE.md)는 필요할 때만 연다.
+  `.ignore` 가 `docs/history/`·`samples/` 를 기본 검색에서 뺀다(경로로 직접 열 수는 있음). output·.venv 는 .gitignore 로 이미 빠진다.
 - 출력은 결과 요약 위주로 짧게. 긴 로그·파일 전체 출력·같은 설명 반복을 하지 않는다.
 - 이미 끝난 작업·테스트를 같은 코드 상태에서 반복하지 않는다. 코드를 바꿨으면 관련 테스트는 반드시 다시 돈다(커밋 전에는 전체 테스트).
 
@@ -53,6 +54,7 @@ Claude Code / Codex (채팅) ─→ app/factory (명령층) ─→ app/pipeline 
 | `make --reference-video 파일 [--hint "메모"]` | 참고 영상 업로드 분석 → 새 대본 → MP4 (기본은 분석 전용, `--quote-reference` 를 붙이면 근거 장면에 인용) |
 | `make ... --format card_news\|insta_toon\|hybrid\|all` | 카드뉴스·인스타툰·하이브리드 PNG(1080x1350) / all = 쇼츠+하이브리드 (아래 '카드뉴스 · 인스타툰' 절) |
 | `make ... --tone information\|story\|issue` | 정보형 / 스토리·사연형 / 일반 이슈형 기본 지침 (예전 `--format 톤값`도 동작) |
+| `make ... --art-style <id>` / `art-style --id my_x --name "이름" --image 참고.png [...]` | 그림체 선택(기본 그림체 5종) / 참고 스크린샷의 색·밝기·선 비율로 나만의 그림체 만들기 (`assets/art_styles/`) |
 | `characters [list\|show ID\|add --file\|import\|generate\|approve]` | 캐릭터 목록·등록·그림 가져오기·생성 견적·포즈 승인. generate는 `--confirm-cost` 없으면 API 미호출 |
 | `make ... --llm claude\|openai\|auto` | AI 공급자 선택 (기본 Claude 구독) |
 | `make ... --review` | **대본까지만** 만들고 승인 대기로 멈춤 |
@@ -255,6 +257,8 @@ transformative_quote source로 처리할 수 있다. 라이선스, 인용 목적
 | "캐릭터 있는 카드뉴스로" | `make … --format card_news --template character_info` |
 | "토리 말고 다른 캐릭터로" | `characters list` → `make … --character <id>` |
 
+- 그림체(`app/carousel/art_styles/*.yaml`)는 템플릿 위에 색·선·배경 표현(detailed/flat/pastel/lineart)·말풍선·컷 모서리·효과·인물 흰 테두리를 덮는다.
+  `default` 는 V1.0 과 바이트 동일. 캐릭터: 햄토리치(그림 자산) · 토리·민지·도트(앱이 그림, `mascot` 설정) · 사용자 등록(그림 자산). 스튜디오 '그림체·주인공 적용'으로 기존 작품도 다시 그림.
 - 기본(브랜드) 캐릭터는 햄토리치 `hamtorich_01`(최상위 기준 `characters/hamtorich_01/master/design_sheet.png`, 규칙 `characters/hamtorich_01/README.md`). 토리 `tory_01` 은 선택.
 - 무료가 기본: 등록 포즈 + 코드로 그린 장면 11종 + 효과. 사용자 그림은 `assets/inbox/`(자동 등록). `carousel.image_provider`·`characters generate --confirm-cost` 같은 유료 생성은 사용자 허락 없이 쓰지 않는다.
 - 자동 인스타툰 `toon`: 수치는 verified fact 원문만, 검증 실패 초안은 `status: rejected`(PNG 없음). `--writer claude` 는 사용자가 고를 때만(구독 CLI).

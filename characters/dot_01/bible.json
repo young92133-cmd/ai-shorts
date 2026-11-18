@@ -1,0 +1,36 @@
+{
+  "id": "dot_01",
+  "name": "도트",
+  "role": "정보툰 안내 캐릭터 (단순하고 깔끔한 얼굴)",
+  "appearance": {
+    "face": "simple round face with dot eyes, no blush",
+    "hair_style": "short neat hair"
+  },
+  "default_outfit": {
+    "top": "blue shirt",
+    "top_color": "#5B7BD5"
+  },
+  "accessories": [],
+  "personality": "차분하게 핵심만 짚어 주는 안내자.",
+  "speech_style": "~요 체, 짧고 명확하게",
+  "visual_style": "minimal flat info-graphic character",
+  "reference_images": [],
+  "mascot": {
+    "skin": "#FFE7D6",
+    "hair": "#3A3F4B",
+    "hair_style": "bob",
+    "eye": "#2A2F3D",
+    "outfit": "#5B7BD5",
+    "outfit_detail": "#FFFFFF",
+    "cheek": "#FFB3B3",
+    "face": "simple",
+    "line_scale": 0.75
+  },
+  "prompt_lock": "",
+  "master_reference": "",
+  "design_rules": [],
+  "poses": [],
+  "default_pose": "",
+  "mascot_fallback": true,
+  "rights": "owned"
+}

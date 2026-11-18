@@ -1,0 +1,14 @@
+id: cute_daily
+name: 귀여운 일상 웹툰풍
+description: 따뜻한 색의 자세한 배경, 둥근 말풍선, 만화 효과 많이, 캐릭터 흰 스티커 테두리.
+palette: {bg: '#FFF6EA', line: '#4A3428', bubble_line: '#4A3428', accent: '#E8875B', highlight: '#FFD36B', cover_bg: '#FFE9D2', cover_bg2: '#FFD3AA',
+  cover_ink: '#4A3428', ink: '#3B2A22', sub: '#7A5A48', band: '#FFC9A3'}
+style: {panel_border: 6}
+art:
+  scene: detailed
+  effects: full
+  bubble: round
+  bubble_line: 1.0
+  panel_radius: 28
+  sticker: 12
+  mascot: {ink: '#4A3428', line_scale: 1.1}

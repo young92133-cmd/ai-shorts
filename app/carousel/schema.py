@@ -108,6 +108,7 @@ class CarouselPlan(BaseModel):
     mix: dict[str, int] = Field(default_factory=dict, description="{'card': 80, 'comic': 20}")
     pages: list[Page] = Field(default_factory=list)
     method: str = "rules"   # llm | rules
+    art_style: str = ""     # 그림체 (art_styles). 비우면 템플릿 그대로
 
 
 def page_from_dict(raw: dict[str, Any]) -> Page:

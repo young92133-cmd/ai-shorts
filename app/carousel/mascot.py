@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 W, H = 600, 780          # 기준 좌표계
 SS = 2                   # 슈퍼샘플링 배율
 INK = (34, 28, 26, 255)
+_INK = object()           # '그림체의 외곽선 색' 표시 (None 은 외곽선 없음)
 
 
 def _rgb(value: str, default: str) -> tuple[int, int, int, int]:
@@ -24,40 +25,52 @@ def _shade(c, k: float):
 class _Pen:
     """기준 좌표(600x780)로 그리면 슈퍼샘플 캔버스에 맞춰 그려 준다."""
 
-    def __init__(self, img: Image.Image):
+    def __init__(self, img: Image.Image, ink=INK, scale: float = 1.0):
         self.d = ImageDraw.Draw(img)
+        self.ink, self.scale = ink, scale
+
+    def _w(self, width) -> int:
+        return max(1, int(round(width * self.scale))) * SS
+
+    def _c(self, color):
+        return self.ink if color is _INK else color
 
     @staticmethod
     def _b(box):
         return [v * SS for v in box]
 
-    def ellipse(self, box, fill=None, outline=INK, width=5):
-        self.d.ellipse(self._b(box), fill=fill, outline=outline, width=width * SS if outline else 0)
+    def ellipse(self, box, fill=None, outline=_INK, width=5):
+        outline = self._c(outline)
+        self.d.ellipse(self._b(box), fill=fill, outline=outline, width=self._w(width) if outline else 0)
 
-    def rect(self, box, r, fill=None, outline=INK, width=5):
-        self.d.rounded_rectangle(self._b(box), radius=r * SS, fill=fill, outline=outline, width=width * SS if outline else 0)
+    def rect(self, box, r, fill=None, outline=_INK, width=5):
+        outline = self._c(outline)
+        self.d.rounded_rectangle(self._b(box), radius=r * SS, fill=fill, outline=outline, width=self._w(width) if outline else 0)
 
-    def poly(self, pts, fill=None, outline=INK, width=5):
+    def poly(self, pts, fill=None, outline=_INK, width=5):
+        outline = self._c(outline)
         pts = [(x * SS, y * SS) for x, y in pts]
         self.d.polygon(pts, fill=fill)
         if outline:
-            self.d.line(pts + [pts[0]], fill=outline, width=width * SS, joint="curve")
+            self.d.line(pts + [pts[0]], fill=outline, width=self._w(width), joint="curve")
 
-    def line(self, pts, fill=INK, width=5):
-        self.d.line([(x * SS, y * SS) for x, y in pts], fill=fill, width=width * SS, joint="curve")
+    def line(self, pts, fill=_INK, width=5):
+        self.d.line([(x * SS, y * SS) for x, y in pts], fill=self._c(fill), width=self._w(width), joint="curve")
 
-    def arc(self, box, start, end, fill=INK, width=5):
-        self.d.arc(self._b(box), start, end, fill=fill, width=width * SS)
+    def arc(self, box, start, end, fill=_INK, width=5):
+        self.d.arc(self._b(box), start, end, fill=self._c(fill), width=self._w(width))
 
-    def chord(self, box, start, end, fill=None, outline=INK, width=5):
-        self.d.chord(self._b(box), start, end, fill=fill, outline=outline, width=width * SS if outline else 0)
+    def chord(self, box, start, end, fill=None, outline=_INK, width=5):
+        outline = self._c(outline)
+        self.d.chord(self._b(box), start, end, fill=fill, outline=outline, width=self._w(width) if outline else 0)
 
     def limb(self, a, b, color, width=46):
         """둥근 팔: 외곽선 굵은 선 위에 색 선."""
-        self.d.line([(a[0] * SS, a[1] * SS), (b[0] * SS, b[1] * SS)], fill=INK, width=(width + 10) * SS)
+        edge = width + 10 * self.scale
+        self.d.line([(a[0] * SS, a[1] * SS), (b[0] * SS, b[1] * SS)], fill=self.ink, width=int(round(edge * SS)))
         for p in (a, b):
-            r = (width + 10) / 2
-            self.d.ellipse(self._b([p[0] - r, p[1] - r, p[0] + r, p[1] + r]), fill=INK)
+            r = edge / 2
+            self.d.ellipse(self._b([p[0] - r, p[1] - r, p[0] + r, p[1] + r]), fill=self.ink)
         self.d.line([(a[0] * SS, a[1] * SS), (b[0] * SS, b[1] * SS)], fill=color, width=width * SS)
         for p in (a, b):
             r = width / 2
@@ -76,7 +89,7 @@ def _arms(p: _Pen, pose: str, outfit, skin) -> None:
         _hand(p, (185, 705), skin)
         p.limb(rs, (500, 430), outfit)
         _hand(p, (515, 415), skin)
-        p.line([(530, 400), (565, 365)], fill=INK, width=14)
+        p.line([(530, 400), (565, 365)], width=14)
         p.line([(530, 400), (565, 365)], fill=skin, width=8)
     elif pose in ("waving", "greeting"):
         p.limb(ls, (185, 690), outfit)
@@ -113,8 +126,13 @@ def _arms(p: _Pen, pose: str, outfit, skin) -> None:
         _hand(p, (422, 705), skin)
 
 
-def _eyes(p: _Pen, emotion: str, eye) -> None:
+def _eyes(p: _Pen, emotion: str, eye, face: str = "cute") -> None:
     lx, rx, y = 238, 362, 330
+    if face == "simple" and emotion not in ("happy", "confident"):
+        r = 16 if emotion == "surprised" else 11
+        for x in (lx, rx):
+            p.ellipse([x - r, y - r, x + r, y + r], fill=eye, outline=None)
+        return
     if emotion in ("happy", "confident"):
         for x in (lx, rx):
             p.arc([x - 26, y - 18, x + 26, y + 26], 200, 340, width=8)
@@ -199,6 +217,59 @@ def _hair_front(p: _Pen, style: str, hair) -> None:
     p.arc([200, 130, 300, 200], 200, 300, fill=_shade(hair, 1.35), width=6)   # 머리 광택
 
 
+def _curve(start, a, b, end):
+    """고정 제어점의 곡선. 머리 실루엣을 감정·자세와 독립적으로 유지한다."""
+    return [tuple((1-t)**3*start[k] + 3*(1-t)**2*t*a[k] + 3*(1-t)*t*t*b[k] + t**3*end[k]
+                  for k in (0, 1)) for t in (i/24 for i in range(25))]
+
+
+def _editorial(p: _Pen, mascot, emotion, pose, skin, hair, eye, outfit, detail, cheek):
+    """사람형 고정 외형: 부드러운 옆가르마·작은 얼굴·봉제선·고정 색상. 기존 마스코트는 그대로."""
+    # 머리 뒤와 의상은 표정에 따라 바뀌지 않는다.
+    p.rect([146, 142, 454, 659], 128, fill=hair, width=4)
+    p.poly(_curve((159, 340), (159, 470), (171, 615), (198, 648)) + [(160, 640)],
+           fill=_shade(hair, 1.15), outline=None)
+    p.rect([183, 500, 417, 815], 58, fill=outfit, width=4)
+    p.poly([(191, 563), (211, 570), (218, 780), (190, 780)], fill=_shade(outfit, 0.95), outline=None)
+    p.poly([(395, 563), (410, 550), (413, 780), (390, 780)], fill=_shade(outfit, 0.88), outline=None)
+    p.rect([272, 425, 328, 516], 16, fill=skin, width=4)
+    p.poly([(274, 435), (326, 435), (326, 471), (275, 453)], fill=_shade(skin, 0.92), outline=None)
+    p.poly([(253, 503), (300, 550), (347, 503), (329, 540), (300, 566), (270, 540)], fill=detail, width=3)
+    p.line([(300, 562), (300, 780)], fill=_shade(outfit, 0.80), width=3)
+    for y in (610, 670, 730):
+        p.ellipse([308, y-4, 316, y+4], fill=_shade(outfit, 0.70), outline=None)
+    # 귀·얼굴·옆머리의 기준 좌표는 8개 감정과 모든 자세에서 고정.
+    for x in (172, 428):
+        p.ellipse([x-15, 306, x+15, 352], fill=skin, width=3)
+        p.arc([x-8, 319, x+8, 343], 100, 270, fill=_shade(skin, 0.78), width=2)
+    p.ellipse([172, 176, 428, 459], fill=skin, width=4)
+    p.arc([179, 188, 424, 452], 15, 92, fill=_shade(skin, 0.90), width=7)
+    fringe = (_curve((151, 289), (132, 144), (361, 89), (446, 242)) +
+              _curve((446, 242), (394, 265), (339, 195), (300, 205)) +
+              _curve((300, 205), (255, 273), (194, 239), (151, 289)))
+    p.poly(fringe, fill=hair, width=4)
+    p.poly(_curve((154, 268), (155, 401), (157, 543), (181, 591)) + [(183, 273)], fill=hair, width=3)
+    p.poly(_curve((415, 248), (444, 361), (446, 544), (420, 610)) + [(409, 274)], fill=hair, width=3)
+    p.line(_curve((186, 219), (214, 161), (285, 144), (348, 170)), fill=_shade(hair, 1.35), width=3)
+    p.line(_curve((165, 306), (168, 424), (173, 492), (179, 527)), fill=_shade(hair, 1.28), width=2)
+    p.rect([410, 269, 429, 278], 4, fill=_rgb(mascot.get("hairpin"), "#73A69B"), outline=None)
+    for x in (212, 388):
+        p.ellipse([x-19, 366, x+19, 379], fill=(*cheek[:3], 255), outline=None)
+    _brows(p, emotion, hair)
+    if emotion in ("neutral", "worried", "thinking", "surprised"):
+        for x in (238, 362):
+            h = 22 if emotion == "surprised" else 15
+            p.ellipse([x-25, 330-h, x+25, 330+h], fill=detail, width=3)
+            p.ellipse([x-9, 319, x+9, 342], fill=eye, outline=None)
+            p.ellipse([x-4, 320, x+2, 326], fill=(255,255,255,255), outline=None)
+            p.arc([x-26, 330-h-1, x+26, 330+h], 180, 355, width=4)
+    else:
+        _eyes(p, emotion, eye)
+    p.line([(300, 363), (294, 376), (302, 379)], fill=_shade(skin, 0.77), width=2)
+    _mouth(p, emotion)
+    _arms(p, pose, outfit, skin)
+
+
 def draw_mascot(mascot: dict, emotion: str = "neutral", pose: str = "standing", flip: bool = False) -> Image.Image:
     """투명 배경 RGBA 마스코트 (600x780)."""
     skin = _rgb(mascot.get("skin"), "#FCE0CC")
@@ -208,8 +279,16 @@ def draw_mascot(mascot: dict, emotion: str = "neutral", pose: str = "standing", 
     detail = _rgb(mascot.get("outfit_detail"), "#FFFFFF")
     cheek = _rgb(mascot.get("cheek"), "#FF9AA2")
     style = mascot.get("hair_style", "bob")
+    face = mascot.get("face", "cute")
+    # 외곽선 색·굵기는 캐릭터(mascot.ink·line_scale) 또는 그림체(art_styles 의 mascot)가 정한다
+    ink = _rgb(mascot["ink"], "#221C1A") if mascot.get("ink") else INK
     img = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    p = _Pen(img)
+    p = _Pen(img, ink, float(mascot.get("line_scale", 1.0)))
+
+    if face == "editorial":
+        _editorial(p, mascot, emotion, pose, skin, hair, eye, outfit, detail, cheek)
+        out = img.resize((W, H), Image.LANCZOS)
+        return out.transpose(Image.FLIP_LEFT_RIGHT) if flip else out
 
     _hair_back(p, style, hair)
     # 몸통 (어깨 ~ 아래 끝까지, 하단은 컷 밖으로 잘린다고 가정)
@@ -226,14 +305,15 @@ def draw_mascot(mascot: dict, emotion: str = "neutral", pose: str = "standing", 
     _hair_front(p, style, hair)
     if style == "ponytail":
         p.ellipse([430, 150, 470, 200], fill=_rgb(mascot.get("hairpin"), "#FF6B6B"))
-    # 볼
-    blush = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    bp = _Pen(blush)
-    for x in (205, 395):
-        bp.ellipse([x - 30, 368, x + 30, 398], fill=(*cheek[:3], 140), outline=None)
-    img.alpha_composite(blush)
+    # 볼 (단순한 얼굴은 생략)
+    if face != "simple":
+        blush = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        bp = _Pen(blush)
+        for x in (205, 395):
+            bp.ellipse([x - 30, 368, x + 30, 398], fill=(*cheek[:3], 140), outline=None)
+        img.alpha_composite(blush)
     _brows(p, emotion, hair)
-    _eyes(p, emotion, eye)
+    _eyes(p, emotion, eye, face)
     _mouth(p, emotion)
     acc = mascot.get("accessory", "")
     if acc == "round_glasses":

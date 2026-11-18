@@ -12,6 +12,8 @@ from typing import Any
 import yaml
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+ART_STYLE_DIR = Path(__file__).parent / "art_styles"                         # 기본 그림체
+USER_STYLE_DIR = Path(__file__).resolve().parents[2] / "assets" / "art_styles"  # 참고 이미지로 만든 사용자 그림체
 DEFAULT_TEMPLATE = "clean_info"
 DEFAULT_BY_FORMAT = {"card_news": "clean_info", "insta_toon": "comic_hybrid", "hybrid": "comic_hybrid"}
 
@@ -33,6 +35,8 @@ class Template:
         self.fonts = {k: float(v) for k, v in (data.get("fonts") or {}).items()}
         self.style: dict[str, Any] = data.get("style") or {}
         self.character: dict[str, Any] = data.get("character") or {}
+        self.art: dict[str, Any] = data.get("art") or {}            # 그림체(art_styles)가 정하는 렌더 방식
+        self.art_style: str = data.get("art_style", "default")
         self._boxes: dict[str, list[float]] = data.get("boxes") or {}
         self._pages: dict[str, dict[str, Any]] = data.get("pages") or {}
 
@@ -81,9 +85,39 @@ def list_templates() -> list[dict[str, str]]:
             for k, v in _load_all(str(TEMPLATE_DIR)).items()]
 
 
-def load_template(template_id: str | None, fmt: str = "card_news") -> Template:
+@lru_cache(maxsize=None)
+def _load_styles(folder: str) -> dict[str, dict[str, Any]]:
+    out = {}
+    for path in sorted(Path(folder).glob("*.yaml")) if Path(folder).is_dir() else []:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not data.get("id"):
+            raise ValueError(f"그림체 {path.name}: 'id' 가 없습니다")
+        out[data["id"]] = data
+    return out
+
+
+def art_styles() -> dict[str, dict[str, Any]]:
+    """기본 그림체 + 사용자 그림체 (같은 id 면 기본이 우선)."""
+    return {**_load_styles(str(USER_STYLE_DIR)), **_load_styles(str(ART_STYLE_DIR))}
+
+
+def list_art_styles() -> list[dict[str, str]]:
+    return [{"id": k, "name": v.get("name", k), "description": v.get("description", "")} for k, v in art_styles().items()]
+
+
+def load_template(template_id: str | None, fmt: str = "card_news", art_style: str | None = None) -> Template:
+    """템플릿(배치·글꼴) 위에 그림체(색·선·배경·말풍선·효과)를 덮어 쓴다. 그림체를 안 고르면 템플릿 그대로."""
     all_ = _load_all(str(TEMPLATE_DIR))
     tid = template_id or DEFAULT_BY_FORMAT.get(fmt, DEFAULT_TEMPLATE)
     if tid not in all_:
         raise ValueError(f"알 수 없는 템플릿: {tid} (가능: {', '.join(all_)})")
-    return Template(all_[tid])
+    data = all_[tid]
+    if art_style and art_style != "default":
+        styles = art_styles()
+        if art_style not in styles:
+            raise ValueError(f"알 수 없는 그림체: {art_style} (가능: {', '.join(styles)})")
+        st = styles[art_style]
+        data = {**data, "palette": {**data.get("palette", {}), **(st.get("palette") or {})},
+                "style": {**(data.get("style") or {}), **(st.get("style") or {})}, "art": st.get("art") or {},
+                "art_style": art_style}
+    return Template(data)

@@ -147,6 +147,7 @@ def render_kit(job_dir: Path, *, fmt: str, tpl: Template, cfg: dict[str, Any], d
     provider_cfg = {"images": {**cfg.get("images", {}), "provider": cs.get("image_provider") or "none"}}
     artist = CharacterArtist(job_dir=job_dir, registry=registry, provider_cfg=provider_cfg, default_id=default_id,
                              root=character_root, log=lambda m: progress("images", 60, m))
+    artist.mascot_style = dict(tpl.art.get("mascot") or {})
     pinned = pinned_uploads(job_dir, registry)
     if fmt == "card_news" and tpl.character.get("on_cards"):
         charmod.ensure_default(character_root)      # 캐릭터 템플릿이면 카드뉴스에도 안내 캐릭터
@@ -235,7 +236,7 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
                        n_pages: int | None = None, instructions: str = "", image_search: bool = True,
                        inputs: dict[str, Any] | None = None, character_root: Path | None = None,
                        prepared_master: MasterContent | None = None,
-                       prepared_plan: CarouselPlan | None = None) -> dict[str, Any]:
+                       prepared_plan: CarouselPlan | None = None, art_style: str | None = None) -> dict[str, Any]:
     """카드뉴스/인스타툰/하이브리드 한 벌을 만든다. inputs 를 주면 자료 수집을 건너뛴다(all 모드)."""
     if fmt not in CAROUSEL_FORMATS:
         raise ValueError(f"캐러셀 형식이 아닙니다: {fmt}")
@@ -263,7 +264,9 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
             progress("script", 2, f"받은편지함 그림 등록 {len(got['added'])}장, 보류 {len(got['skipped'])}장")
     except Exception as e:  # noqa: BLE001
         progress("script", 2, f"받은편지함 확인 실패 ({e})")
-    tpl = load_template(template or (prepared_plan.template if prepared_plan else None) or (cs.get("templates") or {}).get(fmt), fmt)
+    art_style = art_style or (prepared_plan.art_style if prepared_plan else "") or ""
+    tpl = load_template(template or (prepared_plan.template if prepared_plan else None) or (cs.get("templates") or {}).get(fmt), fmt,
+                        art_style)
 
     # 1. 입력
     if inputs is None:
@@ -291,6 +294,7 @@ async def run_carousel(job_dir: Path, *, fmt: str, mode: str, text: str, cfg: di
     progress("script", 50, "페이지 구성 중")
     plan = prepared_plan if prepared_plan is not None else await plan_pages(llm, master, fmt, template=tpl.id, character=bible, valid_chars=valid,
                             n_pages=n_pages or int(cs["pages"]), instructions=instructions)
+    plan = plan.model_copy(update={"art_style": art_style})
     (out_dir / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     progress("script", 100, f"{len(plan.pages)}장 구성 ({plan.method}) · 카드 {plan.mix.get('card')}% / 만화 {plan.mix.get('comic')}%")
 

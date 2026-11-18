@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from ..carousel import characters as charmod, pipeline as carouselmod
 from ..carousel.schema import CAROUSEL_FORMATS, OUTPUT_FORMATS
-from ..carousel.templates import list_templates, load_template
+from ..carousel.templates import list_art_styles, list_templates, load_template
 from ..config import load_config, load_presets, merge_options
 from ..pipeline import blueprint as bpmod, capcut, cards, research, timeline as tlmod, visuals as visualsmod
 from ..pipeline import run as runmod, llm as llmmod, bench_auto, quote as quotemod
@@ -311,7 +311,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
                benchmark: str | None = "auto", visuals: str | None = "auto", output_format: str | None = None,
                request_text: str = "", template: str | None = None, character: str | None = None,
                pages: int | None = None, research_file: str | None = None, quotes: list[str] | None = None,
-               quote_source: str | None = None, quote_reference: bool = False, log: Log = print) -> dict[str, Any]:
+               quote_source: str | None = None, quote_reference: bool = False, art_style: str | None = None,
+               log: Log = print) -> dict[str, Any]:
     """쇼츠 한 편을 만든다. review=True 면 대본까지만 만들고 승인 대기로 멈춘다.
 
     benchmark: auto(기본, 8개 콘텐츠 구조 중 자동 선택) | off(기존 V1 구성) | profile id(강제 지정).
@@ -330,7 +331,8 @@ async def make(*, topic: str | None = None, url: str | None = None, auto: bool =
             research_file=research_file, preset=preset, seconds=seconds, review=review, instructions=instructions,
             llm=llm, model=model, tts=tts, voice=voice, subtitles=subtitles, assets=assets, asset_rights=asset_rights,
             reference_video=reference_video, content_format=content_format, allow_openai=allow_openai,
-            benchmark=benchmark, visuals=visuals, template=template, character=character, pages=pages, log=log)
+            benchmark=benchmark, visuals=visuals, template=template, character=character, pages=pages,
+            art_style=art_style, log=log)
     visuals = visuals or "auto"
     if visuals not in ("auto", "cards"):
         raise FactoryError("invalid", "visuals 는 auto / cards 중 하나여야 합니다.")
@@ -403,7 +405,7 @@ async def _make_carousel(*, output_format: str, topic: str | None, url: str | No
                          subtitles: bool | None, assets: list[str] | None, asset_rights: dict[str, Any] | None,
                          reference_video: str | None, content_format: str | None, allow_openai: bool | None,
                          benchmark: str | None, visuals: str | None, template: str | None, character: str | None,
-                         pages: int | None, log: Log) -> dict[str, Any]:
+                         pages: int | None, log: Log, art_style: str | None = None) -> dict[str, Any]:
     """카드뉴스 / 인스타툰 / 하이브리드 (all 이면 쇼츠 + 하이브리드). 결과는 output/<id>/<format>/card_NN.png."""
     fmt = output_format
     if fmt == "shorts":
@@ -428,13 +430,14 @@ async def _make_carousel(*, output_format: str, topic: str | None, url: str | No
         except ValueError as e:
             raise FactoryError("invalid", str(e)) from e
     try:
-        if template:
-            load_template(template, "hybrid" if fmt == "all" else fmt)
+        if template or art_style:
+            load_template(template, "hybrid" if fmt == "all" else fmt, art_style)
         if character:
             charmod.get_character(character)
     except (KeyError, ValueError) as e:
         raise FactoryError("invalid", str(e).strip("'\""), templates=[t["id"] for t in list_templates()],
-                           characters=[c.id for c in charmod.list_characters()]) from e
+                           characters=[c.id for c in charmod.list_characters()],
+                           art_styles=[s["id"] for s in list_art_styles()]) from e
     if content_format:
         instructions = f"{FORMATS[content_format]['instructions']}\n{instructions}".strip()
     mode = ("topic" if topic else "url" if url else "auto" if auto else "research" if research_file else "script")
@@ -442,7 +445,7 @@ async def _make_carousel(*, output_format: str, topic: str | None, url: str | No
     request = {"mode": mode, "input": text, "preset": preset, "seconds": seconds, "review": False,
                "instructions": instructions, "llm": llm, "model": model, "tts": tts, "voice": voice,
                "subtitles": subtitles, "allow_openai": allow_openai, "format": content_format,
-               "output_format": fmt, "template": template, "character": character, "pages": pages,
+               "output_format": fmt, "template": template, "character": character, "pages": pages, "art_style": art_style,
                "benchmark": benchmark or "auto", "visuals": visuals or "auto", "reference_name": "", "style": None}
     run_cfg = _run_cfg(request)
     if fmt == "all":
@@ -456,7 +459,7 @@ async def _make_carousel(*, output_format: str, topic: str | None, url: str | No
     except Exception as e:  # noqa: BLE001
         return _fail(job_dir, state, e)
     progress = _progress(job_dir, state, log)
-    kwargs = dict(cfg=run_cfg, progress=progress, template=template, character=character, n_pages=pages,
+    kwargs = dict(cfg=run_cfg, progress=progress, template=template, character=character, n_pages=pages, art_style=art_style,
                   instructions=instructions, image_search=(visuals or "auto") == "auto")
     if fmt != "all":
         try:
