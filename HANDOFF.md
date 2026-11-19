@@ -15,6 +15,7 @@
 - 다음: 사용자 신호 후 실제 1편(조사 → issue new → Flow AI 사진 → 캡처 → assemble). commit·push 는 승인 후.
 
 ## 2026-11-18 (미커밋, Claude) — Google Flow 공학 쇼츠
+- 2026-11-19 자동 실행: 1장면 S01_VIDEO(기존 카드, 8초 720x1280) 다운로드·import, 신규 크레딧 0(잔여 50). 점검: 8초라 10초 계획보다 짧고 3번째 컷(8.5초) 미확인 — 재생성 안 함, 사용자 판단 필요. 남은 2~12장면.
 - 새 파일: `presets/flow_engineering.md`, `app/pipeline/flowshorts.py`, `app/factory/flow.py`(`flow new/update/status/prompts/note/import/assemble`),
   `.claude/skills/flow-shorts/SKILL.md`(브라우저 런북), `tests/test_flowshorts.py`(9). `__main__.py` 에 flow 등록 3줄, AGENTS.md 명령표 2행.
 - 장면 길이 = max(내레이션+0.35초, 6초), 넘치면 클립 마지막 프레임 유지. 클립 소리 12%. 편집은 기존 `render_broll` 재사용.
